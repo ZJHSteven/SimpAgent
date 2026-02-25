@@ -8,6 +8,8 @@
  * - 复杂 ORM 会降低首版调试透明度，因此暂不引入。
  */
 
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import type {
@@ -65,6 +67,8 @@ export class AppDatabase {
   readonly db: DatabaseSync;
 
   constructor(dbFilePath: string) {
+    // 先确保数据库文件所在目录存在，否则 SQLite 会直接报 unable to open database file。
+    mkdirSync(path.dirname(dbFilePath), { recursive: true });
     this.db = new DatabaseSync(dbFilePath);
     // 启动时立即建表，避免运行到中间步骤才报表不存在。
     this.db.exec(SCHEMA_SQL);
@@ -622,4 +626,3 @@ export class AppDatabase {
       .run(action, targetType, targetId, details ? toJson(details) : null, nowIso());
   }
 }
-

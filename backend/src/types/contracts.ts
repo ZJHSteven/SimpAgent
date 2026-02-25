@@ -422,6 +422,7 @@ export type UnifiedModelStreamEvent =
       provider: ProviderVendor;
       requestId?: string;
       model?: string;
+      apiMode?: ProviderApiMode;
     }
   | {
       type: "text_delta";

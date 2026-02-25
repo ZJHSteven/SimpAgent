@@ -1,0 +1,1086 @@
+/**
+ * 本文件作用：
+ * - 基于 LangGraph.js 实现框架运行时封装。
+ * - 提供 run 创建/执行、暂停/恢复、中断、checkpoint 历史、状态补丁、分叉重跑能力。
+ *
+ * 教学说明（重要）：
+ * - 这里的代码并不是“只让图跑起来”，而是把可观测性、可调试性、可人工介入一起纳入运行时。
+ * - LangGraph 负责 checkpoint / interrupt / replay / updateState 这些底层能力；
+ *   我们负责 Prompt 编译、Provider 兼容、工具执行、Trace 事件。
+ */
+
+import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
+import { Annotation, Command, END, START, StateGraph, interrupt } from "@langchain/langgraph";
+import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
+import type {
+  AgentSpec,
+  CreateRunRequest,
+  CreateRunResponse,
+  ForkRunRequest,
+  ForkRunResponse,
+  JsonObject,
+  JsonValue,
+  PromptBlock,
+  PromptCompileRequest,
+  PromptOverridePatchRequest,
+  ProviderApiMode,
+  RunState,
+  RunStatus,
+  StatePatchRequest,
+  ToolSpec,
+  UnifiedMessage,
+  UnifiedModelRequest,
+  WorkflowEdgeSpec,
+  WorkflowNodeSpec,
+  WorkflowSpec
+} from "../types/index.js";
+import type { AppDatabase } from "../storage/index.js";
+import type { AgentRegistry } from "../core/agents/index.js";
+import type { WorkflowRegistry } from "../core/workflows/index.js";
+import type { ToolRegistry } from "../core/tools/index.js";
+import { ToolRuntime } from "../core/tools/index.js";
+import { PromptCompiler } from "../core/prompt/index.js";
+import { TraceEventBus } from "../core/trace/index.js";
+import { UnifiedProviderClient } from "../providers/index.js";
+
+type GraphEnvelope = { state: RunState };
+type RunRecord = {
+  runId: string;
+  threadId: string;
+  workflowId: string;
+  workflowVersion: number;
+  provider: CreateRunRequest["provider"];
+};
+
+const GraphAnn = Annotation.Root({
+  state: Annotation<RunState>()
+});
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function newId(prefix: string): string {
+  return `${prefix}_${randomUUID().replace(/-/g, "")}`;
+}
+
+function safeJsonParseObject(text: string): JsonObject | null {
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as JsonObject;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function deepMerge<T>(base: T, patch: unknown): T {
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return (patch as T) ?? base;
+  if (!base || typeof base !== "object" || Array.isArray(base)) return patch as T;
+  const result: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+  for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
+    const prev = result[k];
+    if (v && typeof v === "object" && !Array.isArray(v) && prev && typeof prev === "object" && !Array.isArray(prev)) {
+      result[k] = deepMerge(prev, v);
+    } else {
+      result[k] = v;
+    }
+  }
+  return result as T;
+}
+
+function summarize(value: JsonValue | undefined): JsonValue | undefined {
+  if (value === undefined) return undefined;
+  const text = JSON.stringify(value);
+  if (text.length <= 2000) return value;
+  return { truncated: true, preview: text.slice(0, 2000) };
+}
+
+export interface RuntimeDeps {
+  db: AppDatabase;
+  agentRegistry: AgentRegistry;
+  workflowRegistry: WorkflowRegistry;
+  toolRegistry: ToolRegistry;
+  promptCompiler: PromptCompiler;
+  toolRuntime: ToolRuntime;
+  providerClient: UnifiedProviderClient;
+  traceBus: TraceEventBus;
+  workspaceRoot: string;
+  dataDir: string;
+}
+
+export class FrameworkRuntimeEngine {
+  private readonly checkpointer: SqliteSaver;
+  private readonly graphCache = new Map<string, any>();
+  private readonly activeRuns = new Map<string, RunRecord>();
+
+  constructor(private readonly deps: RuntimeDeps) {
+    mkdirSync(this.deps.dataDir, { recursive: true });
+    this.checkpointer = SqliteSaver.fromConnString(path.join(this.deps.dataDir, "langgraph-checkpoints.sqlite"));
+  }
+
+  async createRun(request: CreateRunRequest): Promise<CreateRunResponse> {
+    const workflow = this.resolveWorkflow(request.workflowId, request.workflowVersion);
+    const runId = newId("run");
+    const threadId = newId("thread");
+    const snapshotRefs = this.buildSnapshotVersionRefs(workflow);
+    const state = this.buildInitialState(runId, threadId, workflow, request, snapshotRefs);
+
+    this.deps.db.upsertRunSummary({
+      runId,
+      threadId,
+      workflowId: workflow.id,
+      workflowVersion: workflow.version,
+      status: "created",
+      currentNodeId: workflow.entryNode,
+      snapshotVersionRefs: snapshotRefs as unknown as JsonValue,
+      providerConfig: request.provider as unknown as JsonValue,
+      inputJson: { userInput: request.userInput },
+      parentRunId: undefined,
+      parentCheckpointId: undefined
+    });
+
+    const record: RunRecord = {
+      runId,
+      threadId,
+      workflowId: workflow.id,
+      workflowVersion: workflow.version,
+      provider: request.provider
+    };
+    this.activeRuns.set(runId, record);
+
+    this.deps.traceBus.emit({
+      runId,
+      threadId,
+      type: "run_started",
+      summary: "Run 已创建",
+      payload: { workflowId: workflow.id, workflowVersion: workflow.version }
+    });
+
+    void this.executeGraph(record, workflow, { state });
+
+    return { runId, threadId, status: "running" };
+  }
+
+  getRunSummary(runId: string) {
+    return this.deps.db.getRunSummary(runId);
+  }
+
+  async requestPause(runId: string, reason = "manual_pause"): Promise<void> {
+    const record = this.getRunRecord(runId);
+    await this.patchLiveHeadState(record, {
+      flags: { pauseRequested: true, softPauseAtNextSafePoint: true },
+      humanReviewState: { pendingInterrupt: { reason, at: nowIso() } }
+    });
+    this.deps.traceBus.emit({
+      runId,
+      threadId: record.threadId,
+      type: "interrupt_emitted",
+      summary: "已请求软暂停（下一安全点生效）",
+      payload: { reason }
+    });
+  }
+
+  async requestInterrupt(runId: string, reason: string, payload?: JsonValue): Promise<void> {
+    const record = this.getRunRecord(runId);
+    await this.patchLiveHeadState(record, {
+      flags: { pauseRequested: true, softPauseAtNextSafePoint: true },
+      humanReviewState: { pendingInterrupt: { reason, payload, at: nowIso() } }
+    });
+    this.deps.traceBus.emit({
+      runId,
+      threadId: record.threadId,
+      type: "interrupt_emitted",
+      summary: "已请求人工中断（下一安全点生效）",
+      payload: { reason, payload: summarize(payload) ?? null } as unknown as JsonValue
+    });
+  }
+
+  async resumeRun(runId: string, resumePayload?: JsonValue): Promise<void> {
+    const record = this.getRunRecord(runId);
+    const workflow = this.resolveWorkflow(record.workflowId, record.workflowVersion);
+
+    await this.patchLiveHeadState(record, {
+      flags: { pauseRequested: false, softPauseAtNextSafePoint: false },
+      humanReviewState: { lastResumePayload: resumePayload, pendingInterrupt: undefined },
+      status: "running"
+    });
+
+    this.deps.traceBus.emit({
+      runId,
+      threadId: record.threadId,
+      type: "resume_received",
+      summary: "收到恢复指令",
+      payload: summarize(resumePayload)
+    });
+
+    void this.executeGraph(record, workflow, new Command({ resume: resumePayload ?? "继续" }) as unknown);
+  }
+
+  async getThreadHistory(threadId: string): Promise<JsonValue[]> {
+    const record = this.getRunRecordByThread(threadId);
+    const workflow = this.resolveWorkflow(record.workflowId, record.workflowVersion);
+    const graph = this.getOrBuildGraph(workflow);
+    const result: JsonValue[] = [];
+
+    for await (const snapshot of graph.getStateHistory(this.threadConfig(threadId))) {
+      const checkpointId = String(snapshot?.config?.configurable?.checkpoint_id ?? "");
+      const parentCheckpointId = snapshot?.parentConfig?.configurable?.checkpoint_id
+        ? String(snapshot.parentConfig.configurable.checkpoint_id)
+        : undefined;
+      const runState = (snapshot.values as GraphEnvelope | undefined)?.state;
+      if (checkpointId) {
+        this.deps.db.upsertCheckpointIndex({
+          threadId,
+          checkpointId,
+          parentCheckpointId,
+          runId: runState?.runMeta.runId,
+          metadata: (snapshot.metadata ?? null) as JsonValue
+        });
+      }
+      result.push({
+        checkpointId,
+        parentCheckpointId: parentCheckpointId ?? null,
+        createdAt: snapshot.createdAt ?? null,
+        next: snapshot.next,
+        tasks: snapshot.tasks,
+        runStateSummary: runState
+          ? {
+              runId: runState.runMeta.runId,
+              status: runState.status,
+              currentNodeId: runState.routingState.currentNodeId
+            }
+          : null
+      });
+    }
+    return result;
+  }
+
+  async patchStateAtCheckpoint(threadId: string, checkpointId: string, req: StatePatchRequest): Promise<void> {
+    const record = this.getRunRecordByThread(threadId);
+    const workflow = this.resolveWorkflow(record.workflowId, record.workflowVersion);
+    const graph = this.getOrBuildGraph(workflow);
+    const config = this.threadConfig(threadId, checkpointId);
+    const snapshot = await graph.getState(config);
+    const current = (snapshot.values as GraphEnvelope).state;
+    const patched = deepMerge(current, req.patch);
+    await graph.updateState(config, { state: patched }, req.asNode);
+    this.deps.db.recordStatePatch({
+      threadId,
+      checkpointId,
+      runId: record.runId,
+      patchKind: "state_patch",
+      operator: req.operator,
+      reason: req.reason,
+      patch: req.patch as unknown as JsonValue
+    });
+    this.deps.traceBus.emit({
+      runId: record.runId,
+      threadId,
+      type: "state_patched",
+      summary: `状态补丁已写入 checkpoint=${checkpointId}`,
+      payload:
+        {
+          reason: req.reason,
+          asNode: req.asNode ?? null,
+          patch: summarize(req.patch as unknown as JsonValue) ?? null
+        } as unknown as JsonValue
+    });
+  }
+
+  async patchPromptOverridesAtCheckpoint(
+    threadId: string,
+    checkpointId: string,
+    req: PromptOverridePatchRequest
+  ): Promise<void> {
+    const record = this.getRunRecordByThread(threadId);
+    const workflow = this.resolveWorkflow(record.workflowId, record.workflowVersion);
+    const graph = this.getOrBuildGraph(workflow);
+    const config = this.threadConfig(threadId, checkpointId);
+    const snapshot = await graph.getState(config);
+    const current = (snapshot.values as GraphEnvelope).state;
+    const patched: RunState = {
+      ...current,
+      debugRefs: { ...current.debugRefs, promptOverrides: req.patches }
+    };
+    await graph.updateState(config, { state: patched });
+    this.deps.db.recordStatePatch({
+      threadId,
+      checkpointId,
+      runId: record.runId,
+      patchKind: "prompt_override",
+      operator: req.operator,
+      reason: req.reason,
+      patch: { patches: req.patches } as unknown as JsonValue
+    });
+    this.deps.traceBus.emit({
+      runId: record.runId,
+      threadId,
+      type: "state_patched",
+      summary: `PromptOverride 已写入 checkpoint=${checkpointId}`,
+      payload: { reason: req.reason, patchCount: req.patches.length } as unknown as JsonValue
+    });
+  }
+
+  async forkRunFromCheckpoint(
+    threadId: string,
+    checkpointId: string,
+    req: ForkRunRequest
+  ): Promise<ForkRunResponse> {
+    const parent = this.getRunRecordByThread(threadId);
+    const parentRow = this.deps.db.getRunSummary(parent.runId);
+    if (!parentRow) throw new Error("父 run 不存在");
+    const workflow = this.resolveWorkflow(parent.workflowId, parent.workflowVersion);
+    const newRunId = newId("run");
+
+    this.deps.db.upsertRunSummary({
+      runId: newRunId,
+      threadId,
+      workflowId: parent.workflowId,
+      workflowVersion: parent.workflowVersion,
+      status: "created",
+      currentNodeId: parentRow.current_node_id,
+      snapshotVersionRefs: parentRow.snapshotVersionRefs,
+      providerConfig: JSON.parse(parentRow.provider_config_json) as JsonValue,
+      inputJson: JSON.parse(parentRow.input_json) as JsonValue,
+      parentRunId: parent.runId,
+      parentCheckpointId: checkpointId
+    });
+
+    const fork = this.deps.db.recordFork({
+      parentRunId: parent.runId,
+      parentCheckpointId: checkpointId,
+      childRunId: newRunId,
+      threadId,
+      reason: req.reason,
+      operator: req.operator
+    });
+
+    const child: RunRecord = { ...parent, runId: newRunId };
+    this.activeRuns.set(newRunId, child);
+    this.deps.traceBus.emit({
+      runId: parent.runId,
+      threadId,
+      type: "fork_created",
+      summary: `创建分叉 run=${newRunId}`,
+      payload: { checkpointId, reason: req.reason }
+    });
+
+    void this.executeGraph(
+      child,
+      workflow,
+      req.resumeMode === "manual"
+        ? (new Command({ resume: req.resumePayload ?? "继续" }) as unknown)
+        : (null as unknown),
+      checkpointId
+    );
+    return fork;
+  }
+
+  async getPromptCompile(compileId: string) {
+    return this.deps.db.getPromptCompile(compileId);
+  }
+
+  private async executeGraph(record: RunRecord, workflow: WorkflowSpec, input: unknown, checkpointId?: string) {
+    const graph = this.getOrBuildGraph(workflow);
+    this.deps.db.updateRunStatus(record.runId, "running");
+    try {
+      const iterable = await graph.stream(input as never, {
+        ...this.threadConfig(record.threadId, checkpointId),
+        streamMode: "values"
+      });
+      for await (const chunk of iterable as AsyncIterable<any>) {
+        if (chunk?.__interrupt__) {
+          this.deps.db.updateRunStatus(record.runId, "waiting_human");
+          return;
+        }
+        if (chunk?.state) {
+          const st = (chunk as GraphEnvelope).state;
+          this.deps.db.updateRunStatus(record.runId, st.status, st.routingState.currentNodeId);
+        }
+      }
+      const finalSnapshot = await graph.getState(this.threadConfig(record.threadId));
+      const st = (finalSnapshot.values as GraphEnvelope).state;
+      const cp = finalSnapshot.config?.configurable?.checkpoint_id
+        ? String(finalSnapshot.config.configurable.checkpoint_id)
+        : "";
+      const pcp = finalSnapshot.parentConfig?.configurable?.checkpoint_id
+        ? String(finalSnapshot.parentConfig.configurable.checkpoint_id)
+        : undefined;
+      if (cp) {
+        this.deps.db.upsertCheckpointIndex({
+          threadId: record.threadId,
+          checkpointId: cp,
+          parentCheckpointId: pcp,
+          runId: record.runId,
+          metadata: (finalSnapshot.metadata ?? null) as JsonValue
+        });
+      }
+      this.deps.db.updateRunStatus(record.runId, st.status, st.routingState.currentNodeId);
+      if (st.status === "completed") {
+        this.deps.traceBus.emit({
+          runId: record.runId,
+          threadId: record.threadId,
+          type: "run_finished",
+          summary: "Run 执行完成"
+        });
+      }
+    } catch (error) {
+      this.deps.db.updateRunStatus(record.runId, "error");
+      this.deps.traceBus.emit({
+        runId: record.runId,
+        threadId: record.threadId,
+        type: "run_failed",
+        summary: `Run 执行失败：${error instanceof Error ? error.message : "未知错误"}`,
+        payload: { message: error instanceof Error ? error.message : "未知错误" }
+      });
+    }
+  }
+
+  private getOrBuildGraph(workflow: WorkflowSpec): any {
+    const key = `${workflow.id}@${workflow.version}`;
+    const cached = this.graphCache.get(key);
+    if (cached) return cached;
+
+    const builder: any = new StateGraph(GraphAnn);
+
+    for (const node of workflow.nodes) {
+      builder.addNode(node.id, async (envelope: GraphEnvelope) => {
+        return this.executeNode(workflow, node, envelope);
+      });
+    }
+
+    builder.addEdge(START, workflow.entryNode);
+
+    const outgoingMap = new Map<string, WorkflowEdgeSpec[]>();
+    for (const edge of workflow.edges) {
+      const arr = outgoingMap.get(edge.from) ?? [];
+      arr.push(edge);
+      outgoingMap.set(edge.from, arr);
+    }
+
+    for (const node of workflow.nodes) {
+      const outgoing = (outgoingMap.get(node.id) ?? []).sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+      if (outgoing.length === 0) {
+        builder.addEdge(node.id, END);
+        continue;
+      }
+      if (outgoing.length === 1 && ((outgoing[0].condition?.type ?? "always") === "always")) {
+        builder.addEdge(node.id, outgoing[0].to);
+        continue;
+      }
+      builder.addConditionalEdges(node.id, (env: GraphEnvelope) => {
+        const nextNodeId = env.state.routingState.nextNodeId;
+        if (nextNodeId && outgoing.some((e) => e.to === nextNodeId)) return nextNodeId;
+        return outgoing[0]?.to ?? END;
+      });
+    }
+
+    const compiled = builder.compile({ checkpointer: this.checkpointer });
+    this.graphCache.set(key, compiled);
+    return compiled;
+  }
+
+  private async executeNode(workflow: WorkflowSpec, node: WorkflowNodeSpec, envelope: GraphEnvelope): Promise<GraphEnvelope> {
+    let state = envelope.state;
+    const runId = state.runMeta.runId;
+    const threadId = state.runMeta.threadId;
+
+    state = {
+      ...state,
+      status: "running",
+      routingState: {
+        ...state.routingState,
+        currentNodeId: node.id,
+        history: [...state.routingState.history, { nodeId: node.id, at: nowIso() }]
+      }
+    };
+
+    state = this.safePointInterrupt(state, node, "before");
+
+    this.deps.traceBus.emit({
+      runId,
+      threadId,
+      type: "node_started",
+      nodeId: node.id,
+      agentId: node.agentId,
+      summary: `节点开始：${node.label}`,
+      payload: { nodeType: node.type }
+    });
+
+    if (node.type === "agent" && node.agentId) {
+      state = await this.runAgentNode(workflow, node, state);
+    } else if (node.type === "tool" && node.toolId) {
+      state = await this.runToolNode(node, state);
+    } else if (node.type === "interrupt") {
+      const resumePayload = interrupt({
+        reason: "workflow_interrupt_node",
+        nodeId: node.id,
+        label: node.label
+      });
+      state = {
+        ...state,
+        status: "waiting_human",
+        humanReviewState: {
+          ...state.humanReviewState,
+          lastResumePayload: resumePayload as JsonValue
+        }
+      };
+    }
+
+    state = this.decideNextNode(workflow, node, state);
+    state = this.safePointInterrupt(state, node, "after");
+
+    this.deps.traceBus.emit({
+      runId,
+      threadId,
+      type: "node_finished",
+      nodeId: node.id,
+      agentId: node.agentId,
+      summary: `节点完成：${node.label}`,
+      payload: {
+        nextNodeId: state.routingState.nextNodeId ?? null,
+        status: state.status
+      }
+    });
+
+    return { state };
+  }
+
+  private safePointInterrupt(state: RunState, node: WorkflowNodeSpec, phase: "before" | "after"): RunState {
+    const hitBreak =
+      phase === "before"
+        ? state.controlConfig.interruptBeforeNodes.includes(node.id)
+        : state.controlConfig.interruptAfterNodes.includes(node.id);
+    const hitPause = state.flags.pauseRequested && state.flags.softPauseAtNextSafePoint;
+    if (!hitBreak && !hitPause) return state;
+
+    const payload = {
+      phase,
+      nodeId: node.id,
+      reason: hitPause ? (state.humanReviewState.pendingInterrupt?.reason ?? "soft_pause") : `breakpoint_${phase}`,
+      pendingInterrupt: state.humanReviewState.pendingInterrupt ?? null
+    };
+    const resumed = interrupt(payload);
+    return {
+      ...state,
+      status: "waiting_human",
+      flags: { ...state.flags, pauseRequested: false, softPauseAtNextSafePoint: false },
+      humanReviewState: {
+        ...state.humanReviewState,
+        pendingInterrupt: undefined,
+        lastResumePayload: resumed as JsonValue
+      }
+    };
+  }
+
+  private async runAgentNode(workflow: WorkflowSpec, node: WorkflowNodeSpec, state: RunState): Promise<RunState> {
+    const agent = state.agentSnapshots[node.agentId!] ?? this.deps.agentRegistry.get(node.agentId!);
+    if (!agent) throw new Error(`Agent 不存在：${node.agentId}`);
+
+    const promptBlocks = this.loadPromptBlocksFromSnapshot(state);
+    const toolSpecs = this.loadToolsFromSnapshot(state);
+
+    const compileReq: PromptCompileRequest = {
+      agentId: agent.id,
+      threadId: state.runMeta.threadId,
+      runId: state.runMeta.runId,
+      taskEnvelope: {
+        taskType: `workflow_node:${node.id}`,
+        input: {
+          userInput: state.conversationState.userInput,
+          latestAssistantText: state.conversationState.latestAssistantText ?? "",
+          workflowId: workflow.id
+        }
+      },
+      contextSources: state.conversationState.messages.map((m, i) => ({
+        id: `ctx_${i + 1}`,
+        type: "conversation",
+        content: m.content,
+        metadata: { role: m.role, name: m.name ?? null }
+      })),
+      memoryInputs: [],
+      toolSchemas: toolSpecs.filter((t) => t.enabled).map((t) => ({
+        toolId: t.id,
+        toolName: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema
+      })),
+      overridePatches: state.debugRefs.promptOverrides,
+      providerApiType: (this.getRunRecord(state.runMeta.runId).provider.apiMode as ProviderApiMode) ?? "chat_completions"
+    };
+
+    const compile = this.deps.promptCompiler.compile({
+      agent,
+      blocks: promptBlocks,
+      request: compileReq
+    });
+
+    this.deps.db.insertPromptCompile({
+      compileId: compile.promptTrace.compileId,
+      runId: state.runMeta.runId,
+      threadId: state.runMeta.threadId,
+      agentId: agent.id,
+      providerApiType: compileReq.providerApiType,
+      promptTrace: compile.promptTrace,
+      finalMessages: compile.finalMessages
+    });
+
+    this.deps.traceBus.emit({
+      runId: state.runMeta.runId,
+      threadId: state.runMeta.threadId,
+      type: "prompt_compiled",
+      nodeId: node.id,
+      agentId: agent.id,
+      summary: "Prompt 编译完成",
+      payload: {
+        compileId: compile.promptTrace.compileId,
+        selectedBlocks: compile.promptTrace.selectedBlocks.length,
+        tokenEstimate: compile.promptTrace.tokenEstimate
+      }
+    });
+
+    const provider = this.getRunRecord(state.runMeta.runId).provider;
+    const modelReq: UnifiedModelRequest = {
+      vendor: provider.vendor,
+      apiMode: provider.apiMode,
+      baseURL: provider.baseURL,
+      apiKey: provider.apiKey,
+      model: provider.model,
+      messages: compile.finalMessages,
+      tools: toolSpecs.filter((t) => t.enabled).map((t) => ({
+        type: "function",
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.inputSchema
+        }
+      })),
+      toolChoice: toolSpecs.some((t) => t.enabled) ? "auto" : "none",
+      temperature: provider.temperature,
+      topP: provider.topP,
+      reasoningConfig: provider.reasoningConfig,
+      vendorExtra: provider.vendorExtra,
+      stream: false
+    };
+
+    this.deps.traceBus.emit({
+      runId: state.runMeta.runId,
+      threadId: state.runMeta.threadId,
+      type: "model_request_started",
+      nodeId: node.id,
+      agentId: agent.id,
+      summary: "开始调用模型",
+      payload: { vendor: provider.vendor, apiMode: provider.apiMode, model: provider.model }
+    });
+
+    const firstResult = await this.deps.providerClient.invoke(modelReq);
+    if (firstResult.text) {
+      this.deps.traceBus.emit({
+        runId: state.runMeta.runId,
+        threadId: state.runMeta.threadId,
+        type: "model_stream_delta",
+        nodeId: node.id,
+        agentId: agent.id,
+        summary: `模型输出（一次性）${firstResult.text.length} chars`,
+        payload: { delta: firstResult.text.slice(0, 800) }
+      });
+    }
+
+    let finalText = firstResult.text;
+    const allMessages: UnifiedMessage[] = [...compile.finalMessages];
+    const toolCalls = [];
+    const toolResults = [];
+
+    // 首版工具循环：最多 1 轮（足以验证链路）。
+    if (firstResult.toolCalls.length > 0) {
+      for (const call of firstResult.toolCalls) {
+        const spec = toolSpecs.find((t) => t.name === call.toolName);
+        if (!spec) continue;
+        this.deps.traceBus.emit({
+          runId: state.runMeta.runId,
+          threadId: state.runMeta.threadId,
+          type: "tool_call_started",
+          nodeId: node.id,
+          agentId: agent.id,
+          summary: `执行工具：${call.toolName}`,
+          payload: { toolCallId: call.toolCallId, args: summarize(call.argumentsJson) ?? null } as unknown as JsonValue
+        });
+        const { result, trace } = await this.deps.toolRuntime.execute(spec, call.argumentsJson, agent.id);
+        this.deps.db.insertToolCallTrace({
+          toolCallId: trace.toolCallId,
+          runId: state.runMeta.runId,
+          threadId: state.runMeta.threadId,
+          toolId: trace.toolId,
+          toolName: trace.toolName,
+          traceJson: trace as unknown as JsonValue
+        });
+        this.deps.traceBus.emit({
+          runId: state.runMeta.runId,
+          threadId: state.runMeta.threadId,
+          type: "tool_call_finished",
+          nodeId: node.id,
+          agentId: agent.id,
+          summary: `工具${result.ok ? "成功" : "失败"}：${call.toolName}`,
+          payload:
+            {
+              toolCallId: call.toolCallId,
+              ok: result.ok,
+              output: summarize(result.output) ?? null,
+              error: (result.error ?? null) as unknown
+            } as unknown as JsonValue
+        });
+        toolCalls.push({
+          toolCallId: call.toolCallId,
+          toolId: spec.id,
+          toolName: spec.name,
+          arguments: call.argumentsJson,
+          issuedByAgentId: agent.id,
+          issuedAt: nowIso()
+        });
+        toolResults.push(result);
+        allMessages.push({
+          role: "tool",
+          name: call.toolName,
+          toolCallId: call.toolCallId,
+          content: JSON.stringify(result.ok ? result.output : result.error)
+        });
+      }
+
+      const secondReq: UnifiedModelRequest = {
+        ...modelReq,
+        messages: [...allMessages]
+      };
+      const secondResult = await this.deps.providerClient.invoke(secondReq);
+      finalText = secondResult.text || finalText;
+      if (secondResult.text) {
+        this.deps.traceBus.emit({
+          runId: state.runMeta.runId,
+          threadId: state.runMeta.threadId,
+          type: "model_stream_delta",
+          nodeId: node.id,
+          agentId: agent.id,
+          summary: `工具回填后二次输出 ${secondResult.text.length} chars`,
+          payload: { delta: secondResult.text.slice(0, 800) }
+        });
+      }
+    }
+
+    const assistantMessage: UnifiedMessage = {
+      role: "assistant",
+      content: finalText || "",
+      metadata: {
+        agentId: agent.id,
+        nodeId: node.id
+      }
+    };
+
+    return {
+      ...state,
+      conversationState: {
+        ...state.conversationState,
+        messages: [...state.conversationState.messages, assistantMessage],
+        latestAssistantText: finalText || state.conversationState.latestAssistantText
+      },
+      toolState: {
+        lastToolCalls: toolCalls as RunState["toolState"]["lastToolCalls"],
+        lastToolResults: toolResults as RunState["toolState"]["lastToolResults"]
+      },
+      debugRefs: {
+        ...state.debugRefs,
+        promptCompileIds: [...state.debugRefs.promptCompileIds, compile.promptTrace.compileId]
+      }
+    };
+  }
+
+  private async runToolNode(node: WorkflowNodeSpec, state: RunState): Promise<RunState> {
+    const tool = this.deps.toolRegistry.get(node.toolId!);
+    if (!tool) throw new Error(`Tool 不存在：${node.toolId}`);
+    const cfgArgs = (node.config && typeof node.config === "object" ? (node.config as JsonObject).args : undefined) as JsonValue;
+    const args = cfgArgs && typeof cfgArgs === "object" && !Array.isArray(cfgArgs) ? (cfgArgs as JsonObject) : {};
+    const { result } = await this.deps.toolRuntime.execute(tool, args);
+    return {
+      ...state,
+      toolState: {
+        lastToolCalls: [],
+        lastToolResults: [result]
+      }
+    };
+  }
+
+  private decideNextNode(workflow: WorkflowSpec, node: WorkflowNodeSpec, state: RunState): RunState {
+    const outgoing = workflow.edges.filter((e) => e.from === node.id);
+    let nextNodeId: string | undefined;
+    let reason = "no_edges";
+
+    // 编排器动态路由（首版约定：若输出 JSON 且包含 nextAgentId，则尝试映射）。
+    if (node.type === "agent" && node.agentId === "agent.orchestrator") {
+      const parsed = state.conversationState.latestAssistantText
+        ? safeJsonParseObject(state.conversationState.latestAssistantText)
+        : null;
+      const nextAgentId = typeof parsed?.nextAgentId === "string" ? parsed.nextAgentId : undefined;
+      if (nextAgentId) {
+        const candidateNode = workflow.nodes.find((n) => n.agentId === nextAgentId)?.id;
+        if (candidateNode && outgoing.some((e) => e.to === candidateNode)) {
+          nextNodeId = candidateNode;
+          reason = "orchestrator_json_nextAgentId";
+        }
+      }
+    }
+
+    if (!nextNodeId) {
+      for (const edge of outgoing) {
+        const condType = edge.condition?.type ?? "always";
+        if (condType === "always") {
+          nextNodeId = edge.to;
+          reason = "fixed_always";
+          break;
+        }
+        if (condType === "state_field" && edge.condition?.field) {
+          const current = this.getStateFieldValue(state, edge.condition.field);
+          if (current === edge.condition.equals) {
+            nextNodeId = edge.to;
+            reason = `state_field:${edge.condition.field}`;
+            break;
+          }
+        }
+      }
+    }
+
+    const nextStatus: RunStatus = nextNodeId ? "running" : "completed";
+    const nextState: RunState = {
+      ...state,
+      status: nextStatus,
+      routingState: {
+        ...state.routingState,
+        nextNodeId,
+        reason
+      }
+    };
+
+    this.deps.traceBus.emit({
+      runId: state.runMeta.runId,
+      threadId: state.runMeta.threadId,
+      type: "routing_decided",
+      nodeId: node.id,
+      agentId: node.agentId,
+      summary: `路由：${node.id} -> ${nextNodeId ?? "END"}`,
+      payload: { reason, nextNodeId: nextNodeId ?? null }
+    });
+    return nextState;
+  }
+
+  private getStateFieldValue(state: RunState, pathExpr: string): unknown {
+    const parts = pathExpr.split(".");
+    let current: unknown = state;
+    for (const part of parts) {
+      if (!current || typeof current !== "object") return undefined;
+      current = (current as Record<string, unknown>)[part];
+    }
+    return current;
+  }
+
+  private loadPromptBlocksFromSnapshot(state: RunState): PromptBlock[] {
+    const refs = this.getSnapshotRefs(state);
+    const map = (refs.promptBlocks ?? {}) as Record<string, number>;
+    const list: PromptBlock[] = [];
+    for (const [id, version] of Object.entries(map)) {
+      const item = this.deps.db.getPromptBlock(id, version);
+      if (item) list.push(item);
+    }
+    return list;
+  }
+
+  private loadToolsFromSnapshot(state: RunState): ToolSpec[] {
+    const refs = this.getSnapshotRefs(state);
+    const map = (refs.tools ?? {}) as Record<string, number>;
+    const list: ToolSpec[] = [];
+    for (const [id, version] of Object.entries(map)) {
+      const item = this.deps.db.getTool(id, version);
+      if (item) list.push(item);
+    }
+    return list;
+  }
+
+  private getSnapshotRefs(state: RunState): JsonObject {
+    const artifact = state.artifacts.outputs.find((a) => a.type === "snapshot_version_refs");
+    if (artifact && artifact.content && typeof artifact.content === "object" && !Array.isArray(artifact.content)) {
+      return artifact.content as JsonObject;
+    }
+    return {};
+  }
+
+  private buildSnapshotVersionRefs(workflow: WorkflowSpec): JsonObject {
+    const agents: Record<string, number> = {};
+    const tools: Record<string, number> = {};
+    const promptBlocks: Record<string, number> = {};
+
+    for (const node of workflow.nodes) {
+      if (node.agentId) {
+        const agent = this.deps.agentRegistry.get(node.agentId);
+        if (agent) agents[agent.id] = agent.version;
+      }
+      if (node.toolId) {
+        const tool = this.deps.toolRegistry.get(node.toolId);
+        if (tool) tools[tool.id] = tool.version;
+      }
+    }
+
+    // 首版直接冻结当前全部 PromptBlock（后续可按 agent/policy 精确筛选）。
+    for (const block of this.deps.db.listPromptBlocks()) {
+      promptBlocks[block.id] = block.version;
+    }
+
+    return {
+      workflow: { id: workflow.id, version: workflow.version },
+      agents,
+      tools,
+      promptBlocks
+    };
+  }
+
+  private buildInitialState(
+    runId: string,
+    threadId: string,
+    workflow: WorkflowSpec,
+    request: CreateRunRequest,
+    snapshotRefs: JsonObject
+  ): RunState {
+    const agentSnapshots: Record<string, AgentSpec> = {};
+    for (const node of workflow.nodes) {
+      if (node.agentId) {
+        const agent = this.deps.agentRegistry.get(node.agentId);
+        if (agent) agentSnapshots[agent.id] = agent;
+      }
+    }
+    return {
+      runMeta: {
+        runId,
+        threadId,
+        workflowId: workflow.id,
+        workflowVersion: workflow.version,
+        startedAt: nowIso()
+      },
+      threadMeta: { threadId, checkpointCountApprox: 0 },
+      workflowSnapshot: workflow,
+      agentSnapshots,
+      conversationState: {
+        messages: [],
+        userInput: request.userInput
+      },
+      artifacts: {
+        outputs: [{ id: newId("artifact"), type: "snapshot_version_refs", content: snapshotRefs as unknown as JsonValue }]
+      },
+      memoryState: { injectedPromptBlocks: [] },
+      toolState: { lastToolCalls: [], lastToolResults: [] },
+      routingState: {
+        currentNodeId: workflow.entryNode,
+        history: []
+      },
+      humanReviewState: {
+        requireReview: Boolean(request.runConfig?.requireHumanReview)
+      },
+      debugRefs: {
+        promptCompileIds: [],
+        traceEventSeqLast: 0,
+        promptOverrides: []
+      },
+      controlConfig: {
+        interruptBeforeNodes: request.runConfig?.interruptBeforeNodes ?? [],
+        interruptAfterNodes: request.runConfig?.interruptAfterNodes ?? [],
+        requireHumanReview: Boolean(request.runConfig?.requireHumanReview)
+      },
+      status: "created",
+      flags: {
+        pauseRequested: false,
+        softPauseAtNextSafePoint: false
+      }
+    };
+  }
+
+  private resolveWorkflow(workflowId: string, version?: number): WorkflowSpec {
+    const workflow = version
+      ? this.deps.db.getWorkflow(workflowId, version)
+      : this.deps.workflowRegistry.get(workflowId);
+    if (!workflow) throw new Error(`工作流不存在：${workflowId}${version ? `@${version}` : ""}`);
+    return workflow;
+  }
+
+  private threadConfig(threadId: string, checkpointId?: string): any {
+    return {
+      configurable: {
+        thread_id: threadId,
+        ...(checkpointId ? { checkpoint_id: checkpointId } : {})
+      }
+    };
+  }
+
+  private getRunRecord(runId: string): RunRecord {
+    const cached = this.activeRuns.get(runId);
+    if (cached) return cached;
+    const row = this.deps.db.db
+      .prepare(
+        `SELECT run_id, thread_id, workflow_id, workflow_version, provider_config_json FROM runs WHERE run_id = ?`
+      )
+      .get(runId) as
+      | {
+          run_id: string;
+          thread_id: string;
+          workflow_id: string;
+          workflow_version: number;
+          provider_config_json: string;
+        }
+      | undefined;
+    if (!row) throw new Error(`run 不存在：${runId}`);
+    const rebuilt: RunRecord = {
+      runId: row.run_id,
+      threadId: row.thread_id,
+      workflowId: row.workflow_id,
+      workflowVersion: row.workflow_version,
+      provider: JSON.parse(row.provider_config_json) as CreateRunRequest["provider"]
+    };
+    this.activeRuns.set(rebuilt.runId, rebuilt);
+    return rebuilt;
+  }
+
+  private getRunRecordByThread(threadId: string): RunRecord {
+    for (const rec of this.activeRuns.values()) {
+      if (rec.threadId === threadId) return rec;
+    }
+    const row = this.deps.db.db
+      .prepare(
+        `SELECT run_id, thread_id, workflow_id, workflow_version, provider_config_json
+         FROM runs WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1`
+      )
+      .get(threadId) as
+      | {
+          run_id: string;
+          thread_id: string;
+          workflow_id: string;
+          workflow_version: number;
+          provider_config_json: string;
+        }
+      | undefined;
+    if (!row) throw new Error(`thread 不存在：${threadId}`);
+    const rebuilt: RunRecord = {
+      runId: row.run_id,
+      threadId: row.thread_id,
+      workflowId: row.workflow_id,
+      workflowVersion: row.workflow_version,
+      provider: JSON.parse(row.provider_config_json) as CreateRunRequest["provider"]
+    };
+    this.activeRuns.set(rebuilt.runId, rebuilt);
+    return rebuilt;
+  }
+
+  private async patchLiveHeadState(record: RunRecord, patch: Record<string, unknown>): Promise<void> {
+    const workflow = this.resolveWorkflow(record.workflowId, record.workflowVersion);
+    const graph = this.getOrBuildGraph(workflow);
+    const snapshot = await graph.getState(this.threadConfig(record.threadId));
+    const current = (snapshot.values as GraphEnvelope).state;
+    const merged = deepMerge(current, patch);
+    await graph.updateState(this.threadConfig(record.threadId), { state: merged });
+  }
+}
