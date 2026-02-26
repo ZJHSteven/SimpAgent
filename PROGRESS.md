@@ -2,9 +2,9 @@
 
 ## 当前结论（必须最新）
 - 现状：当前目录已完成一版可编译的 `backend/` 后端骨架，包含 LangGraph.js 运行时、HTTP API、WS 调试通道与 SQLite 配置/Trace 存储。
-- 已完成：`backend` 工程配置与依赖安装；核心类型契约；SQLite schema + 数据访问层；默认种子配置；Agent/Workflow/Tool Registry；PromptCompiler；ToolRuntime（function/shell）；Provider 兼容层（OpenAI Chat / Responses / Gemini-compatible Chat + mock）；TraceEventBus；LangGraph Runtime（run/create、pause/resume、history、state patch、prompt override patch、fork）；HTTP API 路由；WS 心跳/订阅/事件补发；`npm run build` 通过；`npm run test:smoke` 通过（mock run 完成且 trace 有事件）。
-- 正在做：暂无阻塞；后续可开始接最小调试前端与更细化测试。
-- 下一步：增加端到端测试用例（中断恢复、fork 分叉、工具权限、WS 重连补发）；补 API 示例请求；实现更完整的 Responses 流式工具循环。
+- 已完成：`backend` 工程配置与依赖安装；核心类型契约；SQLite schema + 数据访问层；默认种子配置；Agent/Workflow/Tool Registry；PromptCompiler；ToolRuntime（function/shell）；Provider 兼容层（OpenAI Chat / Responses / Gemini-compatible Chat + mock）；TraceEventBus；LangGraph Runtime（run/create、pause/resume、history、state patch、prompt override patch、fork）；HTTP API 路由；WS 心跳/订阅/事件补发；`npm run build` 通过；`npm run test:smoke` 通过（mock run 完成且 trace 有事件）；新增 `docs/标书文案与流程图提示词.md`（用于大创/科研申报文案与流程图生图提示词复用）。
+- 正在做：暂无阻塞；后续可开始接最小调试前端与更细化测试，或继续补充申报材料中的 API 截图/演示图。
+- 下一步：增加端到端测试用例（中断恢复、fork 分叉、工具权限、WS 重连补发）；补 API 示例请求；实现更完整的 Responses 流式工具循环；按申报方向补充应用场景案例与演示截图。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：执行内核采用 LangGraph.js（原因：直接获得 checkpoint / interrupt / replay / history / updateState，避免自研运行时黑洞）。
