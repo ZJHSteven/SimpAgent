@@ -125,6 +125,16 @@ function App() {
   const [providerVendor, setProviderVendor] = useState("mock");
   const [providerApiMode, setProviderApiMode] = useState<"chat_completions" | "responses">("responses");
   const [providerModel, setProviderModel] = useState("gpt-5-mini");
+  const [toolProtocolProfile, setToolProtocolProfile] = useState(
+    "auto" as
+      | "auto"
+      | "openai_responses"
+      | "openai_chat_function"
+      | "openai_chat_custom"
+      | "openai_compat_function_only"
+      | "structured_output_first"
+      | "prompt_protocol_only"
+  );
   const [historyRows, setHistoryRows] = useState<JsonValue[]>([]);
   const [stateDiffRows, setStateDiffRows] = useState<JsonValue[]>([]);
   const [sideEffectRows, setSideEffectRows] = useState<JsonValue[]>([]);
@@ -301,7 +311,8 @@ function App() {
       provider: {
         vendor: providerVendor,
         apiMode: providerApiMode,
-        model: providerModel
+        model: providerModel,
+        toolProtocolProfile
       }
     });
     if (!resp.ok || !resp.data) {
@@ -500,6 +511,18 @@ function App() {
               <input value={providerModel} onChange={(e) => setProviderModel(e.target.value)} />
             </label>
           </div>
+          <label>
+            Tool Protocol Profile（模型路由工具协议画像，决定内层暴露适配层）
+            <select value={toolProtocolProfile} onChange={(e) => setToolProtocolProfile(e.target.value as any)}>
+              <option value="auto">auto（按 vendor/apiMode 自动判断）</option>
+              <option value="openai_responses">openai_responses</option>
+              <option value="openai_chat_function">openai_chat_function</option>
+              <option value="openai_chat_custom">openai_chat_custom</option>
+              <option value="openai_compat_function_only">openai_compat_function_only</option>
+              <option value="structured_output_first">structured_output_first</option>
+              <option value="prompt_protocol_only">prompt_protocol_only</option>
+            </select>
+          </label>
           <div className="button-row">
             <button onClick={createRun}>创建 Run</button>
             <button onClick={() => refreshRunData()} disabled={!runId}>
@@ -758,4 +781,3 @@ function App() {
 }
 
 export default App;
-

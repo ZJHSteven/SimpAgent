@@ -15,6 +15,7 @@ import type {
   ProviderCapabilities,
   ProviderVendor,
   ToolExposureAdapterKind,
+  ToolProtocolProfile,
   ToolExposurePlan,
   UnifiedModelFinalResult,
   UnifiedModelRequest
@@ -24,6 +25,7 @@ export interface ToolExposureBuildRequest {
   provider: {
     vendor: ProviderVendor;
     apiMode: UnifiedModelRequest["apiMode"];
+    toolProtocolProfile?: ToolProtocolProfile;
   };
   modelCaps?: Partial<ProviderCapabilities>;
   override?: {
@@ -149,6 +151,52 @@ export function selectToolExposureAdapter(req: ToolExposureBuildRequest): {
   adapter: ToolExposureAdapter;
   fallbackChain: ToolExposureAdapterKind[];
 } {
+  /**
+   * 第一优先级：模型路由显式指定的协议画像。
+   * 说明：
+   * - 这是用户刚强调的核心点：由“模型/API 路由配置”决定内层暴露怎么走；
+   * - 工具定义本身不需要知道 chat_function / structured / prompt 等实现细节。
+   */
+  const profile = req.provider.toolProtocolProfile ?? "auto";
+  if (profile !== "auto") {
+    if (profile === "openai_responses") {
+      return {
+        adapter: exposureAdapters.responses_native,
+        fallbackChain: ["chat_function", "structured_output_tool_call", "prompt_protocol_fallback"]
+      };
+    }
+    if (profile === "openai_chat_function") {
+      return {
+        adapter: exposureAdapters.chat_function,
+        fallbackChain: ["structured_output_tool_call", "prompt_protocol_fallback"]
+      };
+    }
+    if (profile === "openai_chat_custom") {
+      return {
+        adapter: exposureAdapters.chat_custom,
+        fallbackChain: ["chat_function", "structured_output_tool_call", "prompt_protocol_fallback"]
+      };
+    }
+    if (profile === "openai_compat_function_only") {
+      return {
+        adapter: exposureAdapters.chat_function,
+        fallbackChain: ["structured_output_tool_call", "prompt_protocol_fallback"]
+      };
+    }
+    if (profile === "structured_output_first") {
+      return {
+        adapter: exposureAdapters.structured_output_tool_call,
+        fallbackChain: ["prompt_protocol_fallback"]
+      };
+    }
+    if (profile === "prompt_protocol_only") {
+      return {
+        adapter: exposureAdapters.prompt_protocol_fallback,
+        fallbackChain: []
+      };
+    }
+  }
+
   if (req.override?.preferredAdapter) {
     return {
       adapter: exposureAdapters[req.override.preferredAdapter],

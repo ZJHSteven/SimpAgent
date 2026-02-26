@@ -86,6 +86,21 @@ export type ToolExposureAdapterKind =
   | "structured_output_tool_call"
   | "prompt_protocol_fallback";
 
+/**
+ * 模型工具协议画像（由“模型路由配置”决定，而不是由人手工按工具决定）。
+ * 设计目的：
+ * - 用户/配置只需描述“这个模型 API 大致属于哪类能力画像”；
+ * - 框架自动选择内层暴露适配器与降级链路。
+ */
+export type ToolProtocolProfile =
+  | "auto"
+  | "openai_responses"
+  | "openai_chat_function"
+  | "openai_chat_custom"
+  | "openai_compat_function_only"
+  | "structured_output_first"
+  | "prompt_protocol_only";
+
 export type PromptBlockKind =
   | "system_rule"
   | "persona"
@@ -1016,6 +1031,12 @@ export interface CreateRunRequest {
     model: string;
     baseURL?: string;
     apiKey?: string;
+    /**
+     * v0.2：
+     * - 由模型路由配置指定当前模型/网关的工具协议画像；
+     * - 框架据此自动选择内层暴露适配层（人无需按工具手动理解实现细节）。
+     */
+    toolProtocolProfile?: ToolProtocolProfile;
     temperature?: number;
     topP?: number;
     reasoningConfig?: UnifiedReasoningConfig;

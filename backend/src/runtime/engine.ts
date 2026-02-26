@@ -666,14 +666,16 @@ export class FrameworkRuntimeEngine {
     const exposureSelection = selectToolExposureAdapter({
       provider: {
         vendor: provider.vendor,
-        apiMode: provider.apiMode
+        apiMode: provider.apiMode,
+        toolProtocolProfile: provider.toolProtocolProfile
       }
     });
     const exposurePlan = exposureSelection.adapter.buildToolExposure(
       {
         provider: {
           vendor: provider.vendor,
-          apiMode: provider.apiMode
+          apiMode: provider.apiMode,
+          toolProtocolProfile: provider.toolProtocolProfile
         },
         override: {
           preferredAdapter: exposureSelection.adapter.kind,
