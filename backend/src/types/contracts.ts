@@ -995,6 +995,7 @@ export type WsServerMessage =
         currentNodeId?: ID;
         threadId: ID;
         traceEventSeqLast: number;
+        latestTraceSeq?: number;
       };
     }
   | { type: "run_status_changed"; runId: ID; status: RunStatus }

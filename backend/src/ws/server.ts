@@ -129,6 +129,7 @@ export function setupWsServer(server: HttpServer, deps: WsDeps): WebSocketServer
 
           const summary = deps.engine.getRunSummary(msg.runId);
           if (summary) {
+            const latestTraceSeq = deps.traceBus.replay(msg.runId, 0, 1_000_000).slice(-1)[0]?.seq ?? 0;
             sendJson(socket, {
               type: "run_snapshot",
               runId: msg.runId,
@@ -136,18 +137,38 @@ export function setupWsServer(server: HttpServer, deps: WsDeps): WebSocketServer
                 status: summary.status,
                 currentNodeId: summary.current_node_id ?? undefined,
                 threadId: summary.thread_id,
-                traceEventSeqLast: deps.traceBus.replay(msg.runId, 0, 1_000_000).slice(-1)[0]?.seq ?? 0
+                traceEventSeqLast: latestTraceSeq,
+                latestTraceSeq
               }
             });
+
+            if (typeof msg.lastEventSeq === "number" && msg.lastEventSeq > latestTraceSeq) {
+              sendJson(socket, {
+                type: "warning",
+                code: "CLIENT_SEQ_AHEAD",
+                message: `客户端 lastEventSeq(${msg.lastEventSeq}) 大于服务端最新 seq(${latestTraceSeq})`
+              });
+            }
           }
 
           if (typeof msg.lastEventSeq === "number" && msg.lastEventSeq >= 0) {
-            const replay = deps.traceBus.replay(msg.runId, msg.lastEventSeq, 500);
+            const replayLimit = 500;
+            const replay = deps.traceBus.replay(msg.runId, msg.lastEventSeq, replayLimit);
             if (replay.length > 0) {
               sendJson(socket, {
                 type: "replay_events_batch",
                 runId: msg.runId,
                 events: replay
+              });
+            }
+            const latestSeqAfterReplay = deps.traceBus.replay(msg.runId, 0, 1_000_000).slice(-1)[0]?.seq ?? 0;
+            const replayLastSeq = replay.slice(-1)[0]?.seq ?? msg.lastEventSeq;
+            if (replay.length >= replayLimit && replayLastSeq < latestSeqAfterReplay) {
+              sendJson(socket, {
+                type: "warning",
+                code: "REPLAY_WINDOW_MISS",
+                message:
+                  "WS 单次补发窗口不足以覆盖全部缺失事件，请客户端回退 HTTP 分页补拉（/api/runs + /api/trace/events）"
               });
             }
           }
@@ -164,12 +185,23 @@ export function setupWsServer(server: HttpServer, deps: WsDeps): WebSocketServer
         }
 
         if (msg.type === "request_replay_events") {
-          const events = deps.traceBus.replay(msg.runId, msg.afterSeq, msg.limit ?? 200);
+          const limit = msg.limit ?? 200;
+          const events = deps.traceBus.replay(msg.runId, msg.afterSeq, limit);
           sendJson(socket, {
             type: "replay_events_batch",
             runId: msg.runId,
             events
           });
+          const latestSeq = deps.traceBus.replay(msg.runId, 0, 1_000_000).slice(-1)[0]?.seq ?? 0;
+          const replayLastSeq = events.slice(-1)[0]?.seq ?? msg.afterSeq;
+          if (events.length >= limit && replayLastSeq < latestSeq) {
+            sendJson(socket, {
+              type: "warning",
+              code: "REPLAY_WINDOW_MISS",
+              message:
+                "WS 补发窗口不足以覆盖全部缺失事件，请客户端使用 HTTP 分页补拉 /api/trace/:runId/events"
+            });
+          }
           return;
         }
 
@@ -211,4 +243,3 @@ export function setupWsServer(server: HttpServer, deps: WsDeps): WebSocketServer
 
   return wss;
 }
-

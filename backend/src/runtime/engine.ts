@@ -16,6 +16,9 @@ import { Annotation, Command, END, START, StateGraph, interrupt } from "@langcha
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 import type {
   AgentSpec,
+  CanonicalToolCallIntent,
+  CanonicalToolCallResult,
+  CanonicalToolSideEffectRecord,
   CreateRunRequest,
   CreateRunResponse,
   ForkRunRequest,
@@ -28,6 +31,7 @@ import type {
   ProviderApiMode,
   RunState,
   RunStatus,
+  StateDiffTrace,
   StatePatchRequest,
   ToolSpec,
   UnifiedMessage,
@@ -41,9 +45,20 @@ import type { AgentRegistry } from "../core/agents/index.js";
 import type { WorkflowRegistry } from "../core/workflows/index.js";
 import type { ToolRegistry } from "../core/tools/index.js";
 import { ToolRuntime } from "../core/tools/index.js";
+import {
+  CanonicalToolRouter,
+  buildUserInputRequestState,
+  executeBuiltinApplyPatch,
+  executeBuiltinReadFile,
+  executeBuiltinViewImage,
+  executeBuiltinWebSearch,
+  normalizeAndValidatePlan,
+  selectToolExposureAdapter
+} from "../core/tools/index.js";
 import { PromptCompiler } from "../core/prompt/index.js";
 import { TraceEventBus } from "../core/trace/index.js";
 import { UnifiedProviderClient } from "../providers/index.js";
+import { AgentRoundExecutor, ToolLoopExecutor } from "./index.js";
 
 type GraphEnvelope = { state: RunState };
 type RunRecord = {
@@ -487,6 +502,7 @@ export class FrameworkRuntimeEngine {
     let state = envelope.state;
     const runId = state.runMeta.runId;
     const threadId = state.runMeta.threadId;
+    const stateBeforeForDiff = this.buildStateDiffSnapshot(state);
 
     state = {
       ...state,
@@ -546,6 +562,33 @@ export class FrameworkRuntimeEngine {
       }
     });
 
+    // v0.2 最小 state diff：记录节点前后摘要变化，避免一开始就把完整 state 全量落库。
+    const stateAfterForDiff = this.buildStateDiffSnapshot(state);
+    const diffTrace: StateDiffTrace = {
+      diffId: newId("diff"),
+      runId,
+      threadId,
+      nodeId: node.id,
+      agentId: node.agentId,
+      beforeSummary: stateBeforeForDiff as unknown as JsonValue,
+      afterSummary: stateAfterForDiff as unknown as JsonValue,
+      diff: this.computeShallowStateDiff(stateBeforeForDiff, stateAfterForDiff) as unknown as JsonValue,
+      createdAt: nowIso()
+    };
+    this.deps.db.insertStateDiff(diffTrace);
+    this.deps.traceBus.emit({
+      runId,
+      threadId,
+      type: "state_patched",
+      nodeId: node.id,
+      agentId: node.agentId,
+      summary: "记录节点状态差异摘要",
+      payload: {
+        diffId: diffTrace.diffId,
+        diff: summarize(diffTrace.diff) ?? null
+      } as unknown as JsonValue
+    });
+
     return { state };
   }
 
@@ -582,6 +625,7 @@ export class FrameworkRuntimeEngine {
 
     const promptBlocks = this.loadPromptBlocksFromSnapshot(state);
     const toolSpecs = this.loadToolsFromSnapshot(state);
+    const canonicalTools = this.deps.toolRegistry.listCanonicalTools().filter((tool) => tool.enabled);
 
     const compileReq: PromptCompileRequest = {
       agentId: agent.id,
@@ -618,6 +662,36 @@ export class FrameworkRuntimeEngine {
       request: compileReq
     });
 
+    const provider = this.getRunRecord(state.runMeta.runId).provider;
+    const exposureSelection = selectToolExposureAdapter({
+      provider: {
+        vendor: provider.vendor,
+        apiMode: provider.apiMode
+      }
+    });
+    const exposurePlan = exposureSelection.adapter.buildToolExposure(
+      {
+        provider: {
+          vendor: provider.vendor,
+          apiMode: provider.apiMode
+        },
+        override: {
+          preferredAdapter: exposureSelection.adapter.kind,
+          fallbackAdapters: exposureSelection.fallbackChain
+        }
+      },
+      canonicalTools
+    );
+    this.deps.db.insertToolExposurePlan({
+      runId: state.runMeta.runId,
+      threadId: state.runMeta.threadId,
+      nodeId: node.id,
+      agentId: agent.id,
+      plan: exposurePlan
+    });
+    // 将装配计划挂进 promptTrace，便于前端/接口一次取全。
+    compile.promptTrace.toolExposurePlan = exposurePlan;
+
     this.deps.db.insertPromptCompile({
       compileId: compile.promptTrace.compileId,
       runId: state.runMeta.runId,
@@ -638,11 +712,16 @@ export class FrameworkRuntimeEngine {
       payload: {
         compileId: compile.promptTrace.compileId,
         selectedBlocks: compile.promptTrace.selectedBlocks.length,
-        tokenEstimate: compile.promptTrace.tokenEstimate
+        tokenEstimate: compile.promptTrace.tokenEstimate,
+        toolExposurePlanId: exposurePlan.planId,
+        toolExposureAdapter: exposurePlan.adapterKind,
+        exposedToolCount: exposurePlan.exposedTools.length
       }
     });
 
-    const provider = this.getRunRecord(state.runMeta.runId).provider;
+    const exposedCanonicalTools = exposurePlan.exposedTools
+      .map((item) => canonicalTools.find((tool) => tool.id === item.canonicalToolId))
+      .filter((tool): tool is NonNullable<typeof tool> => Boolean(tool));
     const modelReq: UnifiedModelRequest = {
       vendor: provider.vendor,
       apiMode: provider.apiMode,
@@ -650,7 +729,11 @@ export class FrameworkRuntimeEngine {
       apiKey: provider.apiKey,
       model: provider.model,
       messages: compile.finalMessages,
-      tools: toolSpecs.filter((t) => t.enabled).map((t) => ({
+      // v0.2 当前阶段：
+      // - 已建立三层工具架构（canonical + exposure plan）；
+      // - 真实 custom/structured/prompt 协议暴露后续继续接入；
+      // - 本步先用 function 形式承载已选中的工具集合，保证 runtime 真流式改造先落地。
+      tools: exposedCanonicalTools.map((t) => ({
         type: "function",
         function: {
           name: t.name,
@@ -658,12 +741,12 @@ export class FrameworkRuntimeEngine {
           parameters: t.inputSchema
         }
       })),
-      toolChoice: toolSpecs.some((t) => t.enabled) ? "auto" : "none",
+      toolChoice: exposedCanonicalTools.length > 0 ? "auto" : "none",
       temperature: provider.temperature,
       topP: provider.topP,
       reasoningConfig: provider.reasoningConfig,
       vendorExtra: provider.vendorExtra,
-      stream: false
+      stream: true
     };
 
     this.deps.traceBus.emit({
@@ -673,100 +756,164 @@ export class FrameworkRuntimeEngine {
       nodeId: node.id,
       agentId: agent.id,
       summary: "开始调用模型",
-      payload: { vendor: provider.vendor, apiMode: provider.apiMode, model: provider.model }
+      payload: {
+        vendor: provider.vendor,
+        apiMode: provider.apiMode,
+        model: provider.model,
+        exposureAdapter: exposurePlan.adapterKind,
+        exposurePlanId: exposurePlan.planId
+      }
     });
+    const roundExecutor = new AgentRoundExecutor(this.deps.providerClient, {
+      onEvent: ({ kind, ctx, summary, payload }) => {
+        this.deps.traceBus.emit({
+          runId: ctx.runId,
+          threadId: ctx.threadId,
+          type: kind === "tool_call_detected" ? "model_tool_call_detected" : "model_stream_delta",
+          nodeId: ctx.nodeId,
+          agentId: ctx.agentId,
+          summary,
+          payload
+        });
+      }
+    });
+    const loopExecutor = new ToolLoopExecutor();
+    const router = new CanonicalToolRouter(canonicalTools);
 
-    const firstResult = await this.deps.providerClient.invoke(modelReq);
-    if (firstResult.text) {
-      this.deps.traceBus.emit({
+    const canonicalCallRecords: CanonicalToolCallIntent[] = [];
+    const canonicalResultRecords: CanonicalToolCallResult[] = [];
+    const toolCalls: RunState["toolState"]["lastToolCalls"] = [];
+    const toolResults: RunState["toolState"]["lastToolResults"] = [];
+
+    const loopResult = await loopExecutor.execute({
+      initialRequest: modelReq,
+      roundExecutor,
+      ctx: {
         runId: state.runMeta.runId,
         threadId: state.runMeta.threadId,
-        type: "model_stream_delta",
         nodeId: node.id,
-        agentId: agent.id,
-        summary: `模型输出（一次性）${firstResult.text.length} chars`,
-        payload: { delta: firstResult.text.slice(0, 800) }
-      });
-    }
+        agentId: agent.id
+      },
+      maxRounds: 4,
+      onToolCalls: async ({ roundIndex, calls }) => {
+        const toolRoleMessages: UnifiedMessage[] = [];
+        const roundToolResults: RunState["toolState"]["lastToolResults"] = [];
 
-    let finalText = firstResult.text;
-    const allMessages: UnifiedMessage[] = [...compile.finalMessages];
-    const toolCalls = [];
-    const toolResults = [];
+        for (const call of calls) {
+          const canonicalTool = this.deps.toolRegistry.findCanonicalToolByName(call.toolName);
+          if (!canonicalTool) continue;
+          const intent: CanonicalToolCallIntent = {
+            toolCallId: call.toolCallId,
+            canonicalToolId: canonicalTool.id,
+            toolName: canonicalTool.name,
+            adapterKind: exposurePlan.adapterKind,
+            payloadMode: "json_args",
+            args: call.argumentsJson
+          };
+          canonicalCallRecords.push(intent);
 
-    // 首版工具循环：最多 1 轮（足以验证链路）。
-    if (firstResult.toolCalls.length > 0) {
-      for (const call of firstResult.toolCalls) {
-        const spec = toolSpecs.find((t) => t.name === call.toolName);
-        if (!spec) continue;
-        this.deps.traceBus.emit({
-          runId: state.runMeta.runId,
-          threadId: state.runMeta.threadId,
-          type: "tool_call_started",
-          nodeId: node.id,
-          agentId: agent.id,
-          summary: `执行工具：${call.toolName}`,
-          payload: { toolCallId: call.toolCallId, args: summarize(call.argumentsJson) ?? null } as unknown as JsonValue
-        });
-        const { result, trace } = await this.deps.toolRuntime.execute(spec, call.argumentsJson, agent.id);
-        this.deps.db.insertToolCallTrace({
-          toolCallId: trace.toolCallId,
-          runId: state.runMeta.runId,
-          threadId: state.runMeta.threadId,
-          toolId: trace.toolId,
-          toolName: trace.toolName,
-          traceJson: trace as unknown as JsonValue
-        });
-        this.deps.traceBus.emit({
-          runId: state.runMeta.runId,
-          threadId: state.runMeta.threadId,
-          type: "tool_call_finished",
-          nodeId: node.id,
-          agentId: agent.id,
-          summary: `工具${result.ok ? "成功" : "失败"}：${call.toolName}`,
-          payload:
-            {
+          const route = router.resolve(intent);
+          this.deps.traceBus.emit({
+            runId: state.runMeta.runId,
+            threadId: state.runMeta.threadId,
+            type: "tool_call_started",
+            nodeId: node.id,
+            agentId: agent.id,
+            summary: `执行工具(round=${roundIndex + 1})：${call.toolName}`,
+            payload: {
               toolCallId: call.toolCallId,
-              ok: result.ok,
-              output: summarize(result.output) ?? null,
-              error: (result.error ?? null) as unknown
+              routeKind: route.kind,
+              adapterKind: exposurePlan.adapterKind,
+              args: summarize(call.argumentsJson) ?? null
             } as unknown as JsonValue
-        });
-        toolCalls.push({
-          toolCallId: call.toolCallId,
-          toolId: spec.id,
-          toolName: spec.name,
-          arguments: call.argumentsJson,
-          issuedByAgentId: agent.id,
-          issuedAt: nowIso()
-        });
-        toolResults.push(result);
-        allMessages.push({
-          role: "tool",
-          name: call.toolName,
-          toolCallId: call.toolCallId,
-          content: JSON.stringify(result.ok ? result.output : result.error)
-        });
-      }
+          });
 
-      const secondReq: UnifiedModelRequest = {
-        ...modelReq,
-        messages: [...allMessages]
-      };
-      const secondResult = await this.deps.providerClient.invoke(secondReq);
-      finalText = secondResult.text || finalText;
-      if (secondResult.text) {
-        this.deps.traceBus.emit({
-          runId: state.runMeta.runId,
-          threadId: state.runMeta.threadId,
-          type: "model_stream_delta",
-          nodeId: node.id,
-          agentId: agent.id,
-          summary: `工具回填后二次输出 ${secondResult.text.length} chars`,
-          payload: { delta: secondResult.text.slice(0, 800) }
-        });
+          const executed = await this.executeCanonicalToolIntent(intent, canonicalTool, {
+            runId: state.runMeta.runId,
+            threadId: state.runMeta.threadId,
+            nodeId: node.id,
+            agentId: agent.id,
+            workspaceRoot: this.deps.workspaceRoot,
+            provider: {
+              vendor: provider.vendor,
+              apiMode: provider.apiMode,
+              model: provider.model
+            }
+          });
+          canonicalResultRecords.push(executed);
+          roundToolResults.push(executed.toolResult);
+          toolResults.push(executed.toolResult);
+
+          if (executed.toolTrace) {
+            this.deps.db.insertToolCallTrace({
+              toolCallId: executed.toolTrace.toolCallId,
+              runId: state.runMeta.runId,
+              threadId: state.runMeta.threadId,
+              toolId: executed.toolTrace.toolId,
+              toolName: executed.toolTrace.toolName,
+              traceJson: executed.toolTrace as unknown as JsonValue
+            });
+          }
+
+          for (const effect of executed.sideEffects) {
+            this.deps.db.insertSideEffect(effect);
+            this.deps.traceBus.emit({
+              runId: state.runMeta.runId,
+              threadId: state.runMeta.threadId,
+              type: "side_effect_recorded",
+              nodeId: node.id,
+              agentId: agent.id,
+              summary: effect.summary,
+              payload: {
+                sideEffectId: effect.sideEffectId,
+                effectType: effect.type,
+                target: effect.target ?? null,
+                details: summarize(effect.details as JsonValue | undefined) ?? null
+              } as unknown as JsonValue
+            });
+          }
+
+          this.deps.traceBus.emit({
+            runId: state.runMeta.runId,
+            threadId: state.runMeta.threadId,
+            type: "tool_call_finished",
+            nodeId: node.id,
+            agentId: agent.id,
+            summary: `工具${executed.toolResult.ok ? "成功" : "失败"}：${call.toolName}`,
+            payload: {
+              toolCallId: call.toolCallId,
+              routeKind: route.kind,
+              ok: executed.toolResult.ok,
+              output: summarize(executed.toolResult.output) ?? null,
+              error: executed.toolResult.error ?? null
+            } as unknown as JsonValue
+          });
+
+          toolCalls.push({
+            toolCallId: call.toolCallId,
+            toolId: canonicalTool.id,
+            toolName: canonicalTool.name,
+            arguments: call.argumentsJson,
+            issuedByAgentId: agent.id,
+            issuedAt: nowIso()
+          });
+
+          toolRoleMessages.push({
+            role: "tool",
+            name: call.toolName,
+            toolCallId: call.toolCallId,
+            content: JSON.stringify(executed.toolResult.ok ? executed.toolResult.output : executed.toolResult.error)
+          });
+        }
+
+        return {
+          toolRoleMessages,
+          toolResults: roundToolResults
+        };
       }
-    }
+    });
+
+    const finalText = loopResult.finalText;
 
     const assistantMessage: UnifiedMessage = {
       role: "assistant",
@@ -785,8 +932,11 @@ export class FrameworkRuntimeEngine {
         latestAssistantText: finalText || state.conversationState.latestAssistantText
       },
       toolState: {
-        lastToolCalls: toolCalls as RunState["toolState"]["lastToolCalls"],
-        lastToolResults: toolResults as RunState["toolState"]["lastToolResults"]
+        lastToolCalls: toolCalls,
+        lastToolResults: toolResults,
+        lastCanonicalToolCalls: canonicalCallRecords,
+        lastCanonicalToolResults: canonicalResultRecords,
+        lastToolExposurePlanId: exposurePlan.planId
       },
       debugRefs: {
         ...state.debugRefs,
@@ -808,6 +958,375 @@ export class FrameworkRuntimeEngine {
         lastToolResults: [result]
       }
     };
+  }
+
+  /**
+   * v0.2：执行 CanonicalToolCallIntent（中间统一层）。
+   * 说明：
+   * - 这里先实现 builtin + user_defined 两类；
+   * - MCP / plugin / skill_tool 先返回结构化未实现错误（后续迭代接入）。
+   */
+  private async executeCanonicalToolIntent(
+    intent: CanonicalToolCallIntent,
+    canonicalTool: any,
+    envelope: {
+      runId: string;
+      threadId: string;
+      nodeId: string;
+      agentId: string;
+      workspaceRoot: string;
+      provider: { vendor: string; apiMode: string; model: string };
+    }
+  ): Promise<CanonicalToolCallResult> {
+    const startedAt = nowIso();
+    const startMs = Date.now();
+    const sideEffects: CanonicalToolSideEffectRecord[] = [];
+
+    const buildResult = (input: {
+      ok: boolean;
+      output?: JsonValue;
+      error?: { code: string; message: string; details?: JsonValue };
+      toolId: string;
+      toolName: string;
+    }): CanonicalToolCallResult => {
+      const finishedAt = nowIso();
+      const toolResult = {
+        toolCallId: intent.toolCallId,
+        toolId: input.toolId,
+        ok: input.ok,
+        output: input.output,
+        error: input.error,
+        startedAt,
+        finishedAt,
+        durationMs: Date.now() - startMs
+      };
+      return {
+        intent,
+        canonicalTool: {
+          id: canonicalTool.id,
+          name: canonicalTool.name,
+          kind: canonicalTool.kind,
+          routeTarget: canonicalTool.routeTarget
+        },
+        toolResult,
+        toolTrace: {
+          toolCallId: intent.toolCallId,
+          toolId: input.toolId,
+          toolName: input.toolName,
+          executorType: canonicalTool.executorType,
+          arguments: (intent.args ?? {}) as JsonObject,
+          result: toolResult,
+          permissionLevel: canonicalTool.permissionPolicy?.shellPermissionLevel,
+          workingDir: envelope.workspaceRoot
+        },
+        sideEffects
+      };
+    };
+
+    const args = (intent.args ?? {}) as JsonObject;
+    const routeKind = canonicalTool.routeTarget?.kind;
+
+    if (routeKind === "builtin") {
+      const builtinName = canonicalTool.routeTarget.builtin as string;
+
+      if (builtinName === "shell_command") {
+        const syntheticShellSpec: ToolSpec = {
+          id: canonicalTool.id,
+          name: "shell_command",
+          description: canonicalTool.description,
+          executorType: "shell",
+          inputSchema: canonicalTool.inputSchema,
+          outputSchema: canonicalTool.outputSchema,
+          permissionProfileId: String(canonicalTool.permissionPolicy?.permissionProfileId ?? "perm.readonly"),
+          timeoutMs: Number(canonicalTool.permissionPolicy?.timeoutMs ?? 15000),
+          workingDirPolicy: canonicalTool.permissionPolicy?.workingDirPolicy,
+          enabled: true,
+          version: 1
+        };
+        const { result, trace } = await this.deps.toolRuntime.execute(syntheticShellSpec, args, envelope.agentId);
+        sideEffects.push({
+          sideEffectId: newId("sfx"),
+          runId: envelope.runId,
+          threadId: envelope.threadId,
+          nodeId: envelope.nodeId,
+          agentId: envelope.agentId,
+          type: "tool_exec",
+          target: builtinName,
+          summary: `执行 shell_command（ok=${String(result.ok)}）`,
+          details: {
+            command: String(args.command ?? ""),
+            durationMs: result.durationMs
+          },
+          timestamp: nowIso()
+        });
+        return {
+          intent,
+          canonicalTool: {
+            id: canonicalTool.id,
+            name: canonicalTool.name,
+            kind: canonicalTool.kind,
+            routeTarget: canonicalTool.routeTarget
+          },
+          toolResult: result,
+          toolTrace: trace,
+          sideEffects
+        };
+      }
+
+      if (builtinName === "apply_patch") {
+        const output = await executeBuiltinApplyPatch(args, { workspaceRoot: envelope.workspaceRoot });
+        sideEffects.push({
+          sideEffectId: newId("sfx"),
+          runId: envelope.runId,
+          threadId: envelope.threadId,
+          nodeId: envelope.nodeId,
+          agentId: envelope.agentId,
+          type: "file_write",
+          target: "apply_patch",
+          summary: "执行 apply_patch",
+          details: summarize(output as JsonValue) ?? null,
+          timestamp: nowIso()
+        });
+        return buildResult({
+          ok: Boolean((output as any)?.ok),
+          output,
+          error: (output as any)?.ok ? undefined : { code: "APPLY_PATCH_FAILED", message: "apply_patch 执行失败", details: output },
+          toolId: canonicalTool.id,
+          toolName: canonicalTool.name
+        });
+      }
+
+      if (builtinName === "read_file") {
+        const output = await executeBuiltinReadFile(args, envelope.workspaceRoot);
+        sideEffects.push({
+          sideEffectId: newId("sfx"),
+          runId: envelope.runId,
+          threadId: envelope.threadId,
+          nodeId: envelope.nodeId,
+          agentId: envelope.agentId,
+          type: "file_read",
+          target: String(args.path ?? ""),
+          summary: "读取文件片段",
+          details: { path: String(args.path ?? "") } as unknown as JsonValue,
+          timestamp: nowIso()
+        });
+        return buildResult({
+          ok: Boolean((output as any)?.ok),
+          output,
+          error: (output as any)?.ok ? undefined : { code: "READ_FILE_FAILED", message: "read_file 执行失败", details: output },
+          toolId: canonicalTool.id,
+          toolName: canonicalTool.name
+        });
+      }
+
+      if (builtinName === "web_search") {
+        const output = await executeBuiltinWebSearch(args);
+        sideEffects.push({
+          sideEffectId: newId("sfx"),
+          runId: envelope.runId,
+          threadId: envelope.threadId,
+          nodeId: envelope.nodeId,
+          agentId: envelope.agentId,
+          type: "web_search",
+          target: String(args.query ?? ""),
+          summary: `执行 web_search：${String(args.query ?? "")}`,
+          details: { query: String(args.query ?? "") } as unknown as JsonValue,
+          timestamp: nowIso()
+        });
+        return buildResult({
+          ok: Boolean((output as any)?.ok),
+          output,
+          error: (output as any)?.ok ? undefined : { code: "WEB_SEARCH_FAILED", message: "web_search 执行失败", details: output },
+          toolId: canonicalTool.id,
+          toolName: canonicalTool.name
+        });
+      }
+
+      if (builtinName === "update_plan") {
+        const normalized = normalizeAndValidatePlan(args);
+        if (!normalized.ok) {
+          return buildResult({
+            ok: false,
+            error: {
+              code: String((normalized.error as any)?.code ?? "INVALID_PLAN"),
+              message: String((normalized.error as any)?.message ?? "update_plan 参数非法"),
+              details: normalized.error
+            },
+            toolId: canonicalTool.id,
+            toolName: canonicalTool.name
+          });
+        }
+        this.deps.db.upsertRunPlan(envelope.runId, envelope.threadId, normalized.plan);
+        sideEffects.push({
+          sideEffectId: newId("sfx"),
+          runId: envelope.runId,
+          threadId: envelope.threadId,
+          nodeId: envelope.nodeId,
+          agentId: envelope.agentId,
+          type: "plan_update",
+          target: envelope.runId,
+          summary: "更新 run 内部计划",
+          details: {
+            itemCount: normalized.plan.items.length
+          } as unknown as JsonValue,
+          timestamp: nowIso()
+        });
+        return buildResult({
+          ok: true,
+          output: { ok: true, plan: normalized.plan } as unknown as JsonValue,
+          toolId: canonicalTool.id,
+          toolName: canonicalTool.name
+        });
+      }
+
+      if (builtinName === "request_user_input") {
+        const reqState = buildUserInputRequestState(args);
+        if (!reqState.ok) {
+          return buildResult({
+            ok: false,
+            error: {
+              code: String((reqState.error as any)?.code ?? "INVALID_USER_INPUT_REQUEST"),
+              message: String((reqState.error as any)?.message ?? "request_user_input 参数非法"),
+              details: reqState.error
+            },
+            toolId: canonicalTool.id,
+            toolName: canonicalTool.name
+          });
+        }
+
+        this.deps.db.upsertUserInputRequest({
+          requestId: reqState.state.requestId!,
+          runId: envelope.runId,
+          threadId: envelope.threadId,
+          nodeId: envelope.nodeId,
+          agentId: envelope.agentId,
+          state: reqState.state,
+          payload: reqState.payload
+        });
+        this.deps.traceBus.emit({
+          runId: envelope.runId,
+          threadId: envelope.threadId,
+          type: "interrupt_emitted",
+          nodeId: envelope.nodeId,
+          agentId: envelope.agentId,
+          summary: "request_user_input 触发人工中断",
+          payload: summarize(reqState.payload as JsonValue)
+        });
+        const answer = interrupt(reqState.payload);
+        const answeredState = {
+          ...reqState.state,
+          status: "answered" as const,
+          answer: answer as JsonValue,
+          answeredAt: nowIso()
+        };
+        this.deps.db.upsertUserInputRequest({
+          requestId: reqState.state.requestId!,
+          runId: envelope.runId,
+          threadId: envelope.threadId,
+          nodeId: envelope.nodeId,
+          agentId: envelope.agentId,
+          state: answeredState,
+          payload: reqState.payload
+        });
+        sideEffects.push({
+          sideEffectId: newId("sfx"),
+          runId: envelope.runId,
+          threadId: envelope.threadId,
+          nodeId: envelope.nodeId,
+          agentId: envelope.agentId,
+          type: "user_input",
+          target: reqState.state.requestId,
+          summary: "收到人工回复（request_user_input）",
+          details: summarize(answer as JsonValue) ?? null,
+          timestamp: nowIso()
+        });
+        this.deps.traceBus.emit({
+          runId: envelope.runId,
+          threadId: envelope.threadId,
+          type: "resume_received",
+          nodeId: envelope.nodeId,
+          agentId: envelope.agentId,
+          summary: "request_user_input 收到恢复回复",
+          payload: summarize(answer as JsonValue)
+        });
+        return buildResult({
+          ok: true,
+          output: { ok: true, answer } as unknown as JsonValue,
+          toolId: canonicalTool.id,
+          toolName: canonicalTool.name
+        });
+      }
+
+      if (builtinName === "view_image") {
+        const output = await executeBuiltinViewImage(args, envelope.workspaceRoot);
+        sideEffects.push({
+          sideEffectId: newId("sfx"),
+          runId: envelope.runId,
+          threadId: envelope.threadId,
+          nodeId: envelope.nodeId,
+          agentId: envelope.agentId,
+          type: "image_read",
+          target: String(args.path ?? ""),
+          summary: "读取图片元数据",
+          details: { path: String(args.path ?? "") } as unknown as JsonValue,
+          timestamp: nowIso()
+        });
+        return buildResult({
+          ok: Boolean((output as any)?.ok),
+          output,
+          error: (output as any)?.ok ? undefined : { code: "VIEW_IMAGE_FAILED", message: "view_image 执行失败", details: output },
+          toolId: canonicalTool.id,
+          toolName: canonicalTool.name
+        });
+      }
+    }
+
+    if (routeKind === "user_defined") {
+      const spec = this.deps.toolRegistry.get(canonicalTool.routeTarget.toolId);
+      if (!spec) {
+        return buildResult({
+          ok: false,
+          error: { code: "TOOL_NOT_FOUND", message: `工具不存在：${canonicalTool.routeTarget.toolId}` },
+          toolId: canonicalTool.id,
+          toolName: canonicalTool.name
+        });
+      }
+      const { result, trace } = await this.deps.toolRuntime.execute(spec, args, envelope.agentId);
+      sideEffects.push({
+        sideEffectId: newId("sfx"),
+        runId: envelope.runId,
+        threadId: envelope.threadId,
+        nodeId: envelope.nodeId,
+        agentId: envelope.agentId,
+        type: "tool_exec",
+        target: canonicalTool.name,
+        summary: `执行自定义工具 ${canonicalTool.name}`,
+        details: { ok: result.ok, durationMs: result.durationMs } as unknown as JsonValue,
+        timestamp: nowIso()
+      });
+      return {
+        intent,
+        canonicalTool: {
+          id: canonicalTool.id,
+          name: canonicalTool.name,
+          kind: canonicalTool.kind,
+          routeTarget: canonicalTool.routeTarget
+        },
+        toolResult: result,
+        toolTrace: trace,
+        sideEffects
+      };
+    }
+
+    return buildResult({
+      ok: false,
+      error: {
+        code: "TOOL_ROUTE_NOT_IMPLEMENTED",
+        message: `尚未实现该路由类型：${String(routeKind)}`
+      },
+      toolId: canonicalTool.id,
+      toolName: canonicalTool.name
+    });
   }
 
   private decideNextNode(workflow: WorkflowSpec, node: WorkflowNodeSpec, state: RunState): RunState {
@@ -880,6 +1399,49 @@ export class FrameworkRuntimeEngine {
       current = (current as Record<string, unknown>)[part];
     }
     return current;
+  }
+
+  /**
+   * 构造用于 state diff 的轻量摘要（避免直接落整份 state）。
+   */
+  private buildStateDiffSnapshot(state: RunState): Record<string, unknown> {
+    return {
+      status: state.status,
+      currentNodeId: state.routingState.currentNodeId,
+      nextNodeId: state.routingState.nextNodeId ?? null,
+      routingReason: state.routingState.reason ?? null,
+      messageCount: state.conversationState.messages.length,
+      latestAssistantTextPreview: (state.conversationState.latestAssistantText ?? "").slice(0, 200),
+      outputArtifactCount: state.artifacts.outputs.length,
+      lastToolCallCount: state.toolState.lastToolCalls.length,
+      lastToolResultCount: state.toolState.lastToolResults.length,
+      pauseRequested: state.flags.pauseRequested,
+      waitingHuman: state.status === "waiting_human",
+      promptCompileCount: state.debugRefs.promptCompileIds.length,
+      lastToolExposurePlanId: state.toolState.lastToolExposurePlanId ?? null
+    };
+  }
+
+  /**
+   * 计算浅层差异（key 级）。
+   * 说明：
+   * - 首版先做最直观的“前后值对比”；
+   * - 后续如需要更强 diff，再替换为深度 diff。
+   */
+  private computeShallowStateDiff(
+    beforeSnapshot: Record<string, unknown>,
+    afterSnapshot: Record<string, unknown>
+  ): Record<string, { before: unknown; after: unknown }> {
+    const keys = new Set([...Object.keys(beforeSnapshot), ...Object.keys(afterSnapshot)]);
+    const diff: Record<string, { before: unknown; after: unknown }> = {};
+    for (const key of keys) {
+      const before = beforeSnapshot[key];
+      const after = afterSnapshot[key];
+      if (JSON.stringify(before) !== JSON.stringify(after)) {
+        diff[key] = { before, after };
+      }
+    }
+    return diff;
   }
 
   private loadPromptBlocksFromSnapshot(state: RunState): PromptBlock[] {

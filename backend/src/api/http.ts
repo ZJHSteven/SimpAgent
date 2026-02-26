@@ -12,8 +12,10 @@
 import type { Express, Request, Response } from "express";
 import type {
   AgentSpec,
+  BuiltinToolConfig,
   CreateRunRequest,
   ForkRunRequest,
+  JsonObject,
   PromptBlock,
   PromptOverridePatchRequest,
   StatePatchRequest,
@@ -22,6 +24,7 @@ import type {
 } from "../types/index.js";
 import type { RuntimeDeps } from "../runtime/index.js";
 import { FrameworkRuntimeEngine } from "../runtime/index.js";
+import { BUILTIN_TOOL_DEFINITIONS, executeBuiltinApplyPatch, exposureAdapters } from "../core/tools/index.js";
 
 interface HttpDeps extends RuntimeDeps {
   engine: FrameworkRuntimeEngine;
@@ -83,6 +86,35 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
       res.json({ ok: true, data: row });
     } catch (error) {
       sendError(res, 500, error instanceof Error ? error.message : "查询 run 失败");
+    }
+  });
+
+  app.get("/api/runs/:runId/state-diffs", (req, res) => {
+    try {
+      const limit = Number(req.query.limit ?? 200);
+      const data = deps.db.listStateDiffs(req.params.runId, Number.isFinite(limit) ? limit : 200);
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "state diff 查询失败");
+    }
+  });
+
+  app.get("/api/runs/:runId/side-effects", (req, res) => {
+    try {
+      const limit = Number(req.query.limit ?? 200);
+      const data = deps.db.listSideEffects(req.params.runId, Number.isFinite(limit) ? limit : 200);
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "side effects 查询失败");
+    }
+  });
+
+  app.get("/api/runs/:runId/plan", (req, res) => {
+    try {
+      const data = deps.db.getRunPlan(req.params.runId);
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "run plan 查询失败");
     }
   });
 
@@ -285,6 +317,98 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
     res.json({ ok: true, data: deps.toolRegistry.list() });
   });
 
+  /**
+   * v0.2：返回首批 builtin tools 定义 + 当前运行时配置（内存配置，可热更新）。
+   * 说明：
+   * - 当前阶段 builtin 配置先不走 SQLite 版本化，后续再迁移；
+   * - 先满足调试前端与策略面板联调。
+   */
+  app.get("/api/tools/builtin", (_req, res) => {
+    const defs = deps.toolRegistry.listBuiltinDefinitions();
+    const cfgMap = new Map(deps.toolRegistry.listBuiltinConfigs().map((cfg) => [cfg.name, cfg]));
+    res.json({
+      ok: true,
+      data: defs.map((def) => ({
+        ...def,
+        runtimeConfig: cfgMap.get(def.name) ?? def.defaultConfig
+      }))
+    });
+  });
+
+  app.put("/api/tools/builtin/:name", (req, res) => {
+    try {
+      const name = req.params.name;
+      const def = deps.toolRegistry.getBuiltinDefinition(name);
+      if (!def) {
+        sendError(res, 404, "builtin tool 不存在");
+        return;
+      }
+      const body = asObject(req.body);
+      const current = deps.toolRegistry.getBuiltinConfig(name) ?? def.defaultConfig;
+      const next: BuiltinToolConfig = {
+        ...current,
+        ...(body as Partial<BuiltinToolConfig>),
+        name: def.name,
+        exposurePolicy: {
+          ...current.exposurePolicy,
+          ...(asObject(body.exposurePolicy) as Partial<BuiltinToolConfig["exposurePolicy"]>)
+        },
+        permissionPolicy: {
+          ...current.permissionPolicy,
+          ...(asObject(body.permissionPolicy) as Partial<BuiltinToolConfig["permissionPolicy"]>)
+        }
+      };
+      const saved = deps.toolRegistry.saveBuiltinConfig(next);
+      res.json({ ok: true, data: saved });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "更新 builtin tool 配置失败");
+    }
+  });
+
+  /**
+   * v0.2：apply_patch dry-run 调试接口（不写文件）。
+   */
+  app.post("/api/tools/apply-patch/dry-run", async (req, res) => {
+    try {
+      const body = asObject(req.body);
+      const patch = typeof body.patch === "string" ? body.patch : "";
+      if (!patch.trim()) {
+        sendError(res, 400, "缺少 patch 文本");
+        return;
+      }
+      const result = await executeBuiltinApplyPatch(
+        {
+          patch,
+          dry_run: true
+        } as JsonObject,
+        {
+          workspaceRoot: deps.workspaceRoot
+        }
+      );
+      res.json({ ok: true, data: result });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "apply_patch dry-run 失败");
+    }
+  });
+
+  /**
+   * v0.2：暴露适配策略枚举，供前端工具策略面板显示。
+   */
+  app.get("/api/config/tool-exposure-policies", (_req, res) => {
+    res.json({
+      ok: true,
+      data: {
+        adapters: Object.keys(exposureAdapters),
+        builtinDefaults: BUILTIN_TOOL_DEFINITIONS.map((item) => ({
+          name: item.name,
+          preferredAdapter: item.defaultConfig.exposurePolicy.preferredAdapter,
+          fallbackAdapters: item.defaultConfig.exposurePolicy.fallbackAdapters,
+          exposureLevel: item.defaultConfig.exposurePolicy.exposureLevel
+        }))
+      }
+    });
+  });
+
   app.put("/api/tools/:toolId", (req, res) => {
     try {
       const body = { ...(req.body as ToolSpec), id: req.params.toolId } as ToolSpec;
@@ -295,8 +419,35 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
     }
   });
 
+  /**
+   * v0.2：更新普通 ToolSpec 的暴露策略（先写入 executorConfig.exposure，保持兼容）。
+   * 说明：
+   * - 后续如果拆出独立 tool exposure 配置表，可以平滑迁移；
+   * - 当前阶段先让前端调试器有可操作入口。
+   */
+  app.put("/api/tools/:toolId/exposure", (req, res) => {
+    try {
+      const tool = deps.toolRegistry.get(req.params.toolId);
+      if (!tool) {
+        sendError(res, 404, "tool 不存在");
+        return;
+      }
+      const body = asObject(req.body);
+      const updated: ToolSpec = {
+        ...tool,
+        executorConfig: {
+          ...(asObject(tool.executorConfig) as Record<string, unknown>),
+          exposure: body
+        } as unknown as JsonObject
+      };
+      const saved = deps.toolRegistry.save(updated);
+      res.json({ ok: true, data: saved });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "更新 tool 暴露策略失败");
+    }
+  });
+
   app.use("/api/*", (_req, res) => {
     sendError(res, 404, "接口不存在");
   });
 }
-
