@@ -158,6 +158,85 @@ CREATE TABLE IF NOT EXISTS tool_calls (
   created_at TEXT NOT NULL
 );
 
+/**
+ * v0.2：节点级状态差异（用于调试器快速查看，不把整份 state 塞进 trace）。
+ */
+CREATE TABLE IF NOT EXISTS state_diffs (
+  diff_id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  node_id TEXT,
+  agent_id TEXT,
+  before_summary_json TEXT,
+  after_summary_json TEXT,
+  diff_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_state_diffs_run_id ON state_diffs(run_id, created_at);
+
+/**
+ * v0.2：统一副作用记录（工具执行 / 文件读写 / 网络请求 / 计划更新 / 用户输入等）。
+ */
+CREATE TABLE IF NOT EXISTS side_effects (
+  side_effect_id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  node_id TEXT,
+  agent_id TEXT,
+  effect_type TEXT NOT NULL,
+  target TEXT,
+  summary TEXT NOT NULL,
+  details_json TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_side_effects_run_id ON side_effects(run_id, created_at);
+
+/**
+ * v0.2：记录每轮工具暴露计划（用于排查“为什么这轮没暴露某工具”）。
+ */
+CREATE TABLE IF NOT EXISTS tool_exposure_plans (
+  plan_id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  node_id TEXT,
+  agent_id TEXT,
+  adapter_kind TEXT NOT NULL,
+  plan_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tool_exposure_plans_run_id ON tool_exposure_plans(run_id, created_at);
+
+/**
+ * v0.2：run 内部计划状态（由 update_plan 内置工具维护）。
+ */
+CREATE TABLE IF NOT EXISTS run_plans (
+  run_id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  plan_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+/**
+ * v0.2：request_user_input 工具请求记录（中断/恢复关联）。
+ */
+CREATE TABLE IF NOT EXISTS user_input_requests (
+  request_id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  node_id TEXT,
+  agent_id TEXT,
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  answer_json TEXT,
+  requested_at TEXT NOT NULL,
+  answered_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_input_requests_run_id ON user_input_requests(run_id, requested_at);
+
 CREATE TABLE IF NOT EXISTS state_patches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   thread_id TEXT NOT NULL,
@@ -198,4 +277,3 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at TEXT NOT NULL
 );
 `;
-

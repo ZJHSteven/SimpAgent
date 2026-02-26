@@ -2,9 +2,9 @@
 
 ## 当前结论（必须最新）
 - 现状：`backend/` 已有 v0.1 可运行骨架，当前正在升级到 v0.2（重点是三层工具架构、真流式工具循环、PromptUnit 与更完整可观测性）。
-- 已完成：v0.1 主链路（LangGraph.js 运行时、HTTP API、WS 调试通道、SQLite 配置/Trace、PromptCompiler、ToolRuntime、Provider 兼容层、checkpoint/history/patch/fork、build/smoke 测试）；并已开始 v0.2 类型契约扩展（新增 Canonical Tool Layer / PromptUnit / ToolExposurePlan / SideEffect / StateDiff / BuiltinToolConfig / PlanState / UserInputRequestState 等接口与字段）。
-- 正在做：按“三份计划合并执行”推进 v0.2 第一阶段，先落类型契约与数据库/工具骨架，再重构 runtime 为 `providerClient.stream(...)` 真流式驱动。
-- 下一步：补 SQLite schema 与数据访问方法（`state_diffs` / `side_effects` / `run_plans` / `user_input_requests` / `tool_exposure_plans`）；实现三层工具架构骨架与内置工具（含 `apply_patch`）；随后重构 runtime 工具循环。
+- 已完成：v0.1 主链路（LangGraph.js 运行时、HTTP API、WS 调试通道、SQLite 配置/Trace、PromptCompiler、ToolRuntime、Provider 兼容层、checkpoint/history/patch/fork、build/smoke 测试）；并已开始 v0.2 基础设施升级：类型契约扩展（Canonical Tool Layer / PromptUnit / ToolExposurePlan / SideEffect / StateDiff / BuiltinToolConfig / PlanState / UserInputRequestState 等）以及 SQLite schema / `AppDatabase` 新增表与方法（`state_diffs`、`side_effects`、`tool_exposure_plans`、`run_plans`、`user_input_requests`）。
+- 正在做：按“三份计划合并执行”推进 v0.2 第一阶段，当前进入三层工具架构骨架与内置工具实现（在不破坏 v0.1 可运行性的前提下逐步接入）。
+- 下一步：实现 canonical 工具层（类型映射/路由/暴露规划接口）与 builtin tools（`shell_command`、`read_file`、`apply_patch`、`web_search`、`update_plan`、`request_user_input`、`view_image`）；随后重构 runtime 工具循环为真流式。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：执行内核采用 LangGraph.js（原因：直接获得 checkpoint / interrupt / replay / history / updateState，避免自研运行时黑洞）。

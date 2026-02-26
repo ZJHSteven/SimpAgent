@@ -14,14 +14,19 @@ import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import type {
   AgentSpec,
+  CanonicalToolSideEffectRecord,
   ForkRunResponse,
   JsonValue,
+  PlanState,
   PromptBlock,
   PromptTrace,
   RunStatus,
+  StateDiffTrace,
   ToolSpec,
+  ToolExposurePlan,
   TraceEvent,
   UnifiedMessage,
+  UserInputRequestState,
   WorkflowSpec
 } from "../types/index.js";
 import { SCHEMA_SQL } from "./schema.js";
@@ -490,6 +495,263 @@ export class AppDatabase {
         toJson(input.traceJson),
         nowIso()
       );
+  }
+
+  /**
+   * v0.2：写入节点级状态差异。
+   * 说明：
+   * - 该表用于调试器快速展示“本节点改了什么”；
+   * - 不替代 LangGraph checkpoint。
+   */
+  insertStateDiff(input: StateDiffTrace): void {
+    this.db
+      .prepare(
+        `INSERT INTO state_diffs (
+          diff_id, run_id, thread_id, node_id, agent_id,
+          before_summary_json, after_summary_json, diff_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        input.diffId,
+        input.runId,
+        input.threadId,
+        input.nodeId ?? null,
+        input.agentId ?? null,
+        input.beforeSummary ? toJson(input.beforeSummary) : null,
+        input.afterSummary ? toJson(input.afterSummary) : null,
+        toJson(input.diff),
+        input.createdAt
+      );
+  }
+
+  listStateDiffs(runId: string, limit = 200): StateDiffTrace[] {
+    const rows = this.db
+      .prepare(
+        `SELECT diff_id, run_id, thread_id, node_id, agent_id,
+                before_summary_json, after_summary_json, diff_json, created_at
+         FROM state_diffs
+         WHERE run_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(runId, limit) as Array<{
+      diff_id: string;
+      run_id: string;
+      thread_id: string;
+      node_id: string | null;
+      agent_id: string | null;
+      before_summary_json: string | null;
+      after_summary_json: string | null;
+      diff_json: string;
+      created_at: string;
+    }>;
+    return rows.map((row) => ({
+      diffId: row.diff_id,
+      runId: row.run_id,
+      threadId: row.thread_id,
+      nodeId: row.node_id ?? undefined,
+      agentId: row.agent_id ?? undefined,
+      beforeSummary: row.before_summary_json ? fromJson<JsonValue>(row.before_summary_json) : undefined,
+      afterSummary: row.after_summary_json ? fromJson<JsonValue>(row.after_summary_json) : undefined,
+      diff: fromJson<JsonValue>(row.diff_json),
+      createdAt: row.created_at
+    }));
+  }
+
+  /**
+   * v0.2：统一副作用记录。
+   */
+  insertSideEffect(input: CanonicalToolSideEffectRecord): void {
+    this.db
+      .prepare(
+        `INSERT INTO side_effects (
+          side_effect_id, run_id, thread_id, node_id, agent_id,
+          effect_type, target, summary, details_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        input.sideEffectId,
+        input.runId,
+        input.threadId,
+        input.nodeId ?? null,
+        input.agentId ?? null,
+        input.type,
+        input.target ?? null,
+        input.summary,
+        input.details ? toJson(input.details) : null,
+        input.timestamp
+      );
+  }
+
+  listSideEffects(runId: string, limit = 200): CanonicalToolSideEffectRecord[] {
+    const rows = this.db
+      .prepare(
+        `SELECT side_effect_id, run_id, thread_id, node_id, agent_id,
+                effect_type, target, summary, details_json, created_at
+         FROM side_effects
+         WHERE run_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(runId, limit) as Array<{
+      side_effect_id: string;
+      run_id: string;
+      thread_id: string;
+      node_id: string | null;
+      agent_id: string | null;
+      effect_type: string;
+      target: string | null;
+      summary: string;
+      details_json: string | null;
+      created_at: string;
+    }>;
+    return rows.map((row) => ({
+      sideEffectId: row.side_effect_id,
+      runId: row.run_id,
+      threadId: row.thread_id,
+      nodeId: row.node_id ?? undefined,
+      agentId: row.agent_id ?? undefined,
+      type: row.effect_type as CanonicalToolSideEffectRecord["type"],
+      target: row.target ?? undefined,
+      summary: row.summary,
+      details: row.details_json ? fromJson<JsonValue>(row.details_json) : undefined,
+      timestamp: row.created_at
+    }));
+  }
+
+  /**
+   * v0.2：记录工具暴露计划（供调试器查看每轮工具是如何暴露给模型的）。
+   */
+  insertToolExposurePlan(input: {
+    runId: string;
+    threadId: string;
+    nodeId?: string;
+    agentId?: string;
+    plan: ToolExposurePlan;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO tool_exposure_plans (
+          plan_id, run_id, thread_id, node_id, agent_id, adapter_kind, plan_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        input.plan.planId,
+        input.runId,
+        input.threadId,
+        input.nodeId ?? null,
+        input.agentId ?? null,
+        input.plan.adapterKind,
+        toJson(input.plan),
+        nowIso()
+      );
+  }
+
+  listToolExposurePlans(runId: string, limit = 100): ToolExposurePlan[] {
+    const rows = this.db
+      .prepare(
+        `SELECT plan_json
+         FROM tool_exposure_plans
+         WHERE run_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(runId, limit) as Array<{ plan_json: string }>;
+    return rows.map((row) => fromJson<ToolExposurePlan>(row.plan_json));
+  }
+
+  /**
+   * v0.2：写入 run 内部计划状态（update_plan 工具使用）。
+   */
+  upsertRunPlan(runId: string, threadId: string, plan: PlanState): void {
+    this.db
+      .prepare(
+        `INSERT INTO run_plans (run_id, thread_id, plan_json, updated_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(run_id) DO UPDATE SET
+           thread_id = excluded.thread_id,
+           plan_json = excluded.plan_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(runId, threadId, toJson(plan), nowIso());
+  }
+
+  getRunPlan(runId: string): PlanState | null {
+    const row = this.db
+      .prepare(`SELECT plan_json FROM run_plans WHERE run_id = ?`)
+      .get(runId) as { plan_json: string } | undefined;
+    return row ? fromJson<PlanState>(row.plan_json) : null;
+  }
+
+  /**
+   * v0.2：写入/更新 request_user_input 请求状态。
+   */
+  upsertUserInputRequest(input: {
+    requestId: string;
+    runId: string;
+    threadId: string;
+    nodeId?: string;
+    agentId?: string;
+    state: UserInputRequestState;
+    payload: JsonValue;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO user_input_requests (
+          request_id, run_id, thread_id, node_id, agent_id, status,
+          payload_json, answer_json, requested_at, answered_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(request_id) DO UPDATE SET
+          status = excluded.status,
+          payload_json = excluded.payload_json,
+          answer_json = excluded.answer_json,
+          answered_at = excluded.answered_at`
+      )
+      .run(
+        input.requestId,
+        input.runId,
+        input.threadId,
+        input.nodeId ?? null,
+        input.agentId ?? null,
+        input.state.status,
+        toJson(input.payload),
+        input.state.answer ? toJson(input.state.answer) : null,
+        input.state.requestedAt ?? nowIso(),
+        input.state.answeredAt ?? null
+      );
+  }
+
+  getUserInputRequests(runId: string): Array<{
+    requestId: string;
+    status: string;
+    payload: JsonValue;
+    answer?: JsonValue;
+    requestedAt: string;
+    answeredAt?: string;
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT request_id, status, payload_json, answer_json, requested_at, answered_at
+         FROM user_input_requests
+         WHERE run_id = ?
+         ORDER BY requested_at DESC`
+      )
+      .all(runId) as Array<{
+      request_id: string;
+      status: string;
+      payload_json: string;
+      answer_json: string | null;
+      requested_at: string;
+      answered_at: string | null;
+    }>;
+    return rows.map((row) => ({
+      requestId: row.request_id,
+      status: row.status,
+      payload: fromJson<JsonValue>(row.payload_json),
+      answer: row.answer_json ? fromJson<JsonValue>(row.answer_json) : undefined,
+      requestedAt: row.requested_at,
+      answeredAt: row.answered_at ?? undefined
+    }));
   }
 
   recordStatePatch(input: {
