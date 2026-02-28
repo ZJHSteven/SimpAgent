@@ -81,13 +81,9 @@ export function createNodeBoundRuntimeEngine(deps: RuntimeDeps) {
       invoke: (req) => deps.providerClient.invoke(req)
     },
     tools: {
-      executeTool: async ({ toolName, args, workspaceRoot }) =>
-        deps.toolRuntime.executeTool({
-          toolCallId: deps.db.newId("toolcall"),
-          toolId: toolName,
-          toolName,
-          argumentsJson: args as any
-        }, { workspaceRoot: workspaceRoot ?? deps.workspaceRoot })
+      executeTool: async () => {
+        throw new Error("core ToolExecutionPort 在 runtime-node 中由 FrameworkRuntimeEngine 内部链路处理，不走该占位实现");
+      }
     },
     events: {
       emit: (event) => deps.traceBus.emit(event),

@@ -1,73 +1,51 @@
-# React + TypeScript + Vite
+# SimpAgent Monorepo
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+本仓库已完成一次性结构重构，目标是把 Agent 框架拆成“可复用内核 + 多运行时适配层 + 业务应用”。
 
-Currently, two official plugins are available:
+## 目录结构
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```text
+simpagent/
+  packages/
+    core/                  # 纯 TypeScript 内核（类型、Prompt、工具循环、Ports、三层配置合并）
+    runtime-node/          # Node 适配层（Express/WS/SQLite/LangGraph）
+    runtime-worker/        # Cloudflare Workers + D1 适配层（最小可运行链路）
+    runtime-tauri-bridge/  # Tauri 前端桥接层（invoke 协议与 mock）
+  apps/
+    trpg-desktop/          # 跑团桌面端占位
+    learning-desktop/      # 学习桌面端占位
+    dev-console/           # 调试控制台占位（当前仍保留根目录前端）
+  backend/                 # 兼容壳：旧命令转发到 runtime-node
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 关键设计
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+1. 内核与适配层分离：`core` 不依赖 Node 专属 API。  
+2. 三层配置模型：`Runtime Patch > User Override > Preset`。  
+3. Node/Worker/Tauri 路线并行：同一内核，不同平台实现。  
+4. 旧 `backend` 路径保留：避免历史脚本与习惯命令立即失效。
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 快速开始
+
+在仓库根目录执行：
+
+```bash
+npm install
+npm run build:workspaces
 ```
+
+运行 Node 后端（新的主实现）：
+
+```bash
+npm run dev:runtime-node
+```
+
+运行 Node 冒烟测试：
+
+```bash
+npm run --workspace @simpagent/runtime-node test:smoke
+```
+
+## 兼容说明
+
+`backend/` 现在是兼容壳，`npm run dev/build/start/test:smoke` 会转发到 `@simpagent/runtime-node`。

@@ -1,4 +1,6 @@
-# SimpAgent Observable Backend（v0.2）
+# SimpAgent Runtime Node（v0.2）
+
+> 说明：该目录是 monorepo 下的 Node 适配层实现（原 `backend` 主代码已迁移到这里）。
 
 这是一个从零实现的 **可观测 + 可中断 + 热更新** 多 Agent 框架后端（TypeScript + LangGraph.js）。
 
@@ -37,12 +39,12 @@
 
 ## 快速启动
 
-在 `backend/` 目录执行：
+在仓库根目录执行：
 
 ```bash
 npm install
-npm run build
-npm run dev
+npm run --workspace @simpagent/runtime-node build
+npm run --workspace @simpagent/runtime-node dev
 ```
 
 默认端口：
@@ -53,7 +55,7 @@ npm run dev
 ## 最小冒烟测试
 
 ```bash
-npm run test:smoke
+npm run --workspace @simpagent/runtime-node test:smoke
 ```
 
 该脚本不会启动 HTTP 服务，而是直接创建运行时并发起一个 `mock` run，用于验证主干链路可用。

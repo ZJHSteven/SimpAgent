@@ -42,12 +42,13 @@ export function createTauriBridge(invoke: TauriInvoke): TauriBridge {
     saveConfig: (key, value) => invoke("simpagent_save_config", { key, value }).then(() => undefined),
     createRun: (input) => invoke("simpagent_create_run", { input }),
     getRun: (runId) => invoke("simpagent_get_run", { runId }),
-    resolveConfigLayers: (layers) =>
-      resolveThreeLayerConfig({
+    resolveConfigLayers<T>(layers: { preset: T; userOverride?: Partial<T> | null; runtimePatch?: Partial<T> | null }): T {
+      return resolveThreeLayerConfig({
         preset: layers.preset as any,
         userOverride: (layers.userOverride ?? null) as any,
         runtimePatch: (layers.runtimePatch ?? null) as any
-      }) as T
+      }) as T;
+    }
   };
 }
 

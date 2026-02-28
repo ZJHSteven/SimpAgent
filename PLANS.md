@@ -49,3 +49,30 @@
 ## 本轮完成判据
 - 新增文档包含：项目梳理、优势/创新性文案、流程图提示词、使用建议。
 - `PROGRESS.md` 已记录本次文档交付结果。
+
+---
+
+## 任务名称（2026-03-01）
+- 一次性重构为 Monorepo + 三适配环境（Node / Tauri Bridge / CF Workers）
+
+## 执行目标（本轮实现）
+- 建立 `npm workspaces`。
+- 新增 `packages/core`，抽离公共类型、PromptCompiler、工具循环、WorkflowRegistry（端口化）与 Ports 抽象。
+- 将 Node 主实现迁移为 `packages/runtime-node`，保留 `backend/` 兼容壳。
+- 新增 `packages/runtime-worker`（Workers + D1 最小链路）。
+- 新增 `packages/runtime-tauri-bridge`（Tauri invoke 契约 + mock）。
+- 新增 `apps/trpg-desktop`、`apps/learning-desktop`、`apps/dev-console` 占位。
+
+## 分阶段计划（本轮）
+1. 复制 `backend` 到 `packages/runtime-node`，确保链路不中断（已完成）
+2. 建立 `packages/core` 并抽离核心模块（已完成）
+3. 增加 `createRuntimeEngine(deps)` + Ports + 三层配置合并器（已完成）
+4. 增加 Worker 与 Tauri bridge 适配包（已完成）
+5. 调整根配置、跑构建与冒烟测试（已完成）
+6. 更新 README / PROGRESS（进行中）
+
+## 本轮完成判据
+- `npm run build:workspaces` 通过。
+- `npm run --workspace @simpagent/runtime-node test:smoke` 通过。
+- 根前端 `npm run build` 通过。
+- 文档同步到 `README.md` 与 `PROGRESS.md`。
