@@ -14,6 +14,7 @@ import type {
   JsonObject,
   JsonValue,
   ProviderErrorShape,
+  UnifiedModelTool,
   UnifiedMessage,
   UnifiedModelFinalResult,
   UnifiedModelRequest,
@@ -107,12 +108,17 @@ function extractToolCallsFromResponsesOutput(data: JsonObject): UnifiedModelFina
   return calls;
 }
 
+function getToolName(tool: UnifiedModelTool): string {
+  if (tool.type === "function") return tool.function.name;
+  return tool.custom.name;
+}
+
 function buildMockResult(req: UnifiedModelRequest): UnifiedModelFinalResult {
   const text = [
     `【Mock ${req.apiMode} 响应】`,
     `model=${req.model}`,
     `messages=${req.messages?.length ?? 0}`,
-    req.tools?.length ? `tools=${req.tools.map((t) => t.function.name).join(", ")}` : "tools=none",
+    req.tools?.length ? `tools=${req.tools.map((t) => getToolName(t)).join(", ")}` : "tools=none",
     "这是用于调试框架链路的模拟输出。"
   ].join("\n");
   return {
@@ -218,6 +224,7 @@ export class UnifiedProviderClient {
     if (typeof req.topP === "number") body.top_p = req.topP;
     if (req.tools) body.tools = req.tools;
     if (req.toolChoice) body.tool_choice = req.toolChoice;
+    if (req.responseFormat) body.response_format = req.responseFormat;
     if (req.reasoningConfig?.effort) {
       body.reasoning_effort = req.reasoningConfig.effort;
     }
@@ -323,6 +330,7 @@ export class UnifiedProviderClient {
     if (typeof req.maxOutputTokens === "number") body.max_output_tokens = req.maxOutputTokens;
     if (req.tools) body.tools = req.tools;
     if (req.toolChoice) body.tool_choice = req.toolChoice;
+    if (req.responseFormat) body.response_format = req.responseFormat;
     if (req.reasoningConfig?.effort) {
       body.reasoning = {
         effort: req.reasoningConfig.effort
@@ -390,6 +398,7 @@ export class UnifiedProviderClient {
     if (typeof req.topP === "number") body.top_p = req.topP;
     if (req.tools) body.tools = req.tools;
     if (req.toolChoice) body.tool_choice = req.toolChoice;
+    if (req.responseFormat) body.response_format = req.responseFormat;
     if (req.reasoningConfig?.effort) body.reasoning_effort = req.reasoningConfig.effort;
     if (req.vendor === "gemini_openai_compat" && req.reasoningConfig?.includeThoughts) {
       body.extra_body = {
@@ -517,6 +526,7 @@ export class UnifiedProviderClient {
     if (typeof req.maxOutputTokens === "number") body.max_output_tokens = req.maxOutputTokens;
     if (req.tools) body.tools = req.tools;
     if (req.toolChoice) body.tool_choice = req.toolChoice;
+    if (req.responseFormat) body.response_format = req.responseFormat;
     if (req.reasoningConfig?.effort) body.reasoning = { effort: req.reasoningConfig.effort };
     if (req.vendorExtra) Object.assign(body, req.vendorExtra);
 
@@ -647,4 +657,3 @@ export function appendToolResultsToMessages(
   }
   return next;
 }
-

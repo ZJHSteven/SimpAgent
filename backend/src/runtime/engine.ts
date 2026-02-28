@@ -28,6 +28,7 @@ import type {
   PromptBlock,
   PromptCompileRequest,
   PromptOverridePatchRequest,
+  PromptUnitOverridePatchRequest,
   ProviderApiMode,
   RunState,
   RunStatus,
@@ -336,6 +337,43 @@ export class FrameworkRuntimeEngine {
       type: "state_patched",
       summary: `PromptOverride 已写入 checkpoint=${checkpointId}`,
       payload: { reason: req.reason, patchCount: req.patches.length } as unknown as JsonValue
+    });
+  }
+
+  async patchPromptUnitOverridesAtCheckpoint(
+    threadId: string,
+    checkpointId: string,
+    req: PromptUnitOverridePatchRequest
+  ): Promise<void> {
+    const record = this.getRunRecordByThread(threadId);
+    const workflow = this.resolveWorkflow(record.workflowId, record.workflowVersion);
+    const graph = this.getOrBuildGraph(workflow);
+    const config = this.threadConfig(threadId, checkpointId);
+    const snapshot = await graph.getState(config);
+    const current = (snapshot.values as GraphEnvelope).state;
+    const patched: RunState = {
+      ...current,
+      debugRefs: {
+        ...current.debugRefs,
+        promptUnitOverrides: req.overrides
+      }
+    };
+    await graph.updateState(config, { state: patched });
+    this.deps.db.recordStatePatch({
+      threadId,
+      checkpointId,
+      runId: record.runId,
+      patchKind: "prompt_override",
+      operator: req.operator,
+      reason: req.reason,
+      patch: { promptUnitOverrides: req.overrides } as unknown as JsonValue
+    });
+    this.deps.traceBus.emit({
+      runId: record.runId,
+      threadId,
+      type: "state_patched",
+      summary: `PromptUnitOverride 已写入 checkpoint=${checkpointId}`,
+      payload: { reason: req.reason, overrideCount: req.overrides.length } as unknown as JsonValue
     });
   }
 
@@ -653,6 +691,7 @@ export class FrameworkRuntimeEngine {
         inputSchema: t.inputSchema
       })),
       overridePatches: state.debugRefs.promptOverrides,
+      promptUnitOverrides: state.debugRefs.promptUnitOverrides,
       providerApiType: (this.getRunRecord(state.runMeta.runId).provider.apiMode as ProviderApiMode) ?? "chat_completions"
     };
 
@@ -724,32 +763,27 @@ export class FrameworkRuntimeEngine {
     const exposedCanonicalTools = exposurePlan.exposedTools
       .map((item) => canonicalTools.find((tool) => tool.id === item.canonicalToolId))
       .filter((tool): tool is NonNullable<typeof tool> => Boolean(tool));
-    const modelReq: UnifiedModelRequest = {
+    const canonicalToolById = new Map(exposedCanonicalTools.map((tool) => [tool.id, tool] as const));
+    const canonicalToolByName = new Map(exposedCanonicalTools.map((tool) => [tool.name, tool] as const));
+
+    const baseModelReq: UnifiedModelRequest = {
       vendor: provider.vendor,
       apiMode: provider.apiMode,
       baseURL: provider.baseURL,
       apiKey: provider.apiKey,
       model: provider.model,
       messages: compile.finalMessages,
-      // v0.2 当前阶段：
-      // - 已建立三层工具架构（canonical + exposure plan）；
-      // - 真实 custom/structured/prompt 协议暴露后续继续接入；
-      // - 本步先用 function 形式承载已选中的工具集合，保证 runtime 真流式改造先落地。
-      tools: exposedCanonicalTools.map((t) => ({
-        type: "function",
-        function: {
-          name: t.name,
-          description: t.description,
-          parameters: t.inputSchema
-        }
-      })),
-      toolChoice: exposedCanonicalTools.length > 0 ? "auto" : "none",
       temperature: provider.temperature,
       topP: provider.topP,
       reasoningConfig: provider.reasoningConfig,
       vendorExtra: provider.vendorExtra,
       stream: true
     };
+    const modelReq = exposureSelection.adapter.buildModelRequest({
+      baseRequest: baseModelReq,
+      exposurePlan,
+      canonicalTools: exposedCanonicalTools
+    });
 
     this.deps.traceBus.emit({
       runId: state.runMeta.runId,
@@ -797,20 +831,66 @@ export class FrameworkRuntimeEngine {
         agentId: agent.id
       },
       maxRounds: 4,
+      detectToolCalls: async ({ roundIndex, round }) => {
+        // 先吃 provider 原生 tool_calls；若为空，则交给适配器从文本协议中解析（structured/prompt/custom fallback）。
+        if (round.toolCalls.length > 0) {
+          return round.toolCalls.map((call) => ({
+            toolCallId: call.toolCallId,
+            toolName: call.toolName,
+            argumentsJson: call.argumentsJson,
+            payloadMode: "json_args" as const
+          }));
+        }
+        const parsedIntents = exposureSelection.adapter.parseModelToolSignal({
+          finalResult: round,
+          canonicalTools: exposedCanonicalTools
+        });
+        if (parsedIntents.length === 0) return [];
+        for (const intent of parsedIntents) {
+          this.deps.traceBus.emit({
+            runId: state.runMeta.runId,
+            threadId: state.runMeta.threadId,
+            type: "model_tool_call_detected",
+            nodeId: node.id,
+            agentId: agent.id,
+            summary: `适配器解析到工具调用(round=${roundIndex + 1})：${intent.toolName}`,
+            payload: {
+              toolCallId: intent.toolCallId,
+              adapterKind: intent.adapterKind,
+              payloadMode: intent.payloadMode,
+              args: summarize((intent.args ?? {}) as JsonValue) ?? null
+            } as unknown as JsonValue
+          });
+        }
+        return parsedIntents.map((intent) => ({
+          toolCallId: intent.toolCallId,
+          toolName: intent.toolName,
+          argumentsJson: intent.args ?? {},
+          canonicalToolId: intent.canonicalToolId,
+          payloadMode: intent.payloadMode,
+          freeformText: intent.freeformText,
+          rawSignal: intent.rawSignal
+        }));
+      },
       onToolCalls: async ({ roundIndex, calls }) => {
         const toolRoleMessages: UnifiedMessage[] = [];
         const roundToolResults: RunState["toolState"]["lastToolResults"] = [];
 
         for (const call of calls) {
-          const canonicalTool = this.deps.toolRegistry.findCanonicalToolByName(call.toolName);
+          const canonicalTool =
+            (call.canonicalToolId ? canonicalToolById.get(call.canonicalToolId) : null) ??
+            canonicalToolByName.get(call.toolName) ??
+            this.deps.toolRegistry.findCanonicalToolByName(call.toolName);
           if (!canonicalTool) continue;
           const intent: CanonicalToolCallIntent = {
             toolCallId: call.toolCallId,
             canonicalToolId: canonicalTool.id,
             toolName: canonicalTool.name,
             adapterKind: exposurePlan.adapterKind,
-            payloadMode: "json_args",
-            args: call.argumentsJson
+            payloadMode: call.payloadMode ?? "json_args",
+            args: call.argumentsJson,
+            freeformText: call.freeformText,
+            rawSignal: call.rawSignal
           };
           canonicalCallRecords.push(intent);
 
@@ -826,7 +906,7 @@ export class FrameworkRuntimeEngine {
               toolCallId: call.toolCallId,
               routeKind: route.kind,
               adapterKind: exposurePlan.adapterKind,
-              args: summarize(call.argumentsJson) ?? null
+              args: summarize((call.argumentsJson ?? {}) as JsonValue) ?? null
             } as unknown as JsonValue
           });
 
@@ -895,17 +975,32 @@ export class FrameworkRuntimeEngine {
             toolCallId: call.toolCallId,
             toolId: canonicalTool.id,
             toolName: canonicalTool.name,
-            arguments: call.argumentsJson,
+            arguments: (call.argumentsJson ?? {}) as JsonObject,
             issuedByAgentId: agent.id,
             issuedAt: nowIso()
           });
 
-          toolRoleMessages.push({
-            role: "tool",
-            name: call.toolName,
-            toolCallId: call.toolCallId,
-            content: JSON.stringify(executed.toolResult.ok ? executed.toolResult.output : executed.toolResult.error)
-          });
+          const toolResultText = JSON.stringify(executed.toolResult.ok ? executed.toolResult.output : executed.toolResult.error);
+          if (
+            exposurePlan.adapterKind === "structured_output_tool_call" ||
+            exposurePlan.adapterKind === "prompt_protocol_fallback"
+          ) {
+            toolRoleMessages.push({
+              role: "developer",
+              content: [
+                `工具执行结果(${call.toolName})：`,
+                toolResultText,
+                "如果还需要继续调用工具，请继续输出工具调用协议；否则直接给出最终答复。"
+              ].join("\n")
+            });
+          } else {
+            toolRoleMessages.push({
+              role: "tool",
+              name: call.toolName,
+              toolCallId: call.toolCallId,
+              content: toolResultText
+            });
+          }
         }
 
         return {
@@ -1025,7 +1120,17 @@ export class FrameworkRuntimeEngine {
       };
     };
 
-    const args = (intent.args ?? {}) as JsonObject;
+    const args = { ...((intent.args ?? {}) as JsonObject) };
+    // 兼容 freeform 工具信号：
+    // - 例如 chat_custom / prompt_protocol 下模型可能只给一段 patch 文本；
+    // - 这里把 freeformText 映射回统一参数，避免执行层丢失信息。
+    if (intent.payloadMode !== "json_args" && intent.freeformText && Object.keys(args).length === 0) {
+      if (canonicalTool.name === "apply_patch") {
+        args.patch = intent.freeformText;
+      } else {
+        args.input = intent.freeformText;
+      }
+    }
     const routeKind = canonicalTool.routeTarget?.kind;
 
     if (routeKind === "builtin") {
@@ -1549,7 +1654,8 @@ export class FrameworkRuntimeEngine {
       debugRefs: {
         promptCompileIds: [],
         traceEventSeqLast: 0,
-        promptOverrides: []
+        promptOverrides: [],
+        promptUnitOverrides: []
       },
       controlConfig: {
         interruptBeforeNodes: request.runConfig?.interruptBeforeNodes ?? [],

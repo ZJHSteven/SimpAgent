@@ -18,6 +18,7 @@ import type {
   JsonObject,
   PromptBlock,
   PromptOverridePatchRequest,
+  PromptUnitOverridePatchRequest,
   StatePatchRequest,
   ToolSpec,
   WorkflowSpec
@@ -192,6 +193,24 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
       res.json({ ok: true });
     } catch (error) {
       sendError(res, 500, error instanceof Error ? error.message : "prompt override patch 失败");
+    }
+  });
+
+  app.post("/api/threads/:threadId/checkpoints/:checkpointId/prompt-unit-overrides", async (req, res) => {
+    try {
+      const body = asObject(req.body) as Partial<PromptUnitOverridePatchRequest>;
+      if (!body.reason || !Array.isArray(body.overrides)) {
+        sendError(res, 400, "缺少 reason 或 overrides");
+        return;
+      }
+      await deps.engine.patchPromptUnitOverridesAtCheckpoint(req.params.threadId, req.params.checkpointId, {
+        operator: typeof body.operator === "string" ? body.operator : undefined,
+        reason: String(body.reason),
+        overrides: body.overrides as any
+      });
+      res.json({ ok: true });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "prompt unit override patch 失败");
     }
   });
 

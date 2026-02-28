@@ -490,6 +490,7 @@ export interface PromptCompileRequest {
     inputSchema: JsonObject;
   }>;
   overridePatches?: PromptOverridePatch[];
+  promptUnitOverrides?: PromptUnitOverride[];
   providerApiType: ProviderApiMode;
 }
 
@@ -687,11 +688,68 @@ export interface ProviderCapabilities {
   supportsReasoningEffort: boolean;
   supportsThoughts: boolean;
   supportsResponsesApi: boolean;
+  supportsResponseFormatJsonSchema?: boolean;
 }
 
 export interface UnifiedReasoningConfig {
   effort?: "none" | "minimal" | "low" | "medium" | "high";
   includeThoughts?: boolean;
+}
+
+/**
+ * 统一工具定义（Provider 请求层）。
+ * 说明：
+ * - 这是“内层暴露适配层”输出给 Provider 的最终格式；
+ * - 允许 function / custom 两类，避免把所有协议硬塞成 function。
+ */
+export type UnifiedModelTool =
+  | {
+      type: "function";
+      function: {
+        name: string;
+        description?: string;
+        parameters: JsonObject;
+      };
+    }
+  | {
+      type: "custom";
+      custom: {
+        name: string;
+        description?: string;
+        format?:
+          | {
+              type: "json_schema";
+              json_schema: {
+                name: string;
+                schema: JsonObject;
+                strict?: boolean;
+              };
+            }
+          | {
+              type: "text";
+            };
+      };
+    };
+
+export type UnifiedToolChoice =
+  | "auto"
+  | "none"
+  | { type: "function"; function: { name: string } }
+  | { type: "custom"; custom: { name: string } };
+
+export interface UnifiedResponseFormat {
+  type: "json_schema" | "json_object";
+  json_schema?: {
+    name: string;
+    schema: JsonObject;
+    strict?: boolean;
+  };
+}
+
+export interface UnifiedPromptProtocol {
+  name: string;
+  instruction: string;
+  responseSchema?: JsonObject;
 }
 
 export interface UnifiedModelRequest {
@@ -702,19 +760,14 @@ export interface UnifiedModelRequest {
   model: string;
   messages?: UnifiedMessage[];
   responseInput?: JsonValue;
-  tools?: Array<{
-    type: "function";
-    function: {
-      name: string;
-      description?: string;
-      parameters: JsonObject;
-    };
-  }>;
-  toolChoice?: "auto" | "none" | { type: "function"; function: { name: string } };
+  tools?: UnifiedModelTool[];
+  toolChoice?: UnifiedToolChoice;
   temperature?: number;
   topP?: number;
   maxOutputTokens?: number;
   reasoningConfig?: UnifiedReasoningConfig;
+  responseFormat?: UnifiedResponseFormat;
+  promptProtocol?: UnifiedPromptProtocol;
   vendorExtra?: JsonObject;
   stream?: boolean;
 }
@@ -966,6 +1019,12 @@ export interface PromptOverridePatchRequest {
   operator?: string;
   reason: string;
   patches: PromptOverridePatch[];
+}
+
+export interface PromptUnitOverridePatchRequest {
+  operator?: string;
+  reason: string;
+  overrides: PromptUnitOverride[];
 }
 
 export interface ForkRunRequest {

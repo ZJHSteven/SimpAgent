@@ -1,6 +1,6 @@
-# SimpAgent Observable Backend（v0.1 骨架）
+# SimpAgent Observable Backend（v0.2）
 
-这是一个从零实现的 **可观测 + 可中断 + 热更新** 多 Agent 框架后端骨架（TypeScript + LangGraph.js）。
+这是一个从零实现的 **可观测 + 可中断 + 热更新** 多 Agent 框架后端（TypeScript + LangGraph.js）。
 
 ## 当前已实现（本仓库当前版本）
 
@@ -10,15 +10,27 @@
   - PromptBlock
   - Workflow
   - Tool
-- Prompt 编译器（PromptBlock 装配 + 插槽 + 触发条件 + PromptTrace）
+- Prompt 编译器（PromptUnit 装配 + Placement + PromptAssemblyPlan + PromptTrace）
+- 三层工具架构
+  - 外层来源层（builtin + ToolSpec）
+  - 中间统一层（CanonicalToolSpec/Intent/Result）
+  - 内层暴露适配层（responses/chat_function/chat_custom/structured/prompt）
 - Provider 兼容层（不使用 SDK）
   - OpenAI `chat/completions`
   - OpenAI `responses`
   - Gemini OpenAI-compatible `chat/completions`
   - `mock` provider（本地调试）
-- ToolRuntime
+- ToolRuntime（builtin + user_defined）
   - `function` 执行器
   - `shell` 执行器（白名单 + 超时 + 工作目录）
+- 内置工具（首批）
+  - `shell_command`
+  - `apply_patch`
+  - `read_file`
+  - `web_search`
+  - `update_plan`
+  - `request_user_input`
+  - `view_image`
 - TraceEventBus（SQLite 存储 + 实时分发）
 - HTTP API（run / history / patch / fork / config）
 - WebSocket 实时调试通道（订阅 run / 心跳 / 按 seq 补发）
@@ -58,9 +70,17 @@ npm run test:smoke
 - `GET /api/threads/:threadId/history`
 - `POST /api/threads/:threadId/checkpoints/:checkpointId/state-patch`
 - `POST /api/threads/:threadId/checkpoints/:checkpointId/prompt-overrides`
+- `POST /api/threads/:threadId/checkpoints/:checkpointId/prompt-unit-overrides`
 - `POST /api/threads/:threadId/checkpoints/:checkpointId/fork`
 - `GET /api/trace/:runId/events`
 - `GET /api/trace/:runId/prompt/:compileId`
+- `GET /api/runs/:runId/state-diffs`
+- `GET /api/runs/:runId/side-effects`
+- `GET /api/runs/:runId/plan`
+- `GET /api/tools/builtin`
+- `PUT /api/tools/builtin/:name`
+- `POST /api/tools/apply-patch/dry-run`
+- `GET /api/config/tool-exposure-policies`
 - `GET/POST/PUT /api/agents`
 - `GET/POST/PUT /api/workflows`
 - `GET/POST/PUT /api/prompt-blocks`
@@ -90,16 +110,16 @@ npm run test:smoke
 
 ## 设计说明（重要）
 
-### 1) “提示词块系统”是一等公民
+### 1) PromptUnit 是一等公民
 
-不是单一 `system prompt` 拼接，而是：
+不是单一 `system prompt` 拼接，而是统一的 `PromptUnit` 装配：
 
-- `PromptBlock`
-- `insertionPoint`
-- `priority`
-- `trigger`
-- `override patch`
-- `PromptTrace`
+- `PromptBlock` -> `PromptUnit`
+- 历史上下文 -> `PromptUnit`
+- memory 输入 -> `PromptUnit`
+- 任务 payload -> `PromptUnit`
+- `PromptUnitOverride`（run-scope）
+- `PromptAssemblyPlan` + `PromptTrace`
 
 这样调试器可以看到“为什么某块被选中/被裁掉/插在什么位置”。
 
@@ -121,22 +141,29 @@ LangGraph.js 在本项目中负责：
 - Trace / Debug API / WS
 - 配置版本化与热更新
 
-### 3) 工具系统不是“全量 shell 化”
+### 3) 工具系统不是“全量 shell 化”，也不是“只暴露 function call”
 
-统一工具抽象 = `ToolSpec / ToolCall / ToolResult / ToolTrace`
+统一工具抽象 = `CanonicalToolSpec / CanonicalToolCallIntent / CanonicalToolCallResult`
 
-执行器只是实现细节：
+执行器只是实现细节（第二层之后）：
 
 - `function`
 - `shell`
 - `http`
 - `mcp_proxy`（预留）
 
+内层暴露策略（第三层）：
+
+- `responses_native`
+- `chat_function`
+- `chat_custom`
+- `structured_output_tool_call`
+- `prompt_protocol_fallback`
+
 ## 后续建议（下一迭代）
 
-1. 将 PromptBlock / ToolPolicy / ModelPolicy 增加 Zod 校验与错误定位
-2. 引入 PromptBlock 表达式触发器解析器（替代 v0.1 的“占位接受”）
-3. 提升 Provider 流式事件与工具循环（Responses API 深度事件支持）
-4. 增加断线重连后的 `run_snapshot + trace diff` 优化策略
-5. 增加调试前端（仅需消费当前 HTTP + WS 协议即可）
-
+1. 为 prompt-unit-overrides 增加专用前端编辑面板（当前后端接口已就绪）
+2. 将 `chat_custom` 的 provider payload 再细化到更多厂商差异（目前已可执行，仍可增强）
+3. 为 structured/prompt 模式增加“工具结果回填模板”可配置化
+4. 增加更强的 context slicing 策略（token 预算 + 语义相关度）
+5. 增加 E2E 测试覆盖更多 provider 真实流式场景

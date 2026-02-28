@@ -15,7 +15,8 @@ export function getProviderCapabilities(vendor: UnifiedModelRequest["vendor"]): 
       supportsStreaming: true,
       supportsReasoningEffort: true,
       supportsThoughts: false,
-      supportsResponsesApi: true
+      supportsResponsesApi: true,
+      supportsResponseFormatJsonSchema: true
     };
   }
 
@@ -27,7 +28,8 @@ export function getProviderCapabilities(vendor: UnifiedModelRequest["vendor"]): 
       supportsStreaming: true,
       supportsReasoningEffort: true,
       supportsThoughts: true,
-      supportsResponsesApi: false
+      supportsResponsesApi: false,
+      supportsResponseFormatJsonSchema: true
     };
   }
 
@@ -39,7 +41,8 @@ export function getProviderCapabilities(vendor: UnifiedModelRequest["vendor"]): 
       supportsStreaming: true,
       supportsReasoningEffort: false,
       supportsThoughts: false,
-      supportsResponsesApi: false
+      supportsResponsesApi: false,
+      supportsResponseFormatJsonSchema: false
     };
   }
 
@@ -50,7 +53,8 @@ export function getProviderCapabilities(vendor: UnifiedModelRequest["vendor"]): 
     supportsStreaming: true,
     supportsReasoningEffort: true,
     supportsThoughts: true,
-    supportsResponsesApi: true
+    supportsResponsesApi: true,
+    supportsResponseFormatJsonSchema: true
   };
 }
 
@@ -94,6 +98,12 @@ export function validateProviderRequestCapabilities(
     };
   }
 
+  if (req.responseFormat?.type === "json_schema" && !caps.supportsResponseFormatJsonSchema) {
+    return {
+      code: "UNSUPPORTED_RESPONSE_FORMAT_JSON_SCHEMA",
+      message: `${req.vendor} 当前能力配置不支持 response_format=json_schema`
+    };
+  }
+
   return null;
 }
-
