@@ -1,4 +1,7 @@
-# SimpAgent Observable Backend（v0.2）
+# SimpAgent Backend Compatibility Shell（v0.2）
+
+> 说明：主实现已迁移到 `packages/runtime-node`。  
+> 本目录仅保留兼容入口，便于旧命令/旧习惯平滑过渡。
 
 这是一个从零实现的 **可观测 + 可中断 + 热更新** 多 Agent 框架后端（TypeScript + LangGraph.js）。
 

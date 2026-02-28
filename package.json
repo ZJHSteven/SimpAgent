@@ -1,11 +1,21 @@
 {
-  "name": "vite-project",
+  "name": "simpagent-monorepo",
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "backend"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:workspaces": "npm run -ws --if-present build",
+    "test:workspaces": "npm run -ws --if-present test",
+    "dev:runtime-node": "npm run --workspace @simpagent/runtime-node dev",
+    "build:runtime-node": "npm run --workspace @simpagent/runtime-node build",
+    "start:runtime-node": "npm run --workspace @simpagent/runtime-node start",
     "lint": "eslint .",
     "preview": "vite preview"
   },

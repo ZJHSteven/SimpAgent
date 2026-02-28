@@ -20,7 +20,7 @@ import { ToolRegistry, ToolRuntime } from "./core/tools/index.js";
 import { PromptCompiler } from "./core/prompt/index.js";
 import { UnifiedProviderClient } from "./providers/index.js";
 import { TraceEventBus } from "./core/trace/index.js";
-import { FrameworkRuntimeEngine } from "./runtime/index.js";
+import { createNodeBoundRuntimeEngine } from "./engineNodeBindings.js";
 import { registerHttpRoutes } from "./api/index.js";
 import { setupWsServer } from "./ws/index.js";
 
@@ -52,7 +52,7 @@ const toolRuntime = new ToolRuntime({
   shellAllowPrefixes: ["echo ", "dir", "ls", "pwd", "cd ", "where ", "which ", "node -v", "npm -v"]
 });
 
-const engine = new FrameworkRuntimeEngine({
+const { nodeEngine: engine } = createNodeBoundRuntimeEngine({
   db,
   agentRegistry,
   workflowRegistry,
@@ -104,4 +104,3 @@ server.listen(port, () => {
   console.log(`Observable Agent Backend listening on http://localhost:${port}`);
   console.log(`WS endpoint: ws://localhost:${port}/ws`);
 });
-

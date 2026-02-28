@@ -1,0 +1,9 @@
+{
+  "name": "@simpagent/app-trpg-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo \"trpg-desktop 待接入 Tauri 工程\""
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "@simpagent/app-dev-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo \"dev-console 待迁移（当前仍使用仓库根前端）\""
+  }
+}
