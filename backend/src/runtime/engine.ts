@@ -53,12 +53,13 @@ import {
   executeBuiltinReadFile,
   executeBuiltinViewImage,
   executeBuiltinWebSearch,
+  exposureAdapters,
   normalizeAndValidatePlan,
   selectToolExposureAdapter
 } from "../core/tools/index.js";
 import { PromptCompiler } from "../core/prompt/index.js";
 import { TraceEventBus } from "../core/trace/index.js";
-import { UnifiedProviderClient } from "../providers/index.js";
+import { UnifiedProviderClient, validateProviderRequestCapabilities } from "../providers/index.js";
 import { AgentRoundExecutor, ToolLoopExecutor } from "./index.js";
 
 type GraphEnvelope = { state: RunState };
@@ -709,7 +710,26 @@ export class FrameworkRuntimeEngine {
         toolProtocolProfile: provider.toolProtocolProfile
       }
     });
-    const exposurePlan = exposureSelection.adapter.buildToolExposure(
+    const baseModelReq: UnifiedModelRequest = {
+      vendor: provider.vendor,
+      apiMode: provider.apiMode,
+      baseURL: provider.baseURL,
+      apiKey: provider.apiKey,
+      model: provider.model,
+      messages: compile.finalMessages,
+      temperature: provider.temperature,
+      topP: provider.topP,
+      reasoningConfig: provider.reasoningConfig,
+      vendorExtra: provider.vendorExtra,
+      stream: true
+    };
+
+    const adapterCandidates = [
+      exposureSelection.adapter.kind,
+      ...exposureSelection.fallbackChain
+    ].filter((item, idx, arr) => arr.indexOf(item) === idx);
+    let selectedAdapter = exposureSelection.adapter;
+    let exposurePlan = selectedAdapter.buildToolExposure(
       {
         provider: {
           vendor: provider.vendor,
@@ -717,12 +737,80 @@ export class FrameworkRuntimeEngine {
           toolProtocolProfile: provider.toolProtocolProfile
         },
         override: {
-          preferredAdapter: exposureSelection.adapter.kind,
-          fallbackAdapters: exposureSelection.fallbackChain
+          preferredAdapter: selectedAdapter.kind,
+          fallbackAdapters: exposureSelection.fallbackChain.filter((item) => item !== selectedAdapter.kind)
         }
       },
       canonicalTools
     );
+    let modelReq = selectedAdapter.buildModelRequest({
+      baseRequest: baseModelReq,
+      exposurePlan,
+      canonicalTools
+    });
+    let selectedCapabilityError = validateProviderRequestCapabilities(modelReq);
+    const failedAdapters: Array<{ kind: string; code: string; message: string }> = [];
+    if (selectedCapabilityError) {
+      failedAdapters.push({
+        kind: selectedAdapter.kind,
+        code: selectedCapabilityError.code,
+        message: selectedCapabilityError.message
+      });
+      for (const candidateKind of adapterCandidates) {
+        if (candidateKind === selectedAdapter.kind) continue;
+        const candidateAdapter = exposureAdapters[candidateKind];
+        const candidatePlan = candidateAdapter.buildToolExposure(
+          {
+            provider: {
+              vendor: provider.vendor,
+              apiMode: provider.apiMode,
+              toolProtocolProfile: provider.toolProtocolProfile
+            },
+            override: {
+              preferredAdapter: candidateAdapter.kind,
+              fallbackAdapters: adapterCandidates.filter((item) => item !== candidateAdapter.kind)
+            }
+          },
+          canonicalTools
+        );
+        const candidateReq = candidateAdapter.buildModelRequest({
+          baseRequest: baseModelReq,
+          exposurePlan: candidatePlan,
+          canonicalTools
+        });
+        const candidateError = validateProviderRequestCapabilities(candidateReq);
+        if (!candidateError) {
+          selectedAdapter = candidateAdapter;
+          exposurePlan = candidatePlan;
+          modelReq = candidateReq;
+          selectedCapabilityError = null;
+          this.deps.traceBus.emit({
+            runId: state.runMeta.runId,
+            threadId: state.runMeta.threadId,
+            type: "routing_decided",
+            nodeId: node.id,
+            agentId: agent.id,
+            summary: `工具暴露适配器已降级：${exposureSelection.adapter.kind} -> ${candidateAdapter.kind}`,
+            payload: {
+              fallbackFrom: exposureSelection.adapter.kind,
+              fallbackTo: candidateAdapter.kind
+            } as unknown as JsonValue
+          });
+          break;
+        }
+        failedAdapters.push({
+          kind: candidateAdapter.kind,
+          code: candidateError.code,
+          message: candidateError.message
+        });
+      }
+    }
+    if (selectedCapabilityError) {
+      throw new Error(
+        `所有工具暴露适配器均不可用：${failedAdapters.map((item) => `${item.kind}(${item.code})`).join(", ")}`
+      );
+    }
+
     this.deps.db.insertToolExposurePlan({
       runId: state.runMeta.runId,
       threadId: state.runMeta.threadId,
@@ -765,22 +853,11 @@ export class FrameworkRuntimeEngine {
       .filter((tool): tool is NonNullable<typeof tool> => Boolean(tool));
     const canonicalToolById = new Map(exposedCanonicalTools.map((tool) => [tool.id, tool] as const));
     const canonicalToolByName = new Map(exposedCanonicalTools.map((tool) => [tool.name, tool] as const));
-
-    const baseModelReq: UnifiedModelRequest = {
-      vendor: provider.vendor,
-      apiMode: provider.apiMode,
-      baseURL: provider.baseURL,
-      apiKey: provider.apiKey,
-      model: provider.model,
-      messages: compile.finalMessages,
-      temperature: provider.temperature,
-      topP: provider.topP,
-      reasoningConfig: provider.reasoningConfig,
-      vendorExtra: provider.vendorExtra,
-      stream: true
-    };
-    const modelReq = exposureSelection.adapter.buildModelRequest({
-      baseRequest: baseModelReq,
+    modelReq = selectedAdapter.buildModelRequest({
+      baseRequest: {
+        ...baseModelReq,
+        messages: compile.finalMessages
+      },
       exposurePlan,
       canonicalTools: exposedCanonicalTools
     });
@@ -796,7 +873,7 @@ export class FrameworkRuntimeEngine {
         vendor: provider.vendor,
         apiMode: provider.apiMode,
         model: provider.model,
-        exposureAdapter: exposurePlan.adapterKind,
+        exposureAdapter: selectedAdapter.kind,
         exposurePlanId: exposurePlan.planId
       }
     });
@@ -841,11 +918,32 @@ export class FrameworkRuntimeEngine {
             payloadMode: "json_args" as const
           }));
         }
-        const parsedIntents = exposureSelection.adapter.parseModelToolSignal({
+        const parsedIntents = selectedAdapter.parseModelToolSignal({
           finalResult: round,
           canonicalTools: exposedCanonicalTools
         });
-        if (parsedIntents.length === 0) return [];
+        if (parsedIntents.length === 0) {
+          // 若已降级选择 adapter，则也尝试用“初始选择 adapter”再解析一次（兼容某些 provider 返回差异）。
+          const backupParsed =
+            selectedAdapter.kind === exposureSelection.adapter.kind
+              ? []
+              : exposureSelection.adapter.parseModelToolSignal({
+                  finalResult: round,
+                  canonicalTools: exposedCanonicalTools
+                });
+          if (backupParsed.length > 0) {
+            return backupParsed.map((intent) => ({
+              toolCallId: intent.toolCallId,
+              toolName: intent.toolName,
+              argumentsJson: intent.args ?? {},
+              canonicalToolId: intent.canonicalToolId,
+              payloadMode: intent.payloadMode,
+              freeformText: intent.freeformText,
+              rawSignal: intent.rawSignal
+            }));
+          }
+          return [];
+        }
         for (const intent of parsedIntents) {
           this.deps.traceBus.emit({
             runId: state.runMeta.runId,

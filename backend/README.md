@@ -160,6 +160,8 @@ LangGraph.js 在本项目中负责：
 - `structured_output_tool_call`
 - `prompt_protocol_fallback`
 
+并支持按 `fallbackChain` 自动降级（能力不匹配时切换下一策略）。
+
 ## 后续建议（下一迭代）
 
 1. 为 prompt-unit-overrides 增加专用前端编辑面板（当前后端接口已就绪）

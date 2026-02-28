@@ -9,6 +9,7 @@
   - 三层工具架构从骨架推进到执行面：
     - `exposurePlanner` 不再只产计划，新增 `buildModelRequest + parseModelToolSignal`；
     - 五类适配器已接入运行时：`responses_native/chat_function/chat_custom/structured_output/prompt_protocol`；
+    - `fallbackChain` 已在 runtime 生效：当首选适配器与模型能力不匹配时自动降级。
     - 模型路由 `toolProtocolProfile` 可直接驱动内层适配选择。
   - builtin tools 默认定义：`shell_command`、`apply_patch`、`read_file`、`web_search`、`update_plan`、`request_user_input`、`view_image`。
   - `apply_patch` 模块最小可用实现：parser / validator / applier + dry-run 执行器。
