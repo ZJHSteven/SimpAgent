@@ -81,6 +81,29 @@ CREATE TABLE IF NOT EXISTS tool_versions (
   UNIQUE(tool_id, version)
 );
 
+/**
+ * v0.3：内置工具运行配置（原先为内存态，重启即丢失）。
+ * 说明：
+ * - 采用 project_id 维度隔离，便于未来 learning / trpg / dev-console 分项目共存。
+ * - payload_json 保留完整 BuiltinToolConfig 结构，先保证可回放与可扩展。
+ */
+CREATE TABLE IF NOT EXISTS builtin_tool_configs (
+  project_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(project_id, name)
+);
+
+/**
+ * v0.3：系统级调试设置（模型默认路由、窗口、日志上限等）。
+ */
+CREATE TABLE IF NOT EXISTS system_configs (
+  project_id TEXT PRIMARY KEY,
+  payload_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS runs (
   run_id TEXT PRIMARY KEY,
   thread_id TEXT NOT NULL,

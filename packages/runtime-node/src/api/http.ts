@@ -26,6 +26,7 @@ import type {
 import type { RuntimeDeps } from "../runtime/index.js";
 import { FrameworkRuntimeEngine } from "../runtime/index.js";
 import { BUILTIN_TOOL_DEFINITIONS, executeBuiltinApplyPatch, exposureAdapters } from "../core/tools/index.js";
+import { applyRuntimeTemplate, listRuntimeTemplates } from "../storage/index.js";
 
 interface HttpDeps extends RuntimeDeps {
   engine: FrameworkRuntimeEngine;
@@ -55,13 +56,44 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
   app.post("/api/runs", async (req, res) => {
     try {
       const body = asObject(req.body) as Partial<CreateRunRequest>;
-      if (!body.workflowId || !body.userInput || !body.provider) {
-        sendError(res, 400, "缺少必要字段：workflowId / userInput / provider");
+      if (!body.workflowId || !body.userInput) {
+        sendError(res, 400, "缺少必要字段：workflowId / userInput");
         return;
       }
-      const provider = asObject(body.provider) as CreateRunRequest["provider"];
+      const systemConfig = deps.db.getSystemConfig(deps.projectId);
+      const providerInput = asObject(body.provider);
+      const provider = {
+        vendor: typeof providerInput.vendor === "string" ? providerInput.vendor : systemConfig.defaultModelRoute.vendor,
+        apiMode:
+          providerInput.apiMode === "chat_completions" || providerInput.apiMode === "responses"
+            ? providerInput.apiMode
+            : systemConfig.defaultModelRoute.apiMode,
+        model: typeof providerInput.model === "string" ? providerInput.model : systemConfig.defaultModelRoute.model,
+        baseURL:
+          typeof providerInput.baseURL === "string" && providerInput.baseURL.trim()
+            ? providerInput.baseURL
+            : systemConfig.defaultModelRoute.baseURL,
+        apiKey: typeof providerInput.apiKey === "string" ? providerInput.apiKey : undefined,
+        toolProtocolProfile:
+          typeof providerInput.toolProtocolProfile === "string"
+            ? providerInput.toolProtocolProfile
+            : systemConfig.defaultModelRoute.toolProtocolProfile,
+        temperature:
+          typeof providerInput.temperature === "number"
+            ? providerInput.temperature
+            : systemConfig.defaultModelRoute.temperature,
+        topP: typeof providerInput.topP === "number" ? providerInput.topP : undefined,
+        reasoningConfig:
+          providerInput.reasoningConfig && typeof providerInput.reasoningConfig === "object"
+            ? (providerInput.reasoningConfig as CreateRunRequest["provider"]["reasoningConfig"])
+            : undefined,
+        vendorExtra:
+          providerInput.vendorExtra && typeof providerInput.vendorExtra === "object"
+            ? (providerInput.vendorExtra as CreateRunRequest["provider"]["vendorExtra"])
+            : undefined
+      } as CreateRunRequest["provider"];
       if (!provider.vendor || !provider.apiMode || !provider.model) {
-        sendError(res, 400, "provider 缺少必要字段：vendor / apiMode / model");
+        sendError(res, 400, "provider 信息不完整，且系统默认模型路由不可用");
         return;
       }
       const result = await deps.engine.createRun({
@@ -116,6 +148,25 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
       res.json({ ok: true, data });
     } catch (error) {
       sendError(res, 500, error instanceof Error ? error.message : "run plan 查询失败");
+    }
+  });
+
+  app.get("/api/runs/:runId/tool-exposure-plans", (req, res) => {
+    try {
+      const limit = Number(req.query.limit ?? 100);
+      const data = deps.db.listToolExposurePlanRows(req.params.runId, Number.isFinite(limit) ? limit : 100);
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "tool exposure plans 查询失败");
+    }
+  });
+
+  app.get("/api/runs/:runId/user-input-requests", (req, res) => {
+    try {
+      const data = deps.db.listUserInputRequestRows(req.params.runId);
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "user input requests 查询失败");
     }
   });
 
@@ -337,10 +388,10 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
   });
 
   /**
-   * v0.2：返回首批 builtin tools 定义 + 当前运行时配置（内存配置，可热更新）。
+   * v0.3：返回首批 builtin tools 定义 + 当前运行时配置（SQLite 持久化，可热更新）。
    * 说明：
-   * - 当前阶段 builtin 配置先不走 SQLite 版本化，后续再迁移；
-   * - 先满足调试前端与策略面板联调。
+   * - 配置按 project_id 隔离；
+   * - 重启后仍可保持工具开关和暴露策略。
    */
   app.get("/api/tools/builtin", (_req, res) => {
     const defs = deps.toolRegistry.listBuiltinDefinitions();
@@ -426,6 +477,67 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
         }))
       }
     });
+  });
+
+  /**
+   * v0.3：系统级设置（模型默认路由、上下文窗口、日志上限）。
+   * 说明：
+   * - 此配置属于“用户覆盖层（SQLite Override）”；
+   * - Preset 在代码中，Runtime Patch 在 run 创建时临时覆盖。
+   */
+  app.get("/api/config/system", (_req, res) => {
+    try {
+      const data = deps.db.getSystemConfig(deps.projectId);
+      res.json({
+        ok: true,
+        data,
+        meta: {
+          projectId: deps.projectId,
+          layers: ["preset", "sqlite_override", "runtime_patch"],
+          priority: "runtime_patch > sqlite_override > preset"
+        }
+      });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "读取系统配置失败");
+    }
+  });
+
+  app.put("/api/config/system", (req, res) => {
+    try {
+      const body = asObject(req.body);
+      const saved = deps.db.upsertSystemConfig(body as any, deps.projectId);
+      deps.db.writeAudit("update_system_config", "system_config", deps.projectId, saved as unknown as JsonObject);
+      res.json({ ok: true, data: saved });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "更新系统配置失败");
+    }
+  });
+
+  app.get("/api/templates", (_req, res) => {
+    try {
+      const data = listRuntimeTemplates();
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "读取模板列表失败");
+    }
+  });
+
+  app.post("/api/templates/:templateId/apply", (req, res) => {
+    try {
+      const result = applyRuntimeTemplate(deps.db, req.params.templateId);
+      deps.agentRegistry.refresh();
+      deps.workflowRegistry.refresh();
+      deps.toolRegistry.refresh();
+      res.json({
+        ok: true,
+        data: {
+          ...result,
+          projectId: deps.projectId
+        }
+      });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "应用模板失败");
+    }
   });
 
   app.put("/api/tools/:toolId", (req, res) => {

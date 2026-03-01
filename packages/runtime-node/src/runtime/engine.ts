@@ -116,6 +116,7 @@ function summarize(value: JsonValue | undefined): JsonValue | undefined {
 }
 
 export interface RuntimeDeps {
+  projectId: string;
   db: AppDatabase;
   agentRegistry: AgentRegistry;
   workflowRegistry: WorkflowRegistry;

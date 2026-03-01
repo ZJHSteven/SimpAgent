@@ -14,6 +14,7 @@ import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import type {
   AgentSpec,
+  BuiltinToolConfig,
   CanonicalToolSideEffectRecord,
   ForkRunResponse,
   JsonValue,
@@ -66,6 +67,82 @@ interface RunRowSnapshot {
   updated_at: string;
   parent_run_id: string | null;
   parent_checkpoint_id: string | null;
+}
+
+/**
+ * 调试台系统设置（框架层通用，不绑定某个具体 App）。
+ */
+export interface SystemConfig {
+  defaultModelRoute: {
+    vendor: string;
+    apiMode: "responses" | "chat_completions";
+    model: string;
+    baseURL?: string;
+    toolProtocolProfile?: string;
+    temperature?: number;
+  };
+  contextWindow: {
+    conversationRounds: number;
+  };
+  tracePolicy: {
+    wsLogLimit: number;
+    traceEventLimit: number;
+    stateDiffLimit: number;
+    sideEffectLimit: number;
+  };
+}
+
+/**
+ * 接口层使用的“每轮工具暴露计划”行视图。
+ * 说明：
+ * - 保留 plan 原文，方便前端在详情抽屉内直接查看。
+ */
+export interface ToolExposurePlanRow {
+  planId: string;
+  runId: string;
+  threadId: string;
+  nodeId?: string;
+  agentId?: string;
+  adapterKind: string;
+  createdAt: string;
+  plan: ToolExposurePlan;
+}
+
+/**
+ * 接口层使用的 request_user_input 行视图。
+ */
+export interface UserInputRequestRow {
+  requestId: string;
+  runId: string;
+  threadId: string;
+  nodeId?: string;
+  agentId?: string;
+  status: string;
+  payload: JsonValue;
+  answer?: JsonValue;
+  requestedAt: string;
+  answeredAt?: string;
+}
+
+function defaultSystemConfig(): SystemConfig {
+  return {
+    defaultModelRoute: {
+      vendor: "mock",
+      apiMode: "responses",
+      model: "gpt-5-mini",
+      toolProtocolProfile: "auto",
+      temperature: 0.4
+    },
+    contextWindow: {
+      conversationRounds: 5
+    },
+    tracePolicy: {
+      wsLogLimit: 200,
+      traceEventLimit: 2000,
+      stateDiffLimit: 200,
+      sideEffectLimit: 200
+    }
+  };
 }
 
 export class AppDatabase {
@@ -272,6 +349,99 @@ export class AppDatabase {
           )
           .get(toolId) as { payload_json: string } | undefined);
     return row ? fromJson<ToolSpec>(row.payload_json) : null;
+  }
+
+  /**
+   * 读取某项目下所有内置工具运行配置。
+   */
+  listBuiltinToolConfigs(projectId = "default"): BuiltinToolConfig[] {
+    const rows = this.db
+      .prepare(
+        `SELECT payload_json
+         FROM builtin_tool_configs
+         WHERE project_id = ?
+         ORDER BY name ASC`
+      )
+      .all(projectId) as Array<{ payload_json: string }>;
+    return rows.map((row) => fromJson<BuiltinToolConfig>(row.payload_json));
+  }
+
+  getBuiltinToolConfig(name: string, projectId = "default"): BuiltinToolConfig | null {
+    const row = this.db
+      .prepare(
+        `SELECT payload_json
+         FROM builtin_tool_configs
+         WHERE project_id = ? AND name = ?`
+      )
+      .get(projectId, name) as { payload_json: string } | undefined;
+    return row ? fromJson<BuiltinToolConfig>(row.payload_json) : null;
+  }
+
+  saveBuiltinToolConfig(config: BuiltinToolConfig, projectId = "default"): BuiltinToolConfig {
+    this.db
+      .prepare(
+        `INSERT INTO builtin_tool_configs (project_id, name, payload_json, updated_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(project_id, name) DO UPDATE SET
+           payload_json = excluded.payload_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(projectId, config.name, toJson(config), nowIso());
+    return { ...config };
+  }
+
+  getSystemConfig(projectId = "default"): SystemConfig {
+    const row = this.db
+      .prepare(`SELECT payload_json FROM system_configs WHERE project_id = ?`)
+      .get(projectId) as { payload_json: string } | undefined;
+    if (!row) return defaultSystemConfig();
+    const parsed = fromJson<Partial<SystemConfig>>(row.payload_json);
+    return {
+      ...defaultSystemConfig(),
+      ...parsed,
+      defaultModelRoute: {
+        ...defaultSystemConfig().defaultModelRoute,
+        ...(parsed.defaultModelRoute ?? {})
+      },
+      contextWindow: {
+        ...defaultSystemConfig().contextWindow,
+        ...(parsed.contextWindow ?? {})
+      },
+      tracePolicy: {
+        ...defaultSystemConfig().tracePolicy,
+        ...(parsed.tracePolicy ?? {})
+      }
+    };
+  }
+
+  upsertSystemConfig(nextConfig: Partial<SystemConfig>, projectId = "default"): SystemConfig {
+    const current = this.getSystemConfig(projectId);
+    const merged: SystemConfig = {
+      ...current,
+      ...nextConfig,
+      defaultModelRoute: {
+        ...current.defaultModelRoute,
+        ...(nextConfig.defaultModelRoute ?? {})
+      },
+      contextWindow: {
+        ...current.contextWindow,
+        ...(nextConfig.contextWindow ?? {})
+      },
+      tracePolicy: {
+        ...current.tracePolicy,
+        ...(nextConfig.tracePolicy ?? {})
+      }
+    };
+    this.db
+      .prepare(
+        `INSERT INTO system_configs (project_id, payload_json, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(project_id) DO UPDATE SET
+           payload_json = excluded.payload_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(projectId, toJson(merged), nowIso());
+    return merged;
   }
 
   /**
@@ -660,6 +830,37 @@ export class AppDatabase {
     return rows.map((row) => fromJson<ToolExposurePlan>(row.plan_json));
   }
 
+  listToolExposurePlanRows(runId: string, limit = 100): ToolExposurePlanRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT plan_id, run_id, thread_id, node_id, agent_id, adapter_kind, plan_json, created_at
+         FROM tool_exposure_plans
+         WHERE run_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(runId, limit) as Array<{
+      plan_id: string;
+      run_id: string;
+      thread_id: string;
+      node_id: string | null;
+      agent_id: string | null;
+      adapter_kind: string;
+      plan_json: string;
+      created_at: string;
+    }>;
+    return rows.map((row) => ({
+      planId: row.plan_id,
+      runId: row.run_id,
+      threadId: row.thread_id,
+      nodeId: row.node_id ?? undefined,
+      agentId: row.agent_id ?? undefined,
+      adapterKind: row.adapter_kind,
+      createdAt: row.created_at,
+      plan: fromJson<ToolExposurePlan>(row.plan_json)
+    }));
+  }
+
   /**
    * v0.2：写入 run 内部计划状态（update_plan 工具使用）。
    */
@@ -746,6 +947,40 @@ export class AppDatabase {
     }>;
     return rows.map((row) => ({
       requestId: row.request_id,
+      status: row.status,
+      payload: fromJson<JsonValue>(row.payload_json),
+      answer: row.answer_json ? fromJson<JsonValue>(row.answer_json) : undefined,
+      requestedAt: row.requested_at,
+      answeredAt: row.answered_at ?? undefined
+    }));
+  }
+
+  listUserInputRequestRows(runId: string): UserInputRequestRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT request_id, run_id, thread_id, node_id, agent_id, status, payload_json, answer_json, requested_at, answered_at
+         FROM user_input_requests
+         WHERE run_id = ?
+         ORDER BY requested_at DESC`
+      )
+      .all(runId) as Array<{
+      request_id: string;
+      run_id: string;
+      thread_id: string;
+      node_id: string | null;
+      agent_id: string | null;
+      status: string;
+      payload_json: string;
+      answer_json: string | null;
+      requested_at: string;
+      answered_at: string | null;
+    }>;
+    return rows.map((row) => ({
+      requestId: row.request_id,
+      runId: row.run_id,
+      threadId: row.thread_id,
+      nodeId: row.node_id ?? undefined,
+      agentId: row.agent_id ?? undefined,
       status: row.status,
       payload: fromJson<JsonValue>(row.payload_json),
       answer: row.answer_json ? fromJson<JsonValue>(row.answer_json) : undefined,

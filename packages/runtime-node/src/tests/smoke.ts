@@ -23,21 +23,23 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function main() {
+  const projectId = "smoke";
   const __filename = fileURLToPath(import.meta.url);
   const backendRoot = path.resolve(path.dirname(__filename), "../..");
-  const dataDir = path.join(backendRoot, "data");
+  const dataDir = path.join(backendRoot, "data", projectId);
   const db = new AppDatabase(path.join(dataDir, "framework-smoke.sqlite"));
   seedDefaultConfigs(db);
 
   const agentRegistry = new AgentRegistry(db);
   const workflowRegistry = new WorkflowRegistry(db);
-  const toolRegistry = new ToolRegistry(db);
+  const toolRegistry = new ToolRegistry(db, projectId);
   agentRegistry.refresh();
   workflowRegistry.refresh();
   toolRegistry.refresh();
 
   const traceBus = new TraceEventBus(db);
   const engine = new FrameworkRuntimeEngine({
+    projectId,
     db,
     agentRegistry,
     workflowRegistry,
@@ -93,4 +95,3 @@ main().catch((error) => {
   console.error("SMOKE_FAILED", error);
   process.exitCode = 1;
 });
-

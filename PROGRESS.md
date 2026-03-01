@@ -40,15 +40,23 @@
     - `promptTrace.promptAssemblyPlan` 已落库可查。
   - 节点级最小 `state diff` 摘要落库与 trace。
   - HTTP 新接口：builtin tools、`apply_patch dry-run`、`state-diffs`、`side-effects`、`run plan`、`tool exposure policies`、`prompt-unit-overrides patch`。
+  - `runtime-node` v0.3（框架层）补齐完成：
+    - 新增 `GET /api/runs/:runId/tool-exposure-plans` 与 `GET /api/runs/:runId/user-input-requests`。
+    - 新增 `GET/PUT /api/config/system`（系统级默认模型路由/窗口/日志上限）。
+    - 新增 `GET /api/templates` 与 `POST /api/templates/:templateId/apply`。
+    - 内置工具配置由“内存态”迁移到 SQLite 表 `builtin_tool_configs`（重启不丢失）。
+    - 新增 `system_configs` 表与默认系统配置回退逻辑。
+    - 内置医学模板 `mededu-default-v1` 已内置，可一键应用生成多 Agent 预设。
+    - `runtime-node` 启动新增 `SIMPAGENT_PROJECT_ID` 项目隔离目录（默认 `dev-console`）。
   - WS 增强：`run_snapshot.latestTraceSeq`、`REPLAY_WINDOW_MISS` warning。
   - 前端测试工作台（Vite/React）：白皮书风单页，多面板覆盖 run/trace/history/fork/builtin/apply_patch/WS 日志。
 - 验证：`npm run build:workspaces` 通过、`npm run --workspace @simpagent/runtime-node test:smoke` 通过、根前端 `npm run build` 通过（2026-03-01）。
-- 正在做：将根目录临时前端迁移到 `apps/dev-console`，并补 Worker/Tauri 侧更完整端到端测试。
+- 正在做：将根目录临时前端迁移到 `apps/dev-console`，并按 7 页信息架构实现可操作调试台（路由化 + HTTP/WS 联调）。
 - 下一步：
-  1. 将 `runtime-node` 中剩余 Node 强耦合模块继续下沉到适配层实现，保持 `core` 纯逻辑边界。
-  2. 为 `runtime-worker` 增加更多与 Node 对齐的接口（history/patch/fork）。
-  3. 对 `runtime-tauri-bridge` 补充命令协议版本控制与错误码标准化。
-  4. 把根前端调试台迁移到 `apps/dev-console`，并对齐 monorepo 运行脚本。
+  1. 完成 `apps/dev-console` 七页路由与融合运行舱（Run Fusion）交互落地。
+  2. 前端设置页接通 `config/system`、模板应用与三层配置可视化。
+  3. 跑通 `build:workspaces`、`runtime-node test:smoke`、`dev-console build` 全链路验证。
+  4. 同步更新 README / PLANS / PROGRESS 的页面-接口映射文档。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：执行内核采用 LangGraph.js（原因：直接获得 checkpoint / interrupt / replay / history / updateState，避免自研运行时黑洞）。

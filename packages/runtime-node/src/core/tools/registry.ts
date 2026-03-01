@@ -12,10 +12,17 @@ export class ToolRegistry {
   private cache = new Map<string, ToolSpec>();
   private readonly builtinConfigCache = new Map<string, BuiltinToolConfig>();
 
-  constructor(private readonly db: AppDatabase) {
+  constructor(
+    private readonly db: AppDatabase,
+    private readonly projectId = "default"
+  ) {
     // 初始化内置工具默认配置（首版先使用内存默认值，后续再接 SQLite 版本化配置）。
     for (const def of BUILTIN_TOOL_DEFINITIONS) {
       this.builtinConfigCache.set(def.name, def.defaultConfig);
+    }
+    // v0.3：覆盖数据库中的项目级配置，解决重启丢失问题。
+    for (const persisted of this.db.listBuiltinToolConfigs(this.projectId)) {
+      this.builtinConfigCache.set(persisted.name, persisted);
     }
   }
 
@@ -66,9 +73,9 @@ export class ToolRegistry {
   }
 
   saveBuiltinConfig(config: BuiltinToolConfig): BuiltinToolConfig {
-    // v0.2 第一阶段：先以内存配置生效，后续再落 SQLite 版本化（避免过早改 seed/兼容逻辑）。
-    this.builtinConfigCache.set(config.name, config);
-    return { ...config };
+    const saved = this.db.saveBuiltinToolConfig(config, this.projectId);
+    this.builtinConfigCache.set(saved.name, saved);
+    return saved;
   }
 
   /**
