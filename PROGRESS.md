@@ -48,15 +48,26 @@
     - 新增 `system_configs` 表与默认系统配置回退逻辑。
     - 内置医学模板 `mededu-default-v1` 已内置，可一键应用生成多 Agent 预设。
     - `runtime-node` 启动新增 `SIMPAGENT_PROJECT_ID` 项目隔离目录（默认 `dev-console`）。
+  - `apps/dev-console` 已从占位升级为可运行工程（Vite + React + TS）并完成 7 页路由：
+    - `/agents`：Agent/PromptBlock/Tool 配置入口（JSON 可编辑）。
+    - `/workflow`：Workflow 配置入口与节点摘要。
+    - `/memory`：state-diffs / side-effects / run plan 观察。
+    - `/run`：融合运行舱（会话+时间线+节点详情+日志抽屉，含 WS 订阅）。
+    - `/trace`：trace / prompt compile 审计页。
+    - `/replay`：history / checkpoint / patch / fork 实验页。
+    - `/settings`：system config + builtin tools + 模板应用。
+  - Stitch 设计联动已执行：
+    - Run Fusion 改造生成屏：`019a7de7174740a99d4dc7778be2ea61`（含 loading/error 变体）。
+    - System Settings 新增屏：`65f544feea4b4d168e92dc6a96fe610b`（含 loading/success 变体）。
   - WS 增强：`run_snapshot.latestTraceSeq`、`REPLAY_WINDOW_MISS` warning。
   - 前端测试工作台（Vite/React）：白皮书风单页，多面板覆盖 run/trace/history/fork/builtin/apply_patch/WS 日志。
 - 验证：`npm run build:workspaces` 通过、`npm run --workspace @simpagent/runtime-node test:smoke` 通过、根前端 `npm run build` 通过（2026-03-01）。
-- 正在做：将根目录临时前端迁移到 `apps/dev-console`，并按 7 页信息架构实现可操作调试台（路由化 + HTTP/WS 联调）。
+- 正在做：同步页面/API 对照文档与剩余细节校验（重点是配置三层可视化说明与工具协议策略说明）。
 - 下一步：
-  1. 完成 `apps/dev-console` 七页路由与融合运行舱（Run Fusion）交互落地。
-  2. 前端设置页接通 `config/system`、模板应用与三层配置可视化。
-  3. 跑通 `build:workspaces`、`runtime-node test:smoke`、`dev-console build` 全链路验证。
-  4. 同步更新 README / PLANS / PROGRESS 的页面-接口映射文档。
+  1. 在 Settings 页补充三层配置（Preset/Override/Runtime Patch）可视化对照卡片。
+  2. 补充 Run Fusion 的分支图可视组件（当前为时间线列表，后续可升级成节点图）。
+  3. 规划 `apps/learning-desktop` 与 `apps/trpg-desktop` 对 `dev-console` 配置能力的复用边界。
+  4. 补齐 worker/tauri 路径下与 `config/system` 对齐的桥接协议。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：执行内核采用 LangGraph.js（原因：直接获得 checkpoint / interrupt / replay / history / updateState，避免自研运行时黑洞）。

@@ -14,7 +14,7 @@ simpagent/
   apps/
     trpg-desktop/          # 跑团桌面端占位
     learning-desktop/      # 学习桌面端占位
-    dev-console/           # 调试控制台占位（当前仍保留根目录前端）
+    dev-console/           # 调试控制台（7页可运行）
   backend/                 # 兼容壳：旧命令转发到 runtime-node
 ```
 
@@ -38,6 +38,12 @@ npm run build:workspaces
 
 ```bash
 npm run dev:runtime-node
+
+运行 dev-console（7 页调试台）：
+
+```bash
+npm run dev:dev-console
+```
 ```
 
 运行 Node 冒烟测试：
