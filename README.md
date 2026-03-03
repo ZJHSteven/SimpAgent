@@ -44,6 +44,20 @@ npm run dev:runtime-node
 ```bash
 npm run dev:dev-console
 ```
+
+一条命令同时启动 dev-console 独立后端 + 前端：
+
+```bash
+npm run dev:dev-console:full
+```
+
+按 App 独立后端启动（project_id + 端口隔离）：
+
+```bash
+npm run dev:backend:dev-console   # project_id=dev-console, port=3002
+npm run dev:backend:learning      # project_id=learning-desktop, port=3012
+npm run dev:backend:trpg          # project_id=trpg-desktop, port=3022
+```
 ```
 
 运行 Node 冒烟测试：
