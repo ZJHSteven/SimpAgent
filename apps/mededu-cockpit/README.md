@@ -23,3 +23,11 @@ npm run build:mededu
 # 预览构建产物
 npm run preview:mededu
 ```
+
+在 `apps/mededu-cockpit` 目录执行也可以：
+
+```bash
+npm run dev:mededu
+npm run build:mededu
+npm run preview:mededu
+```
