@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:mededu": "npm run dev",
+    "dev:mededu": "vite",
     "build": "tsc -b && vite build",
-    "build:mededu": "npm run build",
+    "build:mededu": "tsc -b && vite build",
     "preview": "vite preview --host",
-    "preview:mededu": "npm run preview"
+    "preview:mededu": "vite preview --host"
   },
   "dependencies": {
     "react": "^19.2.0",
