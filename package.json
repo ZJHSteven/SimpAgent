@@ -11,6 +11,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "dev:dev-console": "npm run --workspace @simpagent/app-dev-console dev",
+    "build:dev-console": "npm run --workspace @simpagent/app-dev-console build",
+    "preview:dev-console": "npm run --workspace @simpagent/app-dev-console preview",
     "build:workspaces": "npm run --workspaces --if-present build",
     "test:workspaces": "npm run --workspaces --if-present test",
     "dev:runtime-node": "npm run --workspace @simpagent/runtime-node dev",
