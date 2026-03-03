@@ -1,6 +1,6 @@
 # dev-console
 
-`apps/dev-console` 是 SimpAgent 的框架能力调试台（7 页路由）。
+`apps/dev-console` 是 SimpAgent 的框架能力调试台目录（当前以后端与预设为主）。
 
 它的定位不是“另写一套后端逻辑”，而是：
 - 前端负责把框架能力可视化成可操作 UI（表单、开关、按钮）；
@@ -17,21 +17,16 @@
 
 ## 运行方式
 
-在仓库根目录执行（当前推荐分别启动）：
+当前此目录主要使用独立后端：
 
 ```bash
-# 终端1：dev-console 独立后端
-npm run dev:backend:dev-console
-
-# 终端2：dev-console 前端
-npm run dev:dev-console
+# 在仓库根目录执行
+npm run --workspace @simpagent/dev-console-backend dev
 ```
 
-构建前端：
+医学教育前端已迁移到：
 
-```bash
-npm run build:dev-console
-```
+- `apps/mededu-cockpit/`
 
 默认连接（dev-console）：
 
