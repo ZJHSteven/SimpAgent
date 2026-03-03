@@ -1,7 +1,7 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：已完成一次性工程分层重构，项目从“单 backend + 单前端”升级为 `monorepo + 多运行时适配` 结构；Node 主链路可用，Worker 与 Tauri bridge 已有可运行骨架。
+- 现状：已完成一次性工程分层重构，项目从“单 backend + 单前端”升级为 `monorepo + 多运行时适配` 结构；`apps/dev-console` 已具备独立可运行前端（全中文临床教学运行舱 + 非线性画布动画 + mock 演示链路）。
 - 已完成：
 -  - Monorepo/workspaces 建立完成：`packages/*` + `apps/*` + `backend` 兼容壳。
 -  - 新增 `@simpagent/core`：
@@ -19,6 +19,11 @@
 -  - 新增 `@simpagent/runtime-tauri-bridge`：
 -    - 定义 Tauri invoke 契约与 mock bridge。
 -  - 新增 `apps/trpg-desktop`、`apps/learning-desktop`、`apps/dev-console` 工程位。
+-  - `apps/dev-console` 前端已从“占位包”升级为独立 Vite+React 工程：
+-    - 四区布局（左会话 / 中画布 / 右监控 / 底日志）已落地。
+-    - 中央画布支持拖拽平移、点阵背景、非线性多节点连线动画。
+-    - 页面文案为全中文，支持稳定截图用于标书材料。
+-    - 根脚本新增：`dev:dev-console`、`build:dev-console`、`preview:dev-console`。
 -  - `backend` 改为兼容壳，旧命令转发到 `@simpagent/runtime-node`。
   - v0.1 主链路保留可用（LangGraph.js 运行时、HTTP API、WS 调试通道、SQLite 配置/Trace、checkpoint/history/patch/fork）。
   - v0.2 类型契约扩展（Canonical Tool Layer / PromptUnit / ToolExposurePlan / SideEffect / StateDiff / BuiltinToolConfig / PlanState / UserInputRequestState）。
@@ -50,12 +55,12 @@
     - `runtime-node` 启动新增 `SIMPAGENT_PROJECT_ID` 项目隔离目录（默认 `dev-console`）。
   - WS 增强：`run_snapshot.latestTraceSeq`、`REPLAY_WINDOW_MISS` warning。
   - 前端测试工作台（Vite/React）：白皮书风单页，多面板覆盖 run/trace/history/fork/builtin/apply_patch/WS 日志。
-- 验证：`npm run build:workspaces` 通过、`npm run --workspace @simpagent/runtime-node test:smoke` 通过、根前端 `npm run build` 通过（2026-03-01）。
-- 正在做：将根目录临时前端迁移到 `apps/dev-console`，并按 7 页信息架构实现可操作调试台（路由化 + HTTP/WS 联调）。
+- 验证：`npm run build:workspaces` 通过、`npm run --workspace @simpagent/runtime-node test:smoke` 通过、根前端 `npm run build` 通过（2026-03-01）；`npm run --workspace @simpagent/app-dev-console build` 通过（2026-03-03）。
+- 正在做：在 `apps/dev-console` 新运行舱页面基础上，继续推进与后端真实接口（run/trace/config）联调。
 - 下一步：
-  1. 完成 `apps/dev-console` 七页路由与融合运行舱（Run Fusion）交互落地。
+  1. 将当前 mock 运行舱接入真实 `run/trace` 数据流（保留 mock 回退开关）。
   2. 前端设置页接通 `config/system`、模板应用与三层配置可视化。
-  3. 跑通 `build:workspaces`、`runtime-node test:smoke`、`dev-console build` 全链路验证。
+  3. 补齐 `dev:dev-console:full` 一键联启脚本或文档替代方案。
   4. 同步更新 README / PLANS / PROGRESS 的页面-接口映射文档。
 
 ## 关键决策与理由（防止“吃书”）

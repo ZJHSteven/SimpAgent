@@ -38,6 +38,7 @@ npm run build:workspaces
 
 ```bash
 npm run dev:runtime-node
+```
 
 运行 dev-console（7 页调试台）：
 
@@ -45,19 +46,16 @@ npm run dev:runtime-node
 npm run dev:dev-console
 ```
 
-一条命令同时启动 dev-console 独立后端 + 前端：
+运行 dev-console 独立后端（推荐与前端分终端启动）：
 
 ```bash
-npm run dev:dev-console:full
+npm run --workspace @simpagent/dev-console-backend dev
 ```
 
 按 App 独立后端启动（project_id + 端口隔离）：
 
 ```bash
-npm run dev:backend:dev-console   # project_id=dev-console, port=3002
-npm run dev:backend:learning      # project_id=learning-desktop, port=3012
-npm run dev:backend:trpg          # project_id=trpg-desktop, port=3022
-```
+目前已内置 `dev-console` 独立后端；其它 App 后端脚本可按同模式补充。
 ```
 
 运行 Node 冒烟测试：

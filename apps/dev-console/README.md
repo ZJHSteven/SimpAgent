@@ -17,13 +17,7 @@
 
 ## 运行方式
 
-在仓库根目录执行（推荐，一条命令同时启动 dev-console 后端 + 前端）：
-
-```bash
-npm run dev:dev-console:full
-```
-
-如果你只想分别启动：
+在仓库根目录执行（当前推荐分别启动）：
 
 ```bash
 # 终端1：dev-console 独立后端
@@ -31,6 +25,12 @@ npm run dev:backend:dev-console
 
 # 终端2：dev-console 前端
 npm run dev:dev-console
+```
+
+构建前端：
+
+```bash
+npm run build:dev-console
 ```
 
 默认连接（dev-console）：
