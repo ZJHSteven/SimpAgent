@@ -14,8 +14,6 @@
     "build:workspaces": "npm run --workspaces --if-present build",
     "test:workspaces": "npm run --workspaces --if-present test",
     "dev:runtime-node": "npm run --workspace @simpagent/runtime-node dev",
-    "dev:dev-console": "npm run --workspace @simpagent/app-dev-console dev",
-    "build:dev-console": "npm run --workspace @simpagent/app-dev-console build",
     "build:runtime-node": "npm run --workspace @simpagent/runtime-node build",
     "start:runtime-node": "npm run --workspace @simpagent/runtime-node start",
     "lint": "eslint .",
