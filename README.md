@@ -14,7 +14,8 @@ simpagent/
   apps/
     trpg-desktop/          # 跑团桌面端占位
     learning-desktop/      # 学习桌面端占位
-    dev-console/           # 调试控制台（7页可运行）
+    dev-console/           # 框架调试台（后端与预设）
+    mededu-cockpit/        # AI 医学教育前端应用（独立运行）
   backend/                 # 兼容壳：旧命令转发到 runtime-node
 ```
 
@@ -40,22 +41,22 @@ npm run build:workspaces
 npm run dev:runtime-node
 ```
 
-运行 dev-console（7 页调试台）：
+运行医学教育前端应用：
 
 ```bash
-npm run dev:dev-console
+npm run dev:mededu
 ```
 
-运行 dev-console 独立后端（推荐与前端分终端启动）：
+构建医学教育前端应用：
+
+```bash
+npm run build:mededu
+```
+
+运行 dev-console 独立后端：
 
 ```bash
 npm run --workspace @simpagent/dev-console-backend dev
-```
-
-按 App 独立后端启动（project_id + 端口隔离）：
-
-```bash
-目前已内置 `dev-console` 独立后端；其它 App 后端脚本可按同模式补充。
 ```
 
 运行 Node 冒烟测试：
