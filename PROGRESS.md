@@ -24,6 +24,7 @@
 -    - 中央画布支持拖拽平移、点阵背景、非线性多节点连线动画。
 -    - 页面文案为全中文，支持稳定截图用于标书材料。
 -    - 根脚本新增：`dev:mededu`、`build:mededu`、`preview:mededu`。
+-    - 子目录脚本别名已补齐：可在 `apps/mededu-cockpit` 目录直接运行 `dev:mededu` / `build:mededu` / `preview:mededu`。
 -  - `backend` 改为兼容壳，旧命令转发到 `@simpagent/runtime-node`。
   - v0.1 主链路保留可用（LangGraph.js 运行时、HTTP API、WS 调试通道、SQLite 配置/Trace、checkpoint/history/patch/fork）。
   - v0.2 类型契约扩展（Canonical Tool Layer / PromptUnit / ToolExposurePlan / SideEffect / StateDiff / BuiltinToolConfig / PlanState / UserInputRequestState）。
