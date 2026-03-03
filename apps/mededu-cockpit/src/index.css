@@ -1,0 +1,51 @@
+:root {
+  /* 全局色板：浅色专业风格，保证截图印刷时层次清晰。 */
+  --bg: #f2f5fa;
+  --surface: #ffffff;
+  --surface-soft: #f8fbff;
+  --line: #d9e3ef;
+  --line-strong: #bfd0e3;
+  --text-main: #152235;
+  --text-soft: #3a506d;
+  --text-muted: #627891;
+  --primary: #2e67c7;
+  --primary-soft: #e8f0ff;
+  --good: #1f9b58;
+  --warn: #bf7b1f;
+  --danger: #c74343;
+
+  color: var(--text-main);
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  line-height: 1.45;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(46, 103, 199, 0.1), transparent 42%),
+    radial-gradient(circle at 92% 0%, rgba(35, 77, 147, 0.08), transparent 40%),
+    var(--bg);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
