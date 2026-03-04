@@ -4,6 +4,8 @@
  * - 让框架“开箱可跑”，同时保留后续通过 API 热更新的能力。
  */
 
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import type { AgentSpec, PromptBlock, ToolSpec, WorkflowSpec } from "../types/index.js";
 import { AppDatabase } from "./db.js";
 
@@ -144,6 +146,14 @@ export function seedDefaultConfigs(db: AppDatabase): void {
       name: "Orchestrator",
       role: "orchestrator",
       description: "负责拆分任务、选择下一个节点。",
+      promptBindings: [
+        { bindingId: "bind.orchestrator.system", unitId: "block.system.safety", enabled: true, order: 10 },
+        { bindingId: "bind.orchestrator.persona", unitId: "block.persona.orchestrator", enabled: true, order: 20 },
+        { bindingId: "bind.orchestrator.task", unitId: "block.task.input", enabled: true, order: 30 },
+        { bindingId: "bind.orchestrator.tool", unitId: "block.tool.hint", enabled: true, order: 40 }
+      ],
+      toolAllowList: ["shell_command", "read_file", "web_search", "update_plan", "request_user_input"],
+      toolRoutePolicy: { mode: "auto", reason: "默认按 provider 能力自动选择" },
       modelPolicyId: "model.default",
       promptAssemblyPolicyId: "prompt.default",
       contextPolicyId: "context.default",
@@ -169,6 +179,14 @@ export function seedDefaultConfigs(db: AppDatabase): void {
       name: "Worker",
       role: "worker",
       description: "负责完成具体文本生成与工具调用。",
+      promptBindings: [
+        { bindingId: "bind.worker.system", unitId: "block.system.safety", enabled: true, order: 10 },
+        { bindingId: "bind.worker.persona", unitId: "block.persona.worker", enabled: true, order: 20 },
+        { bindingId: "bind.worker.task", unitId: "block.task.input", enabled: true, order: 30 },
+        { bindingId: "bind.worker.tool", unitId: "block.tool.hint", enabled: true, order: 40 }
+      ],
+      toolAllowList: ["shell_command", "read_file", "web_search", "apply_patch", "view_image"],
+      toolRoutePolicy: { mode: "native_function_first", reason: "优先用原生函数调用" },
       modelPolicyId: "model.default",
       promptAssemblyPolicyId: "prompt.default",
       contextPolicyId: "context.default",
@@ -189,6 +207,12 @@ export function seedDefaultConfigs(db: AppDatabase): void {
       name: "Reviewer",
       role: "reviewer",
       description: "负责校验格式与总结结果。",
+      promptBindings: [
+        { bindingId: "bind.reviewer.system", unitId: "block.system.safety", enabled: true, order: 10 },
+        { bindingId: "bind.reviewer.task", unitId: "block.task.input", enabled: true, order: 20 }
+      ],
+      toolAllowList: ["read_file", "update_plan"],
+      toolRoutePolicy: { mode: "prompt_protocol_only", reason: "示例：强制走提示词协议回退" },
       modelPolicyId: "model.default",
       promptAssemblyPolicyId: "prompt.default",
       contextPolicyId: "context.default",
@@ -236,3 +260,86 @@ export function seedDefaultConfigs(db: AppDatabase): void {
   });
 }
 
+function readPresetArray<T>(presetDir: string, fileName: string): T[] {
+  const filePath = path.join(presetDir, fileName);
+  if (!existsSync(filePath)) return [];
+  const text = readFileSync(filePath, "utf8");
+  const parsed = JSON.parse(text);
+  if (!Array.isArray(parsed)) {
+    throw new Error(`预设文件必须是数组：${filePath}`);
+  }
+  return parsed as T[];
+}
+
+/**
+ * 从 JSON 目录加载预设配置。
+ * 说明：
+ * - 这是三层配置中的 Preset 层（文件态）；
+ * - 仅在“数据库里不存在同 ID 配置”时写入，避免覆盖用户热更新内容。
+ */
+export function seedPresetConfigsFromDir(
+  db: AppDatabase,
+  presetDir: string
+): {
+  tools: number;
+  promptBlocks: number;
+  agents: number;
+  workflows: number;
+} {
+  if (!existsSync(presetDir)) {
+    return { tools: 0, promptBlocks: 0, agents: 0, workflows: 0 };
+  }
+
+  const tools = readPresetArray<ToolSpec>(presetDir, "tools.json");
+  const promptBlocks = readPresetArray<PromptBlock>(presetDir, "prompt_blocks.json");
+  const agents = readPresetArray<AgentSpec>(presetDir, "agents.json");
+  const workflows = readPresetArray<WorkflowSpec>(presetDir, "workflows.json");
+
+  let toolsSaved = 0;
+  let blocksSaved = 0;
+  let agentsSaved = 0;
+  let workflowsSaved = 0;
+
+  for (const tool of tools) {
+    if (!db.getTool(tool.id)) {
+      db.saveVersionedConfig("tool", tool);
+      toolsSaved += 1;
+    }
+  }
+
+  for (const block of promptBlocks) {
+    if (!db.getPromptBlock(block.id)) {
+      db.saveVersionedConfig("prompt_block", block);
+      blocksSaved += 1;
+    }
+  }
+
+  for (const agent of agents) {
+    if (!db.getAgent(agent.id)) {
+      db.saveVersionedConfig("agent", agent);
+      agentsSaved += 1;
+    }
+  }
+
+  for (const workflow of workflows) {
+    if (!db.getWorkflow(workflow.id)) {
+      db.saveVersionedConfig("workflow", workflow);
+      workflowsSaved += 1;
+    }
+  }
+
+  db.writeAudit("seed_preset_from_json", "preset", presetDir, {
+    presetDir,
+    toolsSaved,
+    promptBlocksSaved: blocksSaved,
+    agentsSaved,
+    workflowsSaved
+  });
+
+  return {
+    tools: toolsSaved,
+    promptBlocks: blocksSaved,
+    agents: agentsSaved,
+    workflows: workflowsSaved
+  };
+}

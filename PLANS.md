@@ -103,3 +103,29 @@
 - 三大专家 Agent（虚拟患者、临床专家、基础研究专家）+ 学生角色在流程中可见且连线动态。
 - 页面可在本地运行并构建通过，适合截取到标书材料。
 - `PROGRESS.md` 记录本轮实现结果与下一步计划。
+
+---
+
+## 任务名称（2026-03-04）
+- PromptUnit 统一命名改造 + Agent 绑定装配 + 三层工具路由对齐（不含 ToolSpec 最终统一方案）
+
+## 执行目标（本轮实现）
+- 将持久化提示词核心概念统一为 `PromptUnit`（兼容旧 `PromptBlock` 字段与接口）。
+- 将 Agent 输入装配中心迁移到 `promptBindings`（启用状态/顺序/局部覆盖由 Agent 管理）。
+- 运行时继续以 `messages[]` 作为唯一直接执行输入，并保留 trace 来源映射。
+- 在不改 ToolSpec 统一定义的前提下，对齐工具三层运行逻辑（外层来源 -> 中层 canonical -> 内层 API 暴露适配）。
+- 落地 Agent 级工具控制：`toolAllowList + toolRoutePolicy`。
+
+## 分阶段计划（本轮）
+1. 扩展类型契约：新增 `PromptUnit`/`AgentPromptBinding`/`AgentToolRoutePolicy`，并保留旧字段兼容（已完成）
+2. 改造 Prompt 编译器：以 `promptBindings` 作为主装配入口，输出 message-first + trace（已完成）
+3. 改造 runtime-node：接入 `toolAllowList` 与 `toolRoutePolicy`，补齐 workflow tool node 的输入输出映射与条件表达式边（已完成）
+4. API 与存储别名兼容：新增 `/api/prompt-units`，保留 `/api/prompt-blocks`（已完成）
+5. 预设与模板同步：补齐 Agent 新字段并验证构建（已完成）
+6. ToolSpec 统一定义（外层定义模型）后续单开任务推进（待执行）
+
+## 本轮完成判据
+- `packages/core`、`packages/runtime-node`、根工程构建通过。
+- Agent 可通过 `promptBindings` 控制 PromptUnit 装配顺序与启用状态。
+- Agent 可通过 `toolRoutePolicy` 控制内层路由（含 `shell_only` 仅暴露 shell bridge）。
+- 兼容旧配置（PromptBlock/旧 API 路径）不被破坏。

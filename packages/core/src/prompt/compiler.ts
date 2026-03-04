@@ -1,16 +1,17 @@
 /**
  * 本文件作用：
- * - 实现 Prompt 编译器（v0.2）：从 PromptBlock/历史/记忆构建 PromptUnit，
- *   再按 Placement 规则装配为最终 messages。
- * - 产出完整 PromptTrace（含 PromptAssemblyPlan），支持调试器“完全可见”。
+ * - 实现 Prompt 编译器（v0.3）：以 Agent.promptBindings 为核心，把持久化 PromptUnitSpec
+ *   编译为最终 messages[]。
+ * - 运行时主执行面只消费 messages；同时输出 trace 便于调试与追溯。
  *
  * 设计要点：
- * 1) memory/history/worldbook 都视为 PromptUnit，不设特权类型；
- * 2) 支持 run-scope PromptUnitOverride（启停、改角色、改位置、改内容、改排序）；
- * 3) 保留旧 block trace 字段，保证接口兼容。
+ * 1) 持久化层统一为 PromptUnitSpec（旧 PromptBlock 通过类型别名兼容）；
+ * 2) Agent 决定“启用与顺序”，PromptUnitSpec 只保存可复用定义；
+ * 3) 每条最终 message 都带来源元信息（sourceUnitId/sourceKind/bindingId）。
  */
 
 import type {
+  AgentPromptBinding,
   AgentSpec,
   JsonObject,
   MessageRole,
@@ -27,16 +28,9 @@ import type {
   UnifiedMessage
 } from "../types/index.js";
 
-/**
- * 生成 compileId：
- * - 使用跨平台可用的 `globalThis.crypto.randomUUID`；
- * - 若运行环境不支持，则使用时间戳+随机串兜底。
- */
 function newCompileId(): string {
   const cryptoApi = globalThis.crypto as Crypto | undefined;
-  if (cryptoApi?.randomUUID) {
-    return `pc_${cryptoApi.randomUUID().replace(/-/g, "")}`;
-  }
+  if (cryptoApi?.randomUUID) return `pc_${cryptoApi.randomUUID().replace(/-/g, "")}`;
   return `pc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
@@ -55,6 +49,23 @@ interface MessageRecord {
   role: MessageRole;
   content: string;
   metadata?: JsonObject;
+}
+
+interface CompiledUnit {
+  id: string;
+  source: PromptUnit["source"];
+  enabled: boolean;
+  role: MessageRole;
+  contentTemplate: string;
+  renderedContent?: string;
+  placement: PromptPlacement;
+  sortWeight: number;
+  metadata?: JsonObject;
+}
+
+interface OverrideApplyResult {
+  units: PromptBlock[];
+  disabledUnitIds: Set<string>;
 }
 
 function renderTemplate(template: string, vars: Record<string, string>): string {
@@ -80,25 +91,19 @@ function isPromptPlacement(value: unknown): value is PromptPlacement {
 }
 
 function placementFromInsertionPoint(insertionPoint: PromptInsertionPoint): PromptPlacement {
-  return {
-    mode: "slot",
-    slot: insertionPoint
-  };
+  return { mode: "slot", slot: insertionPoint };
 }
 
-function shouldBlockApply(block: PromptBlock, req: PromptCompileRequest): { ok: boolean; reason: string } {
-  if (!block.enabled) return { ok: false, reason: "block disabled" };
-  const trigger = block.trigger;
+function shouldUnitApply(unit: PromptBlock, req: PromptCompileRequest): { ok: boolean; reason: string } {
+  const trigger = unit.trigger;
   if (!trigger) return { ok: true, reason: "no trigger (default include)" };
 
   if (trigger.agentIds && !trigger.agentIds.includes(req.agentId)) {
     return { ok: false, reason: "agentId not matched" };
   }
-
   if (trigger.taskTypes && !trigger.taskTypes.includes(req.taskEnvelope.taskType)) {
     return { ok: false, reason: "taskType not matched" };
   }
-
   if (trigger.keywords && trigger.keywords.length > 0) {
     const mergedText = [
       req.taskEnvelope.taskType,
@@ -110,9 +115,7 @@ function shouldBlockApply(block: PromptBlock, req: PromptCompileRequest): { ok: 
     const hit = trigger.keywords.some((kw) => mergedText.includes(kw.toLowerCase()));
     if (!hit) return { ok: false, reason: "keyword not matched" };
   }
-
-  // v0.2 当前阶段：expression 字段只保留接口，不做 DSL 执行。
-  if (trigger.expression) return { ok: true, reason: "expression accepted (not evaluated in v0.2)" };
+  if (trigger.expression) return { ok: true, reason: "expression accepted (not evaluated in v0.3)" };
   return { ok: true, reason: "trigger matched" };
 }
 
@@ -128,56 +131,57 @@ function buildVars(req: PromptCompileRequest): Record<string, string> {
   };
 }
 
-function applyOverridePatches(blocks: PromptBlock[], patches: PromptOverridePatch[] | undefined): PromptBlock[] {
-  if (!patches || patches.length === 0) return blocks;
-  const map = new Map(blocks.map((item) => [item.id, { ...item }]));
+function applyOverridePatches(units: PromptBlock[], patches: PromptOverridePatch[] | undefined): OverrideApplyResult {
+  if (!patches || patches.length === 0) {
+    return {
+      units,
+      disabledUnitIds: new Set()
+    };
+  }
+  const map = new Map(units.map((item) => [item.id, { ...item }]));
+  const disabledUnitIds = new Set<string>();
   for (const patch of patches) {
-    if (patch.type === "disable_block" && patch.targetBlockId) {
-      const target = map.get(patch.targetBlockId);
-      if (target) target.enabled = false;
+    const targetId = patch.targetUnitId ?? patch.targetBlockId;
+    if ((patch.type === "disable_unit" || patch.type === "disable_block") && targetId) {
+      disabledUnitIds.add(targetId);
       continue;
     }
-    if (patch.type === "replace_block_template" && patch.targetBlockId) {
-      const target = map.get(patch.targetBlockId);
+    if ((patch.type === "replace_unit_template" || patch.type === "replace_block_template") && targetId) {
+      const target = map.get(targetId);
       const template = patch.payload.template;
       if (target && typeof template === "string") target.template = template;
       continue;
     }
-    if (patch.type === "insert_ad_hoc_block") {
+    if (patch.type === "insert_ad_hoc_unit" || patch.type === "insert_ad_hoc_block") {
       const adHoc: PromptBlock = {
         id: `adhoc.${patch.patchId}`,
-        name: "AdHoc Debug Block",
+        name: "AdHoc Debug Unit",
         kind: "hidden_internal",
         template: String(patch.payload.template ?? ""),
+        role: isMessageRole(patch.payload.role) ? patch.payload.role : "developer",
         insertionPoint: (patch.payload.insertionPoint as PromptInsertionPoint) ?? "developer",
         priority: Number(patch.payload.priority ?? 999),
-        enabled: true,
         version: 1
       };
       map.set(adHoc.id, adHoc);
     }
   }
-  return [...map.values()];
+  return {
+    units: [...map.values()],
+    disabledUnitIds
+  };
 }
 
-/**
- * 上下文切片策略（v0.2 最小实现）：
- * - 先保留高重要度条目（importance >= 0.9）；
- * - 再按“最近优先”补齐到预算；
- * - 输出 omitted report，保证可解释。
- */
 function sliceContextSources(req: PromptCompileRequest): {
   kept: PromptCompileRequest["contextSources"];
   omitted: PromptCompileRequest["contextSources"];
   omittedReport: PromptCompileResult["omittedContextReport"];
 } {
-  const budget = 8;
+  const budget = 10;
   const pinned = req.contextSources.filter((item) => (item.importance ?? 0) >= 0.9);
   const rest = req.contextSources.filter((item) => !pinned.includes(item));
   const kept = [...pinned];
-  for (const item of rest.slice(-Math.max(0, budget - kept.length))) {
-    kept.push(item);
-  }
+  for (const item of rest.slice(-Math.max(0, budget - kept.length))) kept.push(item);
   const keptSet = new Set(kept.map((item) => item.id));
   const omitted = req.contextSources.filter((item) => !keptSet.has(item.id));
   return {
@@ -190,7 +194,7 @@ function sliceContextSources(req: PromptCompileRequest): {
   };
 }
 
-function applyPromptUnitOverrides(units: PromptUnit[], overrides: PromptUnitOverride[] | undefined): PromptUnit[] {
+function applyCompiledUnitOverrides(units: CompiledUnit[], overrides: PromptUnitOverride[] | undefined): CompiledUnit[] {
   if (!overrides || overrides.length === 0) return units;
   const map = new Map(units.map((unit) => [unit.id, { ...unit }]));
   for (const override of overrides) {
@@ -227,7 +231,7 @@ function applyPromptUnitOverrides(units: PromptUnit[], overrides: PromptUnitOver
   return [...map.values()];
 }
 
-function baseOrderWeight(unit: PromptUnit): number {
+function baseOrderWeight(unit: CompiledUnit): number {
   if (unit.placement.mode === "slot") return SLOT_ORDER[unit.placement.slot] ?? 500;
   if (unit.placement.mode === "before_role_anchor") return 50;
   if (unit.placement.mode === "after_role_anchor") return 950;
@@ -236,7 +240,7 @@ function baseOrderWeight(unit: PromptUnit): number {
   return 1000;
 }
 
-function insertByRoleAnchor(records: MessageRecord[], unit: PromptUnit, notes: string[]): void {
+function insertByRoleAnchor(records: MessageRecord[], unit: CompiledUnit, notes: string[]): void {
   if (!unit.enabled || !unit.renderedContent) return;
   if (unit.placement.mode !== "before_role_anchor" && unit.placement.mode !== "after_role_anchor") return;
   const placement = unit.placement;
@@ -250,7 +254,7 @@ function insertByRoleAnchor(records: MessageRecord[], unit: PromptUnit, notes: s
       unitId: unit.id,
       role: unit.role,
       content: unit.renderedContent,
-      metadata: { promptUnitId: unit.id, source: unit.source.kind }
+      metadata: unit.metadata
     });
     return;
   }
@@ -259,11 +263,11 @@ function insertByRoleAnchor(records: MessageRecord[], unit: PromptUnit, notes: s
     unitId: unit.id,
     role: unit.role,
     content: unit.renderedContent,
-    metadata: { promptUnitId: unit.id, source: unit.source.kind }
+    metadata: unit.metadata
   });
 }
 
-function insertByMessageAnchor(records: MessageRecord[], unit: PromptUnit, notes: string[]): void {
+function insertByMessageAnchor(records: MessageRecord[], unit: CompiledUnit, notes: string[]): void {
   if (!unit.enabled || !unit.renderedContent) return;
   if (unit.placement.mode !== "before_message_id" && unit.placement.mode !== "after_message_id") return;
   const placement = unit.placement;
@@ -274,7 +278,7 @@ function insertByMessageAnchor(records: MessageRecord[], unit: PromptUnit, notes
       unitId: unit.id,
       role: unit.role,
       content: unit.renderedContent,
-      metadata: { promptUnitId: unit.id, source: unit.source.kind }
+      metadata: unit.metadata
     });
     return;
   }
@@ -283,11 +287,11 @@ function insertByMessageAnchor(records: MessageRecord[], unit: PromptUnit, notes
     unitId: unit.id,
     role: unit.role,
     content: unit.renderedContent,
-    metadata: { promptUnitId: unit.id, source: unit.source.kind }
+    metadata: unit.metadata
   });
 }
 
-function assembleMessages(units: PromptUnit[]): { finalMessages: UnifiedMessage[]; orderedUnitIds: string[]; notes: string[] } {
+function assembleMessages(units: CompiledUnit[]): { finalMessages: UnifiedMessage[]; orderedUnitIds: string[]; notes: string[] } {
   const notes: string[] = [];
   const sorted = [...units].sort((a, b) => {
     const orderDiff = baseOrderWeight(a) - baseOrderWeight(b);
@@ -317,10 +321,7 @@ function assembleMessages(units: PromptUnit[]): { finalMessages: UnifiedMessage[
     unitId: unit.id,
     role: unit.role,
     content: unit.renderedContent ?? "",
-    metadata: {
-      promptUnitId: unit.id,
-      source: unit.source.kind
-    }
+    metadata: unit.metadata
   }));
 
   for (const unit of roleAnchorUnits) insertByRoleAnchor(records, unit, notes);
@@ -337,6 +338,18 @@ function assembleMessages(units: PromptUnit[]): { finalMessages: UnifiedMessage[
   };
 }
 
+function buildLegacyBindings(units: PromptBlock[]): AgentPromptBinding[] {
+  return units
+    .slice()
+    .sort((a, b) => b.priority - a.priority)
+    .map((unit, idx) => ({
+      bindingId: `legacy.binding.${unit.id}`,
+      unitId: unit.id,
+      enabled: true,
+      order: idx + 1
+    }));
+}
+
 export class PromptCompiler {
   compile(params: {
     agent: AgentSpec;
@@ -345,158 +358,196 @@ export class PromptCompiler {
     contextPolicyLabel?: string;
   }): PromptCompileResult {
     const compileId = newCompileId();
-    const contextPolicyLabel = params.contextPolicyLabel ?? "context.importance_recent(v0.2)";
+    const contextPolicyLabel = params.contextPolicyLabel ?? "context.importance_recent(v0.3)";
     const vars = buildVars(params.request);
-    const blocksAfterOverride = applyOverridePatches(params.blocks, params.request.overridePatches);
+    const patched = applyOverridePatches(params.blocks, params.request.overridePatches);
+    const units = patched.units;
+    const unitById = new Map(units.map((item) => [item.id, item]));
+    const bindings = (params.agent.promptBindings && params.agent.promptBindings.length > 0
+      ? params.agent.promptBindings
+      : buildLegacyBindings(units)
+    ).slice();
 
-    const selectedBlocks: PromptTrace["selectedBlocks"] = [];
-    const rejectedBlocks: PromptTrace["rejectedBlocks"] = [];
+    const selectedUnits: PromptTrace["selectedUnits"] = [];
+    const rejectedUnits: PromptTrace["rejectedUnits"] = [];
     const renderedVariables: PromptTrace["renderedVariables"] = [];
 
-    // 1) 先把 block 转为 PromptUnit（与历史/记忆同层）。
-    const blockUnits: PromptUnit[] = [];
-    for (const block of blocksAfterOverride) {
-      const verdict = shouldBlockApply(block, params.request);
+    const compiledFromBindings: CompiledUnit[] = [];
+    for (const binding of bindings.sort((a, b) => a.order - b.order)) {
+      if (!binding.enabled) continue;
+      if (patched.disabledUnitIds.has(binding.unitId)) {
+        rejectedUnits.push({
+          unitId: binding.unitId,
+          version: unitById.get(binding.unitId)?.version ?? 0,
+          reason: "disabled by override patch"
+        });
+        continue;
+      }
+      const unit = unitById.get(binding.unitId);
+      if (!unit) {
+        rejectedUnits.push({
+          unitId: binding.unitId,
+          version: 0,
+          reason: "unit not found"
+        });
+        continue;
+      }
+      const verdict = shouldUnitApply(unit, params.request);
       if (!verdict.ok) {
-        rejectedBlocks.push({
-          blockId: block.id,
-          version: block.version,
+        rejectedUnits.push({
+          unitId: unit.id,
+          version: unit.version,
           reason: verdict.reason
         });
         continue;
       }
-      const rendered = renderTemplate(block.template, vars);
-      for (const [key, value] of Object.entries(vars)) {
-        if (block.template.includes(`{{${key}}}`)) {
+      const mergedVars = {
+        ...vars,
+        ...Object.entries(binding.variableOverrides ?? {}).reduce<Record<string, string>>((acc, [k, v]) => {
+          acc[k] = String(v);
+          return acc;
+        }, {})
+      };
+      const rendered = renderTemplate(unit.template, mergedVars);
+      const tokenLimit = binding.tokenLimitOverride ?? unit.tokenLimit;
+      if (typeof tokenLimit === "number" && tokenLimit > 0 && estimateTokensByChars(rendered) > tokenLimit) {
+        rejectedUnits.push({
+          unitId: unit.id,
+          version: unit.version,
+          reason: `token limit exceeded (${tokenLimit})`
+        });
+        continue;
+      }
+
+      for (const [key, value] of Object.entries(mergedVars)) {
+        if (unit.template.includes(`{{${key}}}`)) {
           renderedVariables.push({
-            blockId: block.id,
+            unitId: unit.id,
             variable: key,
             valuePreview: String(value).slice(0, 120)
           });
         }
       }
-      selectedBlocks.push({
-        blockId: block.id,
-        version: block.version,
-        insertionPoint: block.insertionPoint,
-        priority: block.priority,
+
+      selectedUnits.push({
+        unitId: unit.id,
+        version: unit.version,
+        insertionPoint: binding.insertionPointOverride ?? unit.insertionPoint,
+        priority: binding.priorityOverride ?? unit.priority,
         reason: verdict.reason,
         renderedTextPreview: rendered.slice(0, 200),
         tokenEstimate: estimateTokensByChars(rendered)
       });
 
-      blockUnits.push({
-        id: `unit.block.${block.id}`,
-        source: { kind: "prompt_block", blockId: block.id, blockVersion: block.version, promptKind: block.kind },
+      compiledFromBindings.push({
+        id: `compiled.binding.${binding.bindingId ?? binding.unitId}`,
+        source: {
+          kind: "prompt_unit",
+          unitId: unit.id,
+          unitVersion: unit.version,
+          promptKind: unit.kind
+        },
         enabled: true,
-        role: block.insertionPoint.startsWith("system_") ? "system" : "developer",
-        title: block.name,
-        contentTemplate: block.template,
+        role: binding.roleOverride ?? unit.role ?? (unit.insertionPoint.startsWith("system_") ? "system" : "developer"),
+        contentTemplate: unit.template,
         renderedContent: rendered,
-        variables: vars,
-        placement: placementFromInsertionPoint(block.insertionPoint),
-        sortWeight: block.priority,
+        placement: placementFromInsertionPoint(binding.insertionPointOverride ?? unit.insertionPoint),
+        sortWeight: binding.priorityOverride ?? unit.priority,
         metadata: {
-          reason: verdict.reason
+          sourceKind: "prompt_unit",
+          sourceUnitId: unit.id,
+          bindingId: binding.bindingId ?? null,
+          promptKind: unit.kind
         }
       });
     }
 
-    // 2) 历史上下文也转为 PromptUnit，并产出 omitted report。
     const sliced = sliceContextSources(params.request);
-    const historyUnits: PromptUnit[] = sliced.kept.map((item, idx) => {
+    const historyUnits: CompiledUnit[] = sliced.kept.map((item, idx) => {
       const roleHint = item.metadata?.role;
-      const role: MessageRole = isMessageRole(roleHint) ? roleHint : "developer";
+      const role: MessageRole = isMessageRole(roleHint) ? roleHint : "user";
       return {
-        id: `unit.history.${item.id}`,
+        id: `compiled.history.${item.id}`,
         source: { kind: "history_message", messageIndex: idx, originalRole: role },
         enabled: true,
         role,
-        title: `history:${item.id}`,
         contentTemplate: item.content,
         renderedContent: item.content,
         placement: { mode: "end" },
         sortWeight: Number(item.importance ?? 0),
-        tags: item.tags,
         metadata: {
+          sourceKind: "history_message",
           sourceId: item.id,
           sourceType: item.type
         }
       };
     });
 
-    // 3) 记忆输入转为 PromptUnit（同等地位，不做特权）。
-    const memoryUnits: PromptUnit[] = params.request.memoryInputs.map((item, idx) => ({
-      id: `unit.memory.${item.adapterId}.${idx + 1}`,
+    const memoryUnits: CompiledUnit[] = params.request.memoryInputs.map((item, idx) => ({
+      id: `compiled.memory.${item.adapterId}.${idx + 1}`,
       source: { kind: "memory_delegate", adapterId: item.adapterId },
       enabled: true,
       role: "developer",
-      title: `memory:${item.adapterId}`,
       contentTemplate: item.content,
       renderedContent: item.content,
       placement: { mode: "slot", slot: "memory_context" },
       sortWeight: Number(item.score ?? 0),
-      metadata: item.metadata
+      metadata: {
+        sourceKind: "memory_delegate",
+        adapterId: item.adapterId
+      }
     }));
 
-    // 4) 工具目录摘要也做成 PromptUnit，便于后续做渐进披露。
-    const toolCatalogUnit: PromptUnit = {
-      id: "unit.tool_catalog.default",
+    const toolCatalogText = params.request.toolSchemas.map((t) => `- ${t.toolName}: ${t.description}`).join("\n");
+    const toolCatalogUnit: CompiledUnit = {
+      id: "compiled.tool_catalog.default",
       source: { kind: "tool_catalog", scope: "runtime_exposed" },
       enabled: params.request.toolSchemas.length > 0,
       role: "developer",
-      title: "tool_catalog",
-      contentTemplate: `当前可用工具：\n${params.request.toolSchemas.map((t) => `- ${t.toolName}: ${t.description}`).join("\n")}`,
-      renderedContent:
-        params.request.toolSchemas.length > 0
-          ? `当前可用工具：\n${params.request.toolSchemas.map((t) => `- ${t.toolName}: ${t.description}`).join("\n")}`
-          : undefined,
+      contentTemplate: `当前可用工具：\n${toolCatalogText}`,
+      renderedContent: params.request.toolSchemas.length > 0 ? `当前可用工具：\n${toolCatalogText}` : undefined,
       placement: { mode: "slot", slot: "tool_context" },
-      sortWeight: 10
+      sortWeight: 10,
+      metadata: { sourceKind: "tool_catalog" }
     };
 
-    // 5) 任务本体作为 PromptUnit（用户消息）。
-    const taskUnit: PromptUnit = {
-      id: "unit.task.payload",
+    const taskUnit: CompiledUnit = {
+      id: "compiled.task.payload",
       source: { kind: "manual_override", operator: "runtime_task_envelope" },
       enabled: true,
       role: "user",
-      title: "task_envelope",
       contentTemplate: JSON.stringify(params.request.taskEnvelope.input, null, 2),
-      renderedContent: `任务类型: ${params.request.taskEnvelope.taskType}\n任务输入:\n${JSON.stringify(params.request.taskEnvelope.input, null, 2)}`,
+      renderedContent: `任务类型: ${params.request.taskEnvelope.taskType}\n任务输入:\n${JSON.stringify(
+        params.request.taskEnvelope.input,
+        null,
+        2
+      )}`,
       placement: { mode: "slot", slot: "task_post" },
-      sortWeight: 1000
+      sortWeight: 1000,
+      metadata: { sourceKind: "task_envelope" }
     };
 
-    const mergedUnits = [
-      ...blockUnits,
-      ...historyUnits,
-      ...memoryUnits,
-      toolCatalogUnit,
-      taskUnit
-    ];
-    const finalUnits = applyPromptUnitOverrides(mergedUnits, params.request.promptUnitOverrides);
-
-    // 覆盖后重新渲染 replace_content 场景（保证变量替换仍可用）。
-    for (const unit of finalUnits) {
+    const mergedUnits = [...compiledFromBindings, ...historyUnits, ...memoryUnits, toolCatalogUnit, taskUnit];
+    const finalCompiledUnits = applyCompiledUnitOverrides(mergedUnits, params.request.promptUnitOverrides);
+    for (const unit of finalCompiledUnits) {
       if (!unit.enabled) continue;
       if (!unit.renderedContent || unit.renderedContent === unit.contentTemplate) {
         unit.renderedContent = renderTemplate(unit.contentTemplate, vars);
       }
     }
 
-    const assembled = assembleMessages(finalUnits);
+    const assembled = assembleMessages(finalCompiledUnits);
     const finalMessages = assembled.finalMessages;
     const allText = finalMessages.map((msg) => msg.content).join("\n");
     const inputApprox = estimateTokensByChars(allText);
 
-    const groupedBlockIds = new Map<PromptInsertionPoint, string[]>();
-    for (const unit of finalUnits) {
-      if (unit.source.kind !== "prompt_block") continue;
+    const groupedUnitIds = new Map<PromptInsertionPoint, string[]>();
+    for (const unit of finalCompiledUnits) {
+      if (unit.source.kind !== "prompt_unit") continue;
       if (unit.placement.mode !== "slot") continue;
-      const list = groupedBlockIds.get(unit.placement.slot) ?? [];
-      list.push(unit.source.blockId);
-      groupedBlockIds.set(unit.placement.slot, list);
+      const list = groupedUnitIds.get(unit.placement.slot) ?? [];
+      list.push(unit.source.unitId);
+      groupedUnitIds.set(unit.placement.slot, list);
     }
 
     const promptAssemblyPlan: PromptAssemblyPlan = {
@@ -504,18 +555,43 @@ export class PromptCompiler {
       agentId: params.agent.id,
       threadId: params.request.threadId,
       runId: params.request.runId,
-      units: finalUnits,
+      units: finalCompiledUnits.map((item) => ({
+        id: item.id,
+        source: item.source,
+        enabled: item.enabled,
+        role: item.role,
+        contentTemplate: item.contentTemplate,
+        renderedContent: item.renderedContent,
+        placement: item.placement,
+        sortWeight: item.sortWeight,
+        metadata: item.metadata
+      })),
       orderedUnitIds: assembled.orderedUnitIds,
       finalMessages,
       notes: assembled.notes
     };
 
+    const compatSelectedBlocks: NonNullable<PromptTrace["selectedBlocks"]> = selectedUnits.map((unit) => ({
+      blockId: unit.unitId,
+      version: unit.version,
+      insertionPoint: unit.insertionPoint,
+      priority: unit.priority,
+      reason: unit.reason,
+      renderedTextPreview: unit.renderedTextPreview,
+      tokenEstimate: unit.tokenEstimate
+    }));
+    const compatRejectedBlocks: NonNullable<PromptTrace["rejectedBlocks"]> = rejectedUnits.map((unit) => ({
+      blockId: unit.unitId,
+      version: unit.version,
+      reason: unit.reason
+    }));
+
     const promptTrace: PromptTrace = {
       compileId,
       agentId: params.agent.id,
       providerApiType: params.request.providerApiType,
-      selectedBlocks,
-      rejectedBlocks,
+      selectedUnits,
+      rejectedUnits,
       renderedVariables,
       insertionPlan: ([
         "system_pre",
@@ -527,8 +603,10 @@ export class PromptCompiler {
         "task_post"
       ] as PromptInsertionPoint[]).map((insertionPoint) => ({
         insertionPoint,
-        blockIds: groupedBlockIds.get(insertionPoint) ?? []
+        unitIds: groupedUnitIds.get(insertionPoint) ?? []
       })),
+      selectedBlocks: compatSelectedBlocks,
+      rejectedBlocks: compatRejectedBlocks,
       finalMessages,
       contextSliceSummary: {
         totalSources: params.request.contextSources.length,

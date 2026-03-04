@@ -357,27 +357,46 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
     }
   });
 
-  app.get("/api/prompt-blocks", (_req, res) => {
-    res.json({ ok: true, data: deps.db.listPromptBlocks() });
+  const savePromptUnit = (body: PromptBlock) => {
+    const version = deps.db.saveVersionedConfig("prompt_block", body);
+    deps.db.writeAudit("save_prompt_unit", "prompt_unit", body.id, { version });
+    return { ...body, version };
+  };
+
+  app.get("/api/prompt-units", (_req, res) => {
+    res.json({ ok: true, data: deps.db.listPromptUnits() });
+  });
+  app.post("/api/prompt-units", (req, res) => {
+    try {
+      res.json({ ok: true, data: savePromptUnit(req.body as PromptBlock) });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "保存 PromptUnit 失败");
+    }
+  });
+  app.put("/api/prompt-units/:unitId", (req, res) => {
+    try {
+      const body = { ...(req.body as PromptBlock), id: req.params.unitId } as PromptBlock;
+      res.json({ ok: true, data: savePromptUnit(body) });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "更新 PromptUnit 失败");
+    }
   });
 
+  // 兼容旧路由：prompt-blocks -> prompt-units
+  app.get("/api/prompt-blocks", (_req, res) => {
+    res.json({ ok: true, data: deps.db.listPromptUnits() });
+  });
   app.post("/api/prompt-blocks", (req, res) => {
     try {
-      const body = req.body as PromptBlock;
-      const version = deps.db.saveVersionedConfig("prompt_block", body);
-      deps.db.writeAudit("save_prompt_block", "prompt_block", body.id, { version });
-      res.json({ ok: true, data: { ...body, version } });
+      res.json({ ok: true, data: savePromptUnit(req.body as PromptBlock) });
     } catch (error) {
       sendError(res, 500, error instanceof Error ? error.message : "保存 prompt block 失败");
     }
   });
-
   app.put("/api/prompt-blocks/:blockId", (req, res) => {
     try {
       const body = { ...(req.body as PromptBlock), id: req.params.blockId } as PromptBlock;
-      const version = deps.db.saveVersionedConfig("prompt_block", body);
-      deps.db.writeAudit("update_prompt_block", "prompt_block", body.id, { version });
-      res.json({ ok: true, data: { ...body, version } });
+      res.json({ ok: true, data: savePromptUnit(body) });
     } catch (error) {
       sendError(res, 500, error instanceof Error ? error.message : "更新 prompt block 失败");
     }

@@ -101,14 +101,19 @@ export type ToolProtocolProfile =
   | "structured_output_first"
   | "prompt_protocol_only";
 
-export type PromptBlockKind =
+export type PromptUnitKind =
   | "system_rule"
   | "persona"
   | "worldbook"
   | "memory"
+  | "history_window"
+  | "workflow_packet"
+  | "handoff_packet"
   | "task"
   | "format"
   | "safety"
+  | "tool_catalog"
+  | "tool_detail"
   | "tool_hint"
   | "hidden_internal";
 
@@ -122,6 +127,37 @@ export type PromptInsertionPoint =
   | "tool_context";
 
 export type MessageRole = "system" | "developer" | "user" | "assistant" | "tool";
+
+/**
+ * Agent 内部对 PromptUnit 的绑定关系。
+ * 说明：
+ * - PromptUnit 是全局可复用定义；
+ * - 是否启用、顺序、覆盖行为都放在 Agent 绑定层，不污染全局定义。
+ */
+export interface AgentPromptBinding {
+  /**
+   * 绑定记录 ID（便于前端编辑与审计）。
+   */
+  bindingId?: ID;
+  unitId: ID;
+  enabled: boolean;
+  order: number;
+  roleOverride?: MessageRole;
+  insertionPointOverride?: PromptInsertionPoint;
+  priorityOverride?: number;
+  variableOverrides?: Record<string, JsonValue>;
+  tokenLimitOverride?: number;
+  tags?: string[];
+}
+
+/**
+ * Agent 工具路由策略：
+ * - 控制“内层怎么贴近模型 API”，而不是在 Tool 定义里逐个硬编码。
+ */
+export interface AgentToolRoutePolicy {
+  mode: "auto" | "native_function_first" | "shell_only" | "prompt_protocol_only";
+  reason?: string;
+}
 
 /**
  * LLM 输入消息（统一抽象）。
@@ -144,13 +180,28 @@ export interface UnifiedMessage {
 export interface AgentSpec {
   id: ID;
   name: string;
-  role: string;
+  role?: string;
   description: string;
-  modelPolicyId: ID;
-  promptAssemblyPolicyId: ID;
-  contextPolicyId: ID;
-  toolPolicyId: ID;
-  memoryPolicies: ID[];
+  /**
+   * Agent 核心输入定义：绑定哪些 PromptUnit、是否启用、顺序与局部覆盖。
+   */
+  promptBindings?: AgentPromptBinding[];
+  /**
+   * Agent 工具白名单：可按 toolId 或 toolName 过滤可见工具。
+   */
+  toolAllowList?: ID[];
+  /**
+   * Agent 工具路由偏好：最终由 runtime + provider 能力共同决策。
+   */
+  toolRoutePolicy?: AgentToolRoutePolicy;
+  /**
+   * 以下字段为兼容旧版本配置保留（新模型可逐步废弃）。
+   */
+  modelPolicyId?: ID;
+  promptAssemblyPolicyId?: ID;
+  contextPolicyId?: ID;
+  toolPolicyId?: ID;
+  memoryPolicies?: ID[];
   handoffPolicy?: {
     allowedTargets: ID[];
     allowDynamicHandoff: boolean;
@@ -159,23 +210,25 @@ export interface AgentSpec {
   outputContract?: {
     type: "json" | "markdown" | "text";
     jsonSchema?: JsonObject;
-    instruction?: string;
+      instruction?: string;
   };
-  postChecks: ID[];
+  postChecks?: ID[];
   enabled: boolean;
   version: number;
   tags?: string[];
 }
 
 /**
- * 提示词块（Prompt Block）：
- * - 这是你框架的核心“可编排提示词单元”。
+ * PromptUnit（持久化层统一概念）：
+ * - 这是全局可复用提示词定义，供多个 Agent 通过 binding 复用。
+ * - 本对象不承载“启用状态”；是否启用由 AgentPromptBinding 控制。
  */
-export interface PromptBlock {
+export interface PromptUnitSpec {
   id: ID;
   name: string;
-  kind: PromptBlockKind;
+  kind: PromptUnitKind;
   template: string;
+  role?: MessageRole;
   variablesSchema?: JsonObject;
   insertionPoint: PromptInsertionPoint;
   priority: number;
@@ -191,11 +244,21 @@ export interface PromptBlock {
     tagsAny?: string[];
     expression?: string;
   };
-  tokenBudgetHint?: number;
-  enabled: boolean;
+  tokenLimit?: number;
+  /**
+   * 兼容旧字段（新模型建议把启用状态移到 AgentPromptBinding）。
+   */
+  enabled?: boolean;
   version: number;
   tags?: string[];
 }
+
+/**
+ * 兼容别名：
+ * - 旧代码中仍使用 PromptBlock 命名，逐步迁移到 PromptUnitSpec。
+ */
+export type PromptBlockKind = PromptUnitKind;
+export type PromptBlock = PromptUnitSpec;
 
 /**
  * 工作流节点定义（配置层）。
@@ -496,7 +559,14 @@ export interface PromptCompileRequest {
 
 export interface PromptOverridePatch {
   patchId: ID;
-  type: "replace_block_template" | "disable_block" | "insert_ad_hoc_block";
+  type:
+    | "replace_unit_template"
+    | "disable_unit"
+    | "insert_ad_hoc_unit"
+    | "replace_block_template"
+    | "disable_block"
+    | "insert_ad_hoc_block";
+  targetUnitId?: ID;
   targetBlockId?: ID;
   payload: JsonObject;
 }
@@ -523,6 +593,7 @@ export interface PromptUnit {
 }
 
 export type PromptUnitSource =
+  | { kind: "prompt_unit"; unitId: ID; unitVersion?: number; promptKind?: PromptUnitKind }
   | { kind: "prompt_block"; blockId: ID; blockVersion?: number; promptKind?: PromptBlockKind }
   | { kind: "history_message"; messageIndex: number; originalRole: MessageRole }
   | { kind: "memory_delegate"; adapterId?: ID; producerAgentId?: ID }
@@ -597,7 +668,33 @@ export interface PromptTrace {
   compileId: ID;
   agentId: ID;
   providerApiType: ProviderApiMode;
-  selectedBlocks: Array<{
+  selectedUnits: Array<{
+    unitId: ID;
+    version: number;
+    insertionPoint: PromptInsertionPoint;
+    priority: number;
+    reason: string;
+    renderedTextPreview: string;
+    tokenEstimate?: number;
+  }>;
+  rejectedUnits: Array<{
+    unitId: ID;
+    version: number;
+    reason: string;
+  }>;
+  renderedVariables: Array<{
+    unitId: ID;
+    variable: string;
+    valuePreview: string;
+  }>;
+  insertionPlan: Array<{
+    insertionPoint: PromptInsertionPoint;
+    unitIds: ID[];
+  }>;
+  /**
+   * 兼容旧字段（逐步淘汰）。
+   */
+  selectedBlocks?: Array<{
     blockId: ID;
     version: number;
     insertionPoint: PromptInsertionPoint;
@@ -606,19 +703,10 @@ export interface PromptTrace {
     renderedTextPreview: string;
     tokenEstimate?: number;
   }>;
-  rejectedBlocks: Array<{
+  rejectedBlocks?: Array<{
     blockId: ID;
     version: number;
     reason: string;
-  }>;
-  renderedVariables: Array<{
-    blockId: ID;
-    variable: string;
-    valuePreview: string;
-  }>;
-  insertionPlan: Array<{
-    insertionPoint: PromptInsertionPoint;
-    blockIds: ID[];
   }>;
   finalMessages: UnifiedMessage[];
   contextSliceSummary: {
@@ -874,7 +962,7 @@ export interface RunState {
     outputs: Array<{ id: ID; type: string; content: JsonValue }>;
   };
   memoryState: {
-    injectedPromptBlocks: ID[];
+    injectedPromptUnitIds: ID[];
     notes?: string[];
   };
   toolState: {

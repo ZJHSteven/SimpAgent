@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import http from "node:http";
 import cors from "cors";
 import express from "express";
-import { AppDatabase, seedDefaultConfigs } from "./storage/index.js";
+import { AppDatabase, seedDefaultConfigs, seedPresetConfigsFromDir } from "./storage/index.js";
 import { AgentRegistry } from "./core/agents/index.js";
 import { WorkflowRegistry } from "./core/workflows/index.js";
 import { ToolRegistry, ToolRuntime } from "./core/tools/index.js";
@@ -28,12 +28,23 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
 const projectId = process.env.SIMPAGENT_PROJECT_ID || "dev-console";
-const dataDir = path.join(projectRoot, "data", projectId);
+const initCwd = process.env.INIT_CWD || process.cwd();
+const resolveFromInitCwd = (inputPath: string) =>
+  path.isAbsolute(inputPath) ? inputPath : path.resolve(initCwd, inputPath);
+const dataDir = process.env.SIMPAGENT_DATA_DIR
+  ? resolveFromInitCwd(process.env.SIMPAGENT_DATA_DIR)
+  : path.join(projectRoot, "data", projectId);
 const dbPath = path.join(dataDir, "framework.sqlite");
 
 // ===== 存储与种子数据 =====
 const db = new AppDatabase(dbPath);
 seedDefaultConfigs(db);
+const presetDirRaw = process.env.SIMPAGENT_PRESET_DIR;
+if (presetDirRaw && presetDirRaw.trim()) {
+  const presetDir = resolveFromInitCwd(presetDirRaw.trim());
+  const seeded = seedPresetConfigsFromDir(db, presetDir);
+  console.log(`Preset loaded from ${presetDir}`, seeded);
+}
 
 // ===== 配置注册表（支持热更新后 refresh）=====
 const agentRegistry = new AgentRegistry(db);
@@ -107,5 +118,6 @@ const port = Number(process.env.PORT || 3002);
 server.listen(port, () => {
   console.log(`Observable Agent Backend listening on http://localhost:${port}`);
   console.log(`Project Scope: ${projectId}`);
+  console.log(`Data Dir: ${dataDir}`);
   console.log(`WS endpoint: ws://localhost:${port}/ws`);
 });

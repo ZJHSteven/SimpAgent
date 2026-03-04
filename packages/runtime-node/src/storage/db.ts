@@ -169,7 +169,7 @@ export class AppDatabase {
    * 写入或发布一个“版本化配置对象”。
    * 返回新版本号。
    */
-  saveVersionedConfig<T extends { id: string; enabled: boolean }>(
+  saveVersionedConfig<T extends { id: string; enabled?: boolean }>(
     kind: VersionedEntityKind,
     payload: T
   ): number {
@@ -223,10 +223,10 @@ export class AppDatabase {
          VALUES (?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            current_version = excluded.current_version,
-           enabled = excluded.enabled,
-           updated_at = excluded.updated_at`
+          enabled = excluded.enabled,
+          updated_at = excluded.updated_at`
       )
-      .run(payload.id, nextVersion, payload.enabled ? 1 : 0, now);
+      .run(payload.id, nextVersion, payload.enabled === false ? 0 : 1, now);
 
     return nextVersion;
   }
@@ -289,6 +289,19 @@ export class AppDatabase {
           )
           .get(blockId) as { payload_json: string } | undefined);
     return row ? fromJson<PromptBlock>(row.payload_json) : null;
+  }
+
+  /**
+   * v0.3 语义别名：
+   * - 持久化层统一命名为 PromptUnit；
+   * - 底层沿用旧表 `prompt_blocks`，避免迁移期间破坏兼容性。
+   */
+  listPromptUnits(): PromptBlock[] {
+    return this.listPromptBlocks();
+  }
+
+  getPromptUnit(unitId: string, version?: number): PromptBlock | null {
+    return this.getPromptBlock(unitId, version);
   }
 
   listWorkflows(): WorkflowSpec[] {

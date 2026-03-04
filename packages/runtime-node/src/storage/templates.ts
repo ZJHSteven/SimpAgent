@@ -133,6 +133,14 @@ const MEDEDU_TEMPLATE: RuntimeTemplateDefinition = {
       name: "虚拟患者主代理",
       role: "patient",
       description: "负责扮演患者进行自然对话，依据记忆与检查结果动态回复。",
+      promptBindings: [
+        { bindingId: "bind.patient.system", unitId: "block.mededu.system.core", enabled: true, order: 10 },
+        { bindingId: "bind.patient.persona", unitId: "block.mededu.patient.persona", enabled: true, order: 20 },
+        { bindingId: "bind.patient.world", unitId: "block.mededu.worldbook.report", enabled: true, order: 30 },
+        { bindingId: "bind.patient.tool", unitId: "block.mededu.tools.hint", enabled: true, order: 40 }
+      ],
+      toolAllowList: ["web_search", "read_file", "request_user_input"],
+      toolRoutePolicy: { mode: "auto", reason: "按 provider 能力自动选择路由" },
       modelPolicyId: "model.default",
       promptAssemblyPolicyId: "prompt.default",
       contextPolicyId: "context.default",
@@ -154,6 +162,12 @@ const MEDEDU_TEMPLATE: RuntimeTemplateDefinition = {
       name: "时间线记忆代理",
       role: "memory_timeline",
       description: "按轮次记录发生了哪些客观事实，仅保留有实质影响的信息。",
+      promptBindings: [
+        { bindingId: "bind.timeline.system", unitId: "block.mededu.system.core", enabled: true, order: 10 },
+        { bindingId: "bind.timeline.world", unitId: "block.mededu.worldbook.report", enabled: true, order: 20 }
+      ],
+      toolAllowList: ["update_plan"],
+      toolRoutePolicy: { mode: "native_function_first" },
       modelPolicyId: "model.default",
       promptAssemblyPolicyId: "prompt.default",
       contextPolicyId: "context.default",
@@ -169,6 +183,11 @@ const MEDEDU_TEMPLATE: RuntimeTemplateDefinition = {
       name: "好感度记忆代理",
       role: "memory_affinity",
       description: "评估患者对医生的信任与配合程度，输出结构化分值。",
+      promptBindings: [
+        { bindingId: "bind.affinity.system", unitId: "block.mededu.system.core", enabled: true, order: 10 }
+      ],
+      toolAllowList: ["update_plan"],
+      toolRoutePolicy: { mode: "native_function_first" },
       modelPolicyId: "model.default",
       promptAssemblyPolicyId: "prompt.default",
       contextPolicyId: "context.default",
@@ -184,6 +203,12 @@ const MEDEDU_TEMPLATE: RuntimeTemplateDefinition = {
       name: "检查结果记忆代理",
       role: "memory_exam",
       description: "解析医生触发的检查请求，并生成可回填到患者对话的检查结论摘要。",
+      promptBindings: [
+        { bindingId: "bind.exam.system", unitId: "block.mededu.system.core", enabled: true, order: 10 },
+        { bindingId: "bind.exam.world", unitId: "block.mededu.worldbook.report", enabled: true, order: 20 }
+      ],
+      toolAllowList: ["read_file", "update_plan"],
+      toolRoutePolicy: { mode: "native_function_first" },
       modelPolicyId: "model.default",
       promptAssemblyPolicyId: "prompt.default",
       contextPolicyId: "context.default",
@@ -199,6 +224,11 @@ const MEDEDU_TEMPLATE: RuntimeTemplateDefinition = {
       name: "触发器路由代理",
       role: "trigger_router",
       description: "低成本判断本轮是否需要触发记忆更新与检查流程。",
+      promptBindings: [
+        { bindingId: "bind.trigger.system", unitId: "block.mededu.system.core", enabled: true, order: 10 }
+      ],
+      toolAllowList: ["update_plan"],
+      toolRoutePolicy: { mode: "native_function_first" },
       modelPolicyId: "model.default",
       promptAssemblyPolicyId: "prompt.default",
       contextPolicyId: "context.default",
@@ -214,6 +244,13 @@ const MEDEDU_TEMPLATE: RuntimeTemplateDefinition = {
       name: "临床导师代理",
       role: "mentor_clinical",
       description: "点评学生问诊是否完整、温和、符合临床流程。",
+      promptBindings: [
+        { bindingId: "bind.clinical.system", unitId: "block.mededu.system.core", enabled: true, order: 10 },
+        { bindingId: "bind.clinical.persona", unitId: "block.mededu.clinical.mentor", enabled: true, order: 20 },
+        { bindingId: "bind.clinical.tool", unitId: "block.mededu.tools.hint", enabled: true, order: 30 }
+      ],
+      toolAllowList: ["web_search", "read_file"],
+      toolRoutePolicy: { mode: "native_function_first" },
       modelPolicyId: "model.default",
       promptAssemblyPolicyId: "prompt.default",
       contextPolicyId: "context.default",
@@ -229,6 +266,13 @@ const MEDEDU_TEMPLATE: RuntimeTemplateDefinition = {
       name: "基础研究导师代理",
       role: "mentor_research",
       description: "结合网络检索与前沿证据给出研究导向建议。",
+      promptBindings: [
+        { bindingId: "bind.research.system", unitId: "block.mededu.system.core", enabled: true, order: 10 },
+        { bindingId: "bind.research.persona", unitId: "block.mededu.research.mentor", enabled: true, order: 20 },
+        { bindingId: "bind.research.tool", unitId: "block.mededu.tools.hint", enabled: true, order: 30 }
+      ],
+      toolAllowList: ["web_search", "read_file", "view_image"],
+      toolRoutePolicy: { mode: "native_function_first" },
       modelPolicyId: "model.default",
       promptAssemblyPolicyId: "prompt.default",
       contextPolicyId: "context.default",
@@ -315,4 +359,3 @@ export function applyRuntimeTemplate(db: AppDatabase, templateId: string): Templ
     workflowsSaved: template.workflows.length
   };
 }
-

@@ -29,7 +29,10 @@ import type {
  * - 负责配置版本、运行摘要、trace/prompt/plan/user-input 等持久化能力。
  */
 export interface StoragePort {
-  saveVersionedConfig<T extends { id: string; enabled: boolean }>(kind: "agent" | "prompt_block" | "workflow" | "tool", payload: T): number;
+  saveVersionedConfig<T extends { id: string; enabled?: boolean }>(
+    kind: "agent" | "prompt_block" | "workflow" | "tool",
+    payload: T
+  ): number;
   listWorkflows(): WorkflowSpec[];
   upsertRunSummary(input: {
     runId: string;

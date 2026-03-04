@@ -43,10 +43,15 @@ function requireApiKey(req: UnifiedModelRequest): string {
   return req.apiKey;
 }
 
-function toChatMessages(messages: UnifiedMessage[]): Array<Record<string, unknown>> {
+function toChatMessages(
+  messages: UnifiedMessage[],
+  vendor: UnifiedModelRequest["vendor"]
+): Array<Record<string, unknown>> {
   return messages.map((msg) => {
+    // 部分 OpenAI-compatible 提供商不接受 developer role，做兼容降级。
+    const role = msg.role === "developer" && vendor !== "openai" ? "system" : msg.role;
     const base: Record<string, unknown> = {
-      role: msg.role,
+      role,
       content: msg.content
     };
     if (msg.name) base.name = msg.name;
@@ -216,7 +221,7 @@ export class UnifiedProviderClient {
     const endpoint = `${baseURL}/chat/completions`;
     const body: Record<string, unknown> = {
       model: req.model,
-      messages: toChatMessages(req.messages ?? []),
+      messages: toChatMessages(req.messages ?? [], req.vendor),
       stream: false
     };
 
@@ -391,7 +396,7 @@ export class UnifiedProviderClient {
     const endpoint = `${baseURL}/chat/completions`;
     const body: Record<string, unknown> = {
       model: req.model,
-      messages: toChatMessages(req.messages ?? []),
+      messages: toChatMessages(req.messages ?? [], req.vendor),
       stream: true
     };
     if (typeof req.temperature === "number") body.temperature = req.temperature;

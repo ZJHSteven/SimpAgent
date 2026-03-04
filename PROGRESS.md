@@ -1,7 +1,7 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：已完成一次性工程分层重构，项目从“单 backend + 单前端”升级为 `monorepo + 多运行时适配` 结构；医学教育前端已独立迁移到 `apps/mededu-cockpit`（全中文临床教学运行舱 + 非线性画布动画 + mock 演示链路）。
+- 现状：已完成一次性工程分层重构，项目从“单 backend + 单前端”升级为 `monorepo + 多运行时适配` 结构；当前正在推进 `PromptUnit + Agent 绑定装配 + 三层工具路由` 对齐，医学教育前端已独立迁移到 `apps/mededu-cockpit`（全中文临床教学运行舱 + 非线性画布动画 + mock 演示链路）。
 - 已完成：
 -  - Monorepo/workspaces 建立完成：`packages/*` + `apps/*` + `backend` 兼容壳。
 -  - 新增 `@simpagent/core`：
@@ -56,13 +56,21 @@
     - `runtime-node` 启动新增 `SIMPAGENT_PROJECT_ID` 项目隔离目录（默认 `dev-console`）。
   - WS 增强：`run_snapshot.latestTraceSeq`、`REPLAY_WINDOW_MISS` warning。
   - 前端测试工作台（Vite/React）：白皮书风单页，多面板覆盖 run/trace/history/fork/builtin/apply_patch/WS 日志。
-- 验证：`npm run build:workspaces` 通过、`npm run --workspace @simpagent/runtime-node test:smoke` 通过、根前端 `npm run build` 通过（2026-03-01）；`npm run --workspace @simpagent/app-mededu-cockpit build` 通过（2026-03-04）。
-- 正在做：在 `apps/mededu-cockpit` 运行舱页面基础上，继续推进与后端真实接口（run/trace/config）联调。
+  - Prompt 与 Agent 契约完成新一轮升级（2026-03-04）：
+    - 持久化层统一为 `PromptUnit`（兼容旧 `PromptBlock` 命名与路由）。
+    - Agent 新增 `promptBindings`（启停/顺序/覆盖下沉到 Agent 层）。
+    - Agent 新增 `toolAllowList` 与 `toolRoutePolicy`（内层工具路由可按 Agent 控制）。
+    - runtime 新增 `/api/prompt-units`，旧 `/api/prompt-blocks` 保留兼容。
+    - workflow `tool` 节点支持 `inputMapping/outputMapping` 与 `expression` 条件边。
+    - `shell_only` 路由语义修正为“仅暴露 shell bridge + 优先原生工具协议”，而非直接走提示词回退。
+- 验证：`npm run build:workspaces` 通过、`npm run --workspace @simpagent/runtime-node test:smoke` 通过、根前端 `npm run build` 通过（2026-03-01）；`npm run --workspace @simpagent/app-mededu-cockpit build` 通过（2026-03-04）；`npm run -s build`（`packages/core`、`packages/runtime-node`、root）通过（2026-03-04）。
+- 正在做：ToolSpec 的最终统一定义（外层定义模型）与 PromptUnit/Tool 交互细节仍待下一轮专门设计。
 - 下一步：
-  1. 将当前 mock 运行舱接入真实 `run/trace` 数据流（保留 mock 回退开关）。
-  2. 前端设置页接通 `config/system`、模板应用与三层配置可视化。
-  3. 补齐 `dev:dev-console:full` 一键联启脚本或文档替代方案。
-  4. 同步更新 README / PLANS / PROGRESS 的页面-接口映射文档。
+  1. 固化 ToolSpec 统一定义（MCP/函数/skills/shell 外层接入）并补中层映射规则。
+  2. 将当前 mock 运行舱接入真实 `run/trace` 数据流（保留 mock 回退开关）。
+  3. 前端设置页接通 `config/system`、模板应用与三层配置可视化。
+  4. 补齐 `dev:dev-console:full` 一键联启脚本或文档替代方案。
+  5. 同步更新 README / PLANS / PROGRESS 的页面-接口映射文档。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：执行内核采用 LangGraph.js（原因：直接获得 checkpoint / interrupt / replay / history / updateState，避免自研运行时黑洞）。
@@ -76,6 +84,8 @@
 - 决策I：PromptCompiler 统一以 PromptUnit 为最小控制单元，保留 block trace 仅用于兼容，原因：实现“万物皆提示词块”的统一编排与可编辑性。
 - 决策J：工程形态升级为 monorepo（core + runtime-node + runtime-worker + runtime-tauri-bridge + apps），原因：避免“复制项目”导致分叉失控，支持多端复用与独立演进。
 - 决策K：`backend` 保留兼容壳而不是立即删除，原因：一次性重构期间降低迁移风险，兼容旧脚本和使用习惯。
+- 决策L：Prompt 全局定义与 Agent 运行态绑定分离（`PromptUnit` vs `promptBindings`），原因：同一提示词要被多 Agent 复用时，启停/顺序属于 Agent 上下文而非全局属性。
+- 决策M：`toolRoutePolicy` 放在 Agent（不是 Tool），原因：内层 API 路由取决于模型能力与场景策略，而非单个工具本体定义。
 
 ## 常见坑 / 复现方法
 - 坑1：PowerShell 命令语法与 bash 花括号展开不同，批量创建目录时容易写错；需使用数组循环创建。

@@ -16,6 +16,7 @@ import { Annotation, Command, END, START, StateGraph, interrupt } from "@langcha
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 import type {
   AgentSpec,
+  CanonicalToolSpec,
   CanonicalToolCallIntent,
   CanonicalToolCallResult,
   CanonicalToolSideEffectRecord,
@@ -113,6 +114,66 @@ function summarize(value: JsonValue | undefined): JsonValue | undefined {
   const text = JSON.stringify(value);
   if (text.length <= 2000) return value;
   return { truncated: true, preview: text.slice(0, 2000) };
+}
+
+function normalizePath(pathExpr: string): string[] {
+  return pathExpr
+    .split(".")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getByPath(input: unknown, pathExpr: string): unknown {
+  const parts = normalizePath(pathExpr);
+  let current: unknown = input;
+  for (const part of parts) {
+    if (!current || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
+
+function setByPath<T extends object>(input: T, pathExpr: string, value: unknown): T {
+  const parts = normalizePath(pathExpr);
+  if (parts.length === 0) return input;
+  const root = Array.isArray(input) ? ([...input] as unknown as Record<string, unknown>) : ({ ...(input as any) } as Record<string, unknown>);
+  let cursor: Record<string, unknown> = root;
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    const key = parts[i];
+    const next = cursor[key];
+    if (!next || typeof next !== "object" || Array.isArray(next)) {
+      cursor[key] = {};
+    } else {
+      cursor[key] = { ...(next as Record<string, unknown>) };
+    }
+    cursor = cursor[key] as Record<string, unknown>;
+  }
+  cursor[parts[parts.length - 1]] = value;
+  return root as unknown as T;
+}
+
+function resolveAgentToolProtocolProfile(args: {
+  providerProfile?: CreateRunRequest["provider"]["toolProtocolProfile"];
+  providerApiMode: ProviderApiMode;
+  agentRouteMode?: "auto" | "native_function_first" | "shell_only" | "prompt_protocol_only";
+}): CreateRunRequest["provider"]["toolProtocolProfile"] {
+  if (args.agentRouteMode === "prompt_protocol_only") return "prompt_protocol_only";
+  if (args.agentRouteMode === "shell_only") {
+    // shell_only 是“仅暴露 shell 桥接工具”，不是“禁用原生 tools”。
+    return args.providerApiMode === "responses" ? "openai_responses" : "openai_chat_function";
+  }
+  if (args.agentRouteMode === "native_function_first") {
+    return args.providerApiMode === "responses" ? "openai_responses" : "openai_chat_function";
+  }
+  return args.providerProfile;
+}
+
+function isShellBridgeCanonicalTool(tool: CanonicalToolSpec): boolean {
+  const idText = String(tool.id).toLowerCase();
+  const nameText = String(tool.name).toLowerCase();
+  if (nameText === "shell_command") return true;
+  if (idText.includes("shell_command")) return true;
+  return false;
 }
 
 export interface RuntimeDeps {
@@ -663,9 +724,16 @@ export class FrameworkRuntimeEngine {
     const agent = state.agentSnapshots[node.agentId!] ?? this.deps.agentRegistry.get(node.agentId!);
     if (!agent) throw new Error(`Agent 不存在：${node.agentId}`);
 
-    const promptBlocks = this.loadPromptBlocksFromSnapshot(state);
-    const toolSpecs = this.loadToolsFromSnapshot(state);
-    const canonicalTools = this.deps.toolRegistry.listCanonicalTools().filter((tool) => tool.enabled);
+    const promptUnits = this.loadPromptUnitsFromSnapshot(state);
+    const allowSet = new Set((agent.toolAllowList ?? []).map((item) => String(item)));
+    let canonicalTools = this.deps.toolRegistry.listCanonicalTools().filter((tool) => {
+      if (!tool.enabled) return false;
+      if (allowSet.size === 0) return true;
+      return allowSet.has(tool.id) || allowSet.has(tool.name);
+    });
+    if (agent.toolRoutePolicy?.mode === "shell_only") {
+      canonicalTools = canonicalTools.filter((tool) => isShellBridgeCanonicalTool(tool));
+    }
 
     const compileReq: PromptCompileRequest = {
       agentId: agent.id,
@@ -686,7 +754,7 @@ export class FrameworkRuntimeEngine {
         metadata: { role: m.role, name: m.name ?? null }
       })),
       memoryInputs: [],
-      toolSchemas: toolSpecs.filter((t) => t.enabled).map((t) => ({
+      toolSchemas: canonicalTools.map((t) => ({
         toolId: t.id,
         toolName: t.name,
         description: t.description,
@@ -699,16 +767,21 @@ export class FrameworkRuntimeEngine {
 
     const compile = this.deps.promptCompiler.compile({
       agent,
-      blocks: promptBlocks,
+      blocks: promptUnits,
       request: compileReq
     });
 
     const provider = this.getRunRecord(state.runMeta.runId).provider;
+    const effectiveToolProtocolProfile = resolveAgentToolProtocolProfile({
+      providerProfile: provider.toolProtocolProfile,
+      providerApiMode: provider.apiMode,
+      agentRouteMode: agent.toolRoutePolicy?.mode
+    });
     const exposureSelection = selectToolExposureAdapter({
       provider: {
         vendor: provider.vendor,
         apiMode: provider.apiMode,
-        toolProtocolProfile: provider.toolProtocolProfile
+        toolProtocolProfile: effectiveToolProtocolProfile
       }
     });
     const baseModelReq: UnifiedModelRequest = {
@@ -732,13 +805,13 @@ export class FrameworkRuntimeEngine {
     let selectedAdapter = exposureSelection.adapter;
     let exposurePlan = selectedAdapter.buildToolExposure(
       {
-        provider: {
-          vendor: provider.vendor,
-          apiMode: provider.apiMode,
-          toolProtocolProfile: provider.toolProtocolProfile
-        },
-        override: {
-          preferredAdapter: selectedAdapter.kind,
+            provider: {
+              vendor: provider.vendor,
+              apiMode: provider.apiMode,
+              toolProtocolProfile: effectiveToolProtocolProfile
+            },
+            override: {
+              preferredAdapter: selectedAdapter.kind,
           fallbackAdapters: exposureSelection.fallbackChain.filter((item) => item !== selectedAdapter.kind)
         }
       },
@@ -765,7 +838,7 @@ export class FrameworkRuntimeEngine {
             provider: {
               vendor: provider.vendor,
               apiMode: provider.apiMode,
-              toolProtocolProfile: provider.toolProtocolProfile
+              toolProtocolProfile: effectiveToolProtocolProfile
             },
             override: {
               preferredAdapter: candidateAdapter.kind,
@@ -841,7 +914,7 @@ export class FrameworkRuntimeEngine {
       summary: "Prompt 编译完成",
       payload: {
         compileId: compile.promptTrace.compileId,
-        selectedBlocks: compile.promptTrace.selectedBlocks.length,
+        selectedUnits: compile.promptTrace.selectedUnits.length,
         tokenEstimate: compile.promptTrace.tokenEstimate,
         toolExposurePlanId: exposurePlan.planId,
         toolExposureAdapter: exposurePlan.adapterKind,
@@ -1144,16 +1217,95 @@ export class FrameworkRuntimeEngine {
   private async runToolNode(node: WorkflowNodeSpec, state: RunState): Promise<RunState> {
     const tool = this.deps.toolRegistry.get(node.toolId!);
     if (!tool) throw new Error(`Tool 不存在：${node.toolId}`);
-    const cfgArgs = (node.config && typeof node.config === "object" ? (node.config as JsonObject).args : undefined) as JsonValue;
-    const args = cfgArgs && typeof cfgArgs === "object" && !Array.isArray(cfgArgs) ? (cfgArgs as JsonObject) : {};
+    const cfg = node.config && typeof node.config === "object" && !Array.isArray(node.config) ? (node.config as JsonObject) : {};
+    const cfgArgs = cfg.args;
+    const staticArgs = cfgArgs && typeof cfgArgs === "object" && !Array.isArray(cfgArgs) ? { ...(cfgArgs as JsonObject) } : {};
+    const inputMapping =
+      cfg.inputMapping && typeof cfg.inputMapping === "object" && !Array.isArray(cfg.inputMapping)
+        ? (cfg.inputMapping as Record<string, JsonValue>)
+        : {};
+    const args: JsonObject = { ...staticArgs };
+    for (const [argName, mappedPath] of Object.entries(inputMapping)) {
+      if (typeof mappedPath !== "string") continue;
+      const mappedValue = getByPath(state, mappedPath);
+      if (mappedValue !== undefined) args[argName] = mappedValue as JsonValue;
+    }
+    if (args.input === undefined && state.conversationState.latestAssistantText) {
+      args.input = state.conversationState.latestAssistantText;
+    }
+
     const { result } = await this.deps.toolRuntime.execute(tool, args);
-    return {
+    let nextState: RunState = {
       ...state,
       toolState: {
+        ...state.toolState,
         lastToolCalls: [],
         lastToolResults: [result]
       }
     };
+
+    const packet = {
+      nodeId: node.id,
+      toolId: tool.id,
+      toolName: tool.name,
+      ok: result.ok,
+      output: result.output ?? null,
+      error: result.error ?? null
+    };
+    nextState = {
+      ...nextState,
+      conversationState: {
+        ...nextState.conversationState,
+        messages: [
+          ...nextState.conversationState.messages,
+          {
+            role: "tool",
+            name: tool.name,
+            content: JSON.stringify(packet),
+            metadata: {
+              sourceKind: "workflow_packet",
+              sourceNodeId: node.id,
+              toolId: tool.id
+            }
+          }
+        ]
+      }
+    };
+
+    const outputMapping =
+      cfg.outputMapping && typeof cfg.outputMapping === "object" && !Array.isArray(cfg.outputMapping)
+        ? (cfg.outputMapping as Record<string, JsonValue>)
+        : undefined;
+    if (outputMapping) {
+      const stateField = typeof outputMapping.stateField === "string" ? outputMapping.stateField : undefined;
+      const artifactType = typeof outputMapping.artifactType === "string" ? outputMapping.artifactType : undefined;
+      const writeMode = typeof outputMapping.writeMode === "string" ? outputMapping.writeMode : "result";
+      const mappedValue =
+        writeMode === "output"
+          ? (result.output ?? null)
+          : writeMode === "error"
+            ? (result.error ?? null)
+            : ({
+                ok: result.ok,
+                output: result.output ?? null,
+                error: result.error ?? null
+              } as JsonValue);
+
+      if (stateField) {
+        nextState = setByPath(nextState, stateField, mappedValue);
+      }
+      if (artifactType) {
+        nextState = {
+          ...nextState,
+          artifacts: {
+            ...nextState.artifacts,
+            outputs: [...nextState.artifacts.outputs, { id: newId("artifact"), type: artifactType, content: mappedValue }]
+          }
+        };
+      }
+    }
+
+    return nextState;
   }
 
   /**
@@ -1571,6 +1723,13 @@ export class FrameworkRuntimeEngine {
             break;
           }
         }
+        if (condType === "expression" && edge.condition?.expression) {
+          if (this.evaluateEdgeExpression(state, edge.condition.expression)) {
+            nextNodeId = edge.to;
+            reason = `expression:${edge.condition.expression}`;
+            break;
+          }
+        }
       }
     }
 
@@ -1598,13 +1757,17 @@ export class FrameworkRuntimeEngine {
   }
 
   private getStateFieldValue(state: RunState, pathExpr: string): unknown {
-    const parts = pathExpr.split(".");
-    let current: unknown = state;
-    for (const part of parts) {
-      if (!current || typeof current !== "object") return undefined;
-      current = (current as Record<string, unknown>)[part];
+    return getByPath(state, pathExpr);
+  }
+
+  private evaluateEdgeExpression(state: RunState, expression: string): boolean {
+    try {
+      // 仅在本地配置中使用，表达式上下文只暴露只读 state。
+      const fn = new Function("state", `return Boolean(${expression});`) as (input: RunState) => boolean;
+      return Boolean(fn(state));
+    } catch {
+      return false;
     }
-    return current;
   }
 
   /**
@@ -1650,12 +1813,12 @@ export class FrameworkRuntimeEngine {
     return diff;
   }
 
-  private loadPromptBlocksFromSnapshot(state: RunState): PromptBlock[] {
+  private loadPromptUnitsFromSnapshot(state: RunState): PromptBlock[] {
     const refs = this.getSnapshotRefs(state);
-    const map = (refs.promptBlocks ?? {}) as Record<string, number>;
+    const map = ((refs.promptUnits ?? refs.promptBlocks ?? {}) as Record<string, number>) ?? {};
     const list: PromptBlock[] = [];
     for (const [id, version] of Object.entries(map)) {
-      const item = this.deps.db.getPromptBlock(id, version);
+      const item = this.deps.db.getPromptUnit(id, version);
       if (item) list.push(item);
     }
     return list;
@@ -1683,7 +1846,7 @@ export class FrameworkRuntimeEngine {
   private buildSnapshotVersionRefs(workflow: WorkflowSpec): JsonObject {
     const agents: Record<string, number> = {};
     const tools: Record<string, number> = {};
-    const promptBlocks: Record<string, number> = {};
+    const promptUnits: Record<string, number> = {};
 
     for (const node of workflow.nodes) {
       if (node.agentId) {
@@ -1696,16 +1859,18 @@ export class FrameworkRuntimeEngine {
       }
     }
 
-    // 首版直接冻结当前全部 PromptBlock（后续可按 agent/policy 精确筛选）。
-    for (const block of this.deps.db.listPromptBlocks()) {
-      promptBlocks[block.id] = block.version;
+    // 运行开始时冻结当前 PromptUnit 版本，避免 run 中途受全局热更新污染。
+    for (const unit of this.deps.db.listPromptUnits()) {
+      promptUnits[unit.id] = unit.version;
     }
 
     return {
       workflow: { id: workflow.id, version: workflow.version },
       agents,
       tools,
-      promptBlocks
+      promptUnits,
+      // 兼容旧字段，便于旧 run 回放。
+      promptBlocks: promptUnits
     };
   }
 
@@ -1741,7 +1906,7 @@ export class FrameworkRuntimeEngine {
       artifacts: {
         outputs: [{ id: newId("artifact"), type: "snapshot_version_refs", content: snapshotRefs as unknown as JsonValue }]
       },
-      memoryState: { injectedPromptBlocks: [] },
+      memoryState: { injectedPromptUnitIds: [] },
       toolState: { lastToolCalls: [], lastToolResults: [] },
       routingState: {
         currentNodeId: workflow.entryNode,
