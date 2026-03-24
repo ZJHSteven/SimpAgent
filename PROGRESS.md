@@ -53,9 +53,15 @@
     - 内置工具配置由“内存态”迁移到 SQLite 表 `builtin_tool_configs`（重启不丢失）。
     - 新增 `system_configs` 表与默认系统配置回退逻辑。
     - 内置医学模板 `mededu-default-v1` 已内置，可一键应用生成多 Agent 预设。
-    - `runtime-node` 启动新增 `SIMPAGENT_PROJECT_ID` 项目隔离目录（默认 `dev-console`）。
+  - `runtime-node` 启动新增 `SIMPAGENT_PROJECT_ID` 项目隔离目录（默认 `dev-console`）。
   - WS 增强：`run_snapshot.latestTraceSeq`、`REPLAY_WINDOW_MISS` warning。
   - 前端测试工作台（Vite/React）：白皮书风单页，多面板覆盖 run/trace/history/fork/builtin/apply_patch/WS 日志。
+  - 新增统一图谱与统一 schema 设计文档（2026-03-24）：
+    - 文档：`docs/统一图谱与统一Schema设计-v0.1.md`
+    - 明确统一图谱采用“节点 + 边 + 末端载荷表”模型；
+    - 明确 Prompt / Memory / Tool / Skill / MCP 统一入图谱；
+    - 明确 PromptUnit 是统一投影层，而不是唯一存储本体；
+    - 明确 SQLite 新增 `catalog_nodes / catalog_edges / catalog_*_payloads` 系列表的方向。
   - Prompt 与 Agent 契约完成新一轮升级（2026-03-04）：
     - 持久化层统一为 `PromptUnit`（兼容旧 `PromptBlock` 命名与路由）。
     - Agent 新增 `promptBindings`（启停/顺序/覆盖下沉到 Agent 层）。
@@ -64,13 +70,14 @@
     - workflow `tool` 节点支持 `inputMapping/outputMapping` 与 `expression` 条件边。
     - `shell_only` 路由语义修正为“仅暴露 shell bridge + 优先原生工具协议”，而非直接走提示词回退。
 - 验证：`npm run build:workspaces` 通过、`npm run --workspace @simpagent/runtime-node test:smoke` 通过、根前端 `npm run build` 通过（2026-03-01）；`npm run --workspace @simpagent/app-mededu-cockpit build` 通过（2026-03-04）；`npm run -s build`（`packages/core`、`packages/runtime-node`、root）通过（2026-03-04）。
-- 正在做：编写并冻结 2026-03-24 的总执行计划，准备按“统一图谱 -> SQLite schema -> Prompt/Memory/Tool 装配 -> Shell/权限 -> MCP/skills 适配 -> Node runtime 补齐 -> 全量测试”的顺序推进框架收口。
+- 正在做：统一图谱第一阶段文档冻结已完成，下一步将进入契约落地与 SQLite schema 实装，按“统一图谱 -> SQLite schema -> Prompt/Memory/Tool 装配 -> Shell/权限 -> MCP/skills 适配 -> Node runtime 补齐 -> 全量测试”的顺序推进框架收口。
 - 下一步：
-  1. 设计统一图谱模型与 SQLite schema，明确节点/边/末端载荷（Tool/Memory/Prompt）边界。
-  2. 将 Prompt / Memory / Tool / Skill / MCP 统一接入“图谱节点 -> PromptUnit 投影”的装配链路。
-  3. 重构 Shell/Exec 执行内核与权限模型，默认 Zero Trust，支持 `deny / ask / allow` 与多层覆写。
-  4. 设计 MCP 与 skills 的 CodeMode 风格适配：默认走 prompt 暴露 + shell/exec 执行，function-style 仅保留兼容层。
-  5. 补齐 `runtime-node` 真主后端能力与覆盖核心子系统的全量测试，再进入 AI PPT 等上层业务开发。
+  1. 将统一图谱契约正式写入 `packages/core/src/types/contracts.ts`。
+  2. 将 `catalog_nodes / catalog_edges / catalog_*_payloads` 新表正式写入 `packages/runtime-node/src/storage/schema.ts` 与 `db.ts`。
+  3. 将 Prompt / Memory / Tool / Skill / MCP 统一接入“图谱节点 -> PromptUnit 投影”的装配链路。
+  4. 重构 Shell/Exec 执行内核与权限模型，默认 Zero Trust，支持 `deny / ask / allow` 与多层覆写。
+  5. 设计 MCP 与 skills 的 CodeMode 风格适配：默认走 prompt 暴露 + shell/exec 执行，function-style 仅保留兼容层。
+  6. 补齐 `runtime-node` 真主后端能力与覆盖核心子系统的全量测试，再进入 AI PPT 等上层业务开发。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：执行内核采用 LangGraph.js（原因：直接获得 checkpoint / interrupt / replay / history / updateState，避免自研运行时黑洞）。

@@ -179,6 +179,8 @@
 - 设计 Tool / Memory / Prompt / Skill / MCP 的节点类型与边类型枚举。
 - 明确短描述、长描述、展开策略、命中后暴露策略、末端执行定义的契约。
 - 梳理现有 `PromptUnit / ToolSpec / BuiltinToolConfig / MemoryAdapter` 与新图谱模型的映射关系。
+- 先产出正式设计文档，冻结 v0.1 基线：
+  - `docs/统一图谱与统一Schema设计-v0.1.md`
 
 2. SQLite Schema 与存储层改造
 - 设计并落地图谱存储 schema：
