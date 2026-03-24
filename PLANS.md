@@ -129,3 +129,132 @@
 - Agent 可通过 `promptBindings` 控制 PromptUnit 装配顺序与启用状态。
 - Agent 可通过 `toolRoutePolicy` 控制内层路由（含 `shell_only` 仅暴露 shell bridge）。
 - 兼容旧配置（PromptBlock/旧 API 路径）不被破坏。
+
+---
+
+## 任务名称（2026-03-24）
+- 框架主干收口：统一图谱存储 + CodeMode 工具体系 + Shell/权限模型 + Node Runtime 补齐 + 全量测试
+
+## 执行目标（本轮总计划）
+- 不再只做“ToolSpec 小修小补”，而是一次性把框架主干收口路线写清楚，后续严格按此计划推进。
+- 统一 `Prompt / Memory / Tool / Skill / MCP / Worldbook` 的上层编排模型，落到 SQLite 图谱式存储设计（节点 + 边 + 末端载荷）。
+- 明确“万物可投影为 PromptUnit，但工具末端节点仍保留结构化执行载荷”的边界，避免把工具本体退化为纯 prompt 文本。
+- 采用 CodeMode 思路重整工具体系：
+  - MCP 与 skills 优先走“prompt 暴露 + shell/exec 执行”路径；
+  - 不以 function-style 作为默认主路线；
+  - function-style 仅保留为兼容层/特殊直通能力。
+- 明确 Shell 执行模型：
+  - `shell_command` 负责一次性命令调用；
+  - 预留持续进程/交互式 exec 能力（是否本轮全部落地，视实现复杂度拆分）；
+  - 对齐权限、工作目录、超时、环境变量、审批与审计。
+- 建立统一权限内核，默认 Zero Trust，至少覆盖：
+  - `deny / ask / allow` 三层判定；
+  - system / project / agent / node 多层覆写；
+  - 命令、路径、网络、文件系统、额外权限申请等维度。
+- 补齐 `packages/runtime-node` 作为主后端所缺失的基础能力，并确认 `packages/core`、`packages/runtime-worker`、`packages/runtime-tauri-bridge` 的边界。
+- 建立覆盖核心子系统的详尽测试矩阵，要求不只“冒烟通过”，而是覆盖语法、功能、边界、异常与权限路径。
+
+## 关键设计约束（本轮必须先定）
+- 统一图谱是“上层内容/暴露/关系模型”，不是要求所有底层实体都只剩一张大 JSON 表。
+- PromptUnit 是统一暴露/装配单位，但 Tool 节点必须保留独立执行定义：
+  - 名称、短描述、长描述；
+  - 输入 schema；
+  - 执行后端；
+  - 权限与审批策略；
+  - 可观测性与副作用记录。
+- 树是图的特例：
+  - 高层集合节点默认走父子边；
+  - 需要横向引用/归属/关联时再走关系边；
+  - Tool 集、Memory 集、Prompt 集允许互相嵌套，不做类型隔离墙。
+- MCP 默认按“工作集 -> 工具末节点”建模，不强制做多级层次；若后续发现某类 MCP 有天然层级，再通过集合节点补上。
+- skills 视为“内容节点 + 可选执行载荷”的复合体：
+  - 短描述先暴露；
+  - 命中后展开正文；
+  - 若携带执行能力，则走 shell/exec 权限链路。
+- `packages/runtime-node` 是当前主实现真源；`backend` 兼容壳与重复实现后续要纳入收口计划，避免双份维护。
+
+## 分阶段计划（总执行序列）
+1. 统一图谱与类型契约设计
+- 设计统一节点/边模型，明确哪些是通用字段，哪些是末端载荷字段。
+- 设计 Tool / Memory / Prompt / Skill / MCP 的节点类型与边类型枚举。
+- 明确短描述、长描述、展开策略、命中后暴露策略、末端执行定义的契约。
+- 梳理现有 `PromptUnit / ToolSpec / BuiltinToolConfig / MemoryAdapter` 与新图谱模型的映射关系。
+
+2. SQLite Schema 与存储层改造
+- 设计并落地图谱存储 schema：
+  - 节点主表；
+  - 边表；
+  - Tool 末端载荷表；
+  - Memory/Prompt 载荷表；
+  - 可选的版本表/审计表。
+- 设计版本化、项目隔离、热更新与回滚策略。
+- 提供最小迁移/seed 路径，保证现有 preset/config 能映射到新结构。
+
+3. Prompt / Memory / Tool 统一装配层
+- 让 PromptCompiler 能从图谱节点中抽取 PromptUnit 视图。
+- 将 worldbook / memory / skills / tool exposure 统一为“图谱节点 -> PromptUnit 投影”的装配过程。
+- 明确“初始只暴露短描述，命中后再展开长描述/明细”的运行规则。
+- 设计并实现“工具集合选择 / 命中下钻 / 末端执行”所需的中间状态。
+
+4. Shell / Exec 执行内核重构
+- 将当前一次性 `shell_command` 从“硬编码白名单 + 直接 spawn”升级为统一执行内核。
+- 明确两类执行能力：
+  - 一次性命令执行；
+  - 持续进程/交互式执行（预留或落地）。
+- 统一工作目录、环境变量、超时、stdout/stderr、退出码、会话标识、审计与副作用记录。
+- 将 `allowCommandPrefixes`、工作目录策略、风险分类真正接入运行时，而不是只停留在配置层。
+
+5. 权限与审批模型落地
+- 设计统一权限规则对象，至少支持：
+  - 模式：`deny | ask | allow`
+  - 匹配器：`exact | prefix | regex | schema`
+  - 作用域：command / path / fs / network / tool
+  - 层级：system / project / agent / node
+- 默认策略采用 Zero Trust：未命中放行规则即拒绝或要求审批。
+- 设计“额外权限申请”能力，为后续更细粒度审批保留口子。
+- 审计侧完整记录：请求、命中规则、审批结果、实际执行内容。
+
+6. MCP / skills / 外部工具适配
+- MCP 默认主路线改为：
+  - MCP 元信息 -> 图谱节点；
+  - 短描述/长描述 -> PromptUnit 暴露；
+  - 末端执行 -> shell/exec 或专用 client 适配。
+- skills 默认主路线改为：
+  - 文本正文直接进入 PromptUnit；
+  - 若带执行载荷，则挂接到末端 Tool 节点并接入权限链路。
+- function-style 仅保留为兼容层、内建工具或特殊高稳定直通工具，不再作为对外扩展的主设计。
+- 评估 builtin tools 与图谱末端节点的统一方式，避免出现“双轨工具定义”。
+
+7. Node Runtime 主干补齐与边界收口
+- 逐项确认 `runtime-node` 还缺哪些主后端能力：
+  - 图谱 CRUD；
+  - 统一装配；
+  - Shell/Exec 权限；
+  - MCP/skills 适配；
+  - 统一测试入口。
+- 确认 `core` 的职责边界：
+  - 契约、编译器、循环与抽象端口继续保留；
+  - Node 专属实现继续放在 `runtime-node`。
+- 确认 worker / tauri bridge 本轮只保持适配接口，不追求与 node 完全同构落地。
+
+8. 全量测试体系建设
+- 为以下模块建立专门测试：
+  - 类型契约与 schema 序列化；
+  - 图谱存储 CRUD、版本与项目隔离；
+  - Prompt 装配与暴露策略；
+  - shell/exec 权限判定；
+  - MCP/skills 适配转换；
+  - builtin tool 执行与 fallback；
+  - runtime-node API / WS / trace / fork / patch / resume 主链路；
+  - 权限拒绝、审批、异常路径与边界情况。
+- 在根脚本层增加真正有意义的统一测试入口，避免 `test:workspaces` 继续空转。
+
+9. 文档与收口
+- 持续更新 `PLANS.md`、`PROGRESS.md`、`README.md`。
+- 对“当前真实主实现”“兼容壳”“占位工程”的状态给出明确标识，避免后续继续混淆。
+- 在进入 AI PPT 等上层业务功能前，以“Node runtime 主干齐套 + 测试通过”作为门槛。
+
+## 本轮完成判据（计划层）
+- `PLANS.md` 已完整记录本轮框架收口路线，不再停留在零散讨论。
+- 统一图谱、Shell/权限、MCP/skills、测试补齐、runtime-node 收口都已纳入执行序列。
+- 后续实现阶段将按本节序列推进，并在 `PROGRESS.md` 持续同步最新状态。

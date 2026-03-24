@@ -1,7 +1,7 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：已完成一次性工程分层重构，项目从“单 backend + 单前端”升级为 `monorepo + 多运行时适配` 结构；当前正在推进 `PromptUnit + Agent 绑定装配 + 三层工具路由` 对齐，医学教育前端已独立迁移到 `apps/mededu-cockpit`（全中文临床教学运行舱 + 非线性画布动画 + mock 演示链路）。
+- 现状：已完成一次性工程分层重构，项目从“单 backend + 单前端”升级为 `monorepo + 多运行时适配` 结构；当前主线目标已从单纯的 `PromptUnit + Agent 绑定装配 + 三层工具路由` 对齐，扩展为“框架主干收口”：统一图谱存储、Prompt/Memory/Tool/Skill/MCP 统一建模、CodeMode 风格工具体系、Shell/Exec 权限内核、`runtime-node` 主后端补齐与全量测试体系建设。
 - 已完成：
 -  - Monorepo/workspaces 建立完成：`packages/*` + `apps/*` + `backend` 兼容壳。
 -  - 新增 `@simpagent/core`：
@@ -64,13 +64,13 @@
     - workflow `tool` 节点支持 `inputMapping/outputMapping` 与 `expression` 条件边。
     - `shell_only` 路由语义修正为“仅暴露 shell bridge + 优先原生工具协议”，而非直接走提示词回退。
 - 验证：`npm run build:workspaces` 通过、`npm run --workspace @simpagent/runtime-node test:smoke` 通过、根前端 `npm run build` 通过（2026-03-01）；`npm run --workspace @simpagent/app-mededu-cockpit build` 通过（2026-03-04）；`npm run -s build`（`packages/core`、`packages/runtime-node`、root）通过（2026-03-04）。
-- 正在做：ToolSpec 的最终统一定义（外层定义模型）与 PromptUnit/Tool 交互细节仍待下一轮专门设计。
+- 正在做：编写并冻结 2026-03-24 的总执行计划，准备按“统一图谱 -> SQLite schema -> Prompt/Memory/Tool 装配 -> Shell/权限 -> MCP/skills 适配 -> Node runtime 补齐 -> 全量测试”的顺序推进框架收口。
 - 下一步：
-  1. 固化 ToolSpec 统一定义（MCP/函数/skills/shell 外层接入）并补中层映射规则。
-  2. 将当前 mock 运行舱接入真实 `run/trace` 数据流（保留 mock 回退开关）。
-  3. 前端设置页接通 `config/system`、模板应用与三层配置可视化。
-  4. 补齐 `dev:dev-console:full` 一键联启脚本或文档替代方案。
-  5. 同步更新 README / PLANS / PROGRESS 的页面-接口映射文档。
+  1. 设计统一图谱模型与 SQLite schema，明确节点/边/末端载荷（Tool/Memory/Prompt）边界。
+  2. 将 Prompt / Memory / Tool / Skill / MCP 统一接入“图谱节点 -> PromptUnit 投影”的装配链路。
+  3. 重构 Shell/Exec 执行内核与权限模型，默认 Zero Trust，支持 `deny / ask / allow` 与多层覆写。
+  4. 设计 MCP 与 skills 的 CodeMode 风格适配：默认走 prompt 暴露 + shell/exec 执行，function-style 仅保留兼容层。
+  5. 补齐 `runtime-node` 真主后端能力与覆盖核心子系统的全量测试，再进入 AI PPT 等上层业务开发。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：执行内核采用 LangGraph.js（原因：直接获得 checkpoint / interrupt / replay / history / updateState，避免自研运行时黑洞）。
@@ -86,6 +86,8 @@
 - 决策K：`backend` 保留兼容壳而不是立即删除，原因：一次性重构期间降低迁移风险，兼容旧脚本和使用习惯。
 - 决策L：Prompt 全局定义与 Agent 运行态绑定分离（`PromptUnit` vs `promptBindings`），原因：同一提示词要被多 Agent 复用时，启停/顺序属于 Agent 上下文而非全局属性。
 - 决策M：`toolRoutePolicy` 放在 Agent（不是 Tool），原因：内层 API 路由取决于模型能力与场景策略，而非单个工具本体定义。
+- 决策N：后续框架主线采用“统一图谱 + PromptUnit 投影 + 末端执行载荷”模型，原因：既保留“万物可提示词化”的统一视角，又不丢失 Tool/Memory 的结构化执行与存储能力。
+- 决策O：MCP/skills 后续默认优先走 CodeMode 风格的“prompt 暴露 + shell/exec 执行”路线，而不是全面 function-style，原因：便于统一纳入 PromptUnit 管控、层级化暴露与可审计权限链路。
 
 ## 常见坑 / 复现方法
 - 坑1：PowerShell 命令语法与 bash 花括号展开不同，批量创建目录时容易写错；需使用数组循环创建。
