@@ -263,7 +263,8 @@
 2. MCP/skills CodeMode shell bridge（已完成）
 3. MCP `stdio / streamable-http / sse` 三类 transport 适配（已完成）
 4. catalog / bridge / skill 专项测试脚本（已完成）
-5. Shell/Exec 权限规则细化与审批链路（下一轮）
+5. 根级统一测试入口收口，避免 `test:workspaces` 空转（已完成）
+6. Shell/Exec 权限规则细化与审批链路（下一轮）
 
 ## 本轮完成判据（计划层）
 - `PLANS.md` 已完整记录本轮框架收口路线，不再停留在零散讨论。
@@ -284,8 +285,8 @@
 2. 重写 `docs/统一图谱与统一Schema设计-v0.1.md`，冻结简化模型（已完成）
 3. 更新 `PLANS.md` 与 `PROGRESS.md`，把新基线写回项目记忆（已完成）
 4. 第一批实现：`contracts + catalog schema/db + catalog -> PromptUnit 接入 runtime`（已完成）
-5. 第二批实现：`MCP/skills shell bridge + transport/client + 审计链路`（进行中）
-6. 全量测试、文档同步与提交版本（待执行）
+5. 第二批实现：`MCP/skills shell bridge + transport/client + 审计链路`（已完成）
+6. 全量测试、文档同步与提交版本（进行中）
 
 ## 本轮完成判据
 - 统一图谱正式收敛为三核心结构：
@@ -295,3 +296,22 @@
 - 树结构主路径改为 `parent_node_id`，图关系只用于横向引用。
 - skill / MCP / memory / prompt 不再继续平行发明存储体系。
 - 文档、计划、进度记录三处保持一致。
+
+## 任务名称（2026-03-25，补齐）
+- 统一图谱上一轮收口补齐：根级测试入口接线 + 文档状态对齐
+
+## 执行目标（本轮补齐）
+- 不再让 `npm run test:workspaces` 继续空转，而是直接回归 `runtime-node` 的统一图谱与工具桥接测试。
+- 将 `统一图谱 plan.md`、`PLANS.md`、`PROGRESS.md` 的状态修正为与仓库真实实现一致。
+- 明确本轮只收口 `packages/core` 与 `packages/runtime-node` 这层 Agent 框架，不碰 `src/App.tsx` 等前端页面文件。
+
+## 分阶段计划（本轮补齐）
+1. 核对根级测试入口与 `runtime-node` 测试脚本的断点位置（已完成）
+2. 为 `@simpagent/runtime-node` 增加统一 `test` 聚合脚本（已完成）
+3. 回归执行 `build:workspaces`、`test:workspaces`、`runtime-node test:smoke`、`runtime-node test:catalog-bridge`（进行中）
+4. 更新 `统一图谱 plan.md`、`PLANS.md`、`PROGRESS.md` 并提交版本（进行中）
+
+## 本轮完成判据（补齐）
+- `npm run test:workspaces` 不再空跑，而是实际执行统一图谱与工具桥接测试。
+- 文档中的“已完成/进行中”状态与真实仓库行为一致。
+- 本轮改动只集中在 package/framework 层与项目记忆文件，不触碰前端页面实现。
