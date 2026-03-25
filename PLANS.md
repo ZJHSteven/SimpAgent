@@ -286,7 +286,7 @@
 3. 更新 `PLANS.md` 与 `PROGRESS.md`，把新基线写回项目记忆（已完成）
 4. 第一批实现：`contracts + catalog schema/db + catalog -> PromptUnit 接入 runtime`（已完成）
 5. 第二批实现：`MCP/skills shell bridge + transport/client + 审计链路`（已完成）
-6. 全量测试、文档同步与提交版本（进行中）
+6. 全量测试、文档同步与提交版本（已完成）
 
 ## 本轮完成判据
 - 统一图谱正式收敛为三核心结构：
@@ -308,8 +308,8 @@
 ## 分阶段计划（本轮补齐）
 1. 核对根级测试入口与 `runtime-node` 测试脚本的断点位置（已完成）
 2. 为 `@simpagent/runtime-node` 增加统一 `test` 聚合脚本（已完成）
-3. 回归执行 `build:workspaces`、`test:workspaces`、`runtime-node test:smoke`、`runtime-node test:catalog-bridge`（进行中）
-4. 更新 `统一图谱 plan.md`、`PLANS.md`、`PROGRESS.md` 并提交版本（进行中）
+3. 回归执行 `build:workspaces`、`test:workspaces`、`runtime-node test:smoke`、`runtime-node test:catalog-bridge`（已完成）
+4. 更新 `统一图谱 plan.md`、`PLANS.md`、`PROGRESS.md` 并提交版本（已完成）
 
 ## 本轮完成判据（补齐）
 - `npm run test:workspaces` 不再空跑，而是实际执行统一图谱与工具桥接测试。

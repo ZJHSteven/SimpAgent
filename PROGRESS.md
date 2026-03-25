@@ -88,6 +88,7 @@
 - 统一图谱收口补齐（2026-03-25）：
   - `@simpagent/runtime-node` 已新增统一 `test` 聚合脚本，根级 `npm run test:workspaces` 不再空转。
   - 根测试入口现在会真实执行 `test:smoke + test:catalog-bridge` 两套 package 级回归。
+  - 本轮收口已完成提交，计划状态与仓库当前行为已重新对齐。
 - 验证：`npm run build:workspaces` 通过、`npm run test:workspaces` 通过、`npm run --workspace @simpagent/runtime-node test:smoke` 通过、`npm run --workspace @simpagent/runtime-node test:catalog-bridge` 通过、根前端 `npm run build` 通过（2026-03-25）。
 - 正在做：统一图谱与工具桥接这一轮已完成收口，当前转入下一阶段的 Shell/Exec 权限规则细化、审批链路与更完整的 catalog CRUD/API 暴露。
 - 下一步：
