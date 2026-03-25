@@ -70,15 +70,21 @@
     - runtime 新增 `/api/prompt-units`，旧 `/api/prompt-blocks` 保留兼容。
     - workflow `tool` 节点支持 `inputMapping/outputMapping` 与 `expression` 条件边。
     - `shell_only` 路由语义修正为“仅暴露 shell bridge + 优先原生工具协议”，而非直接走提示词回退。
+  - 统一图谱第一批代码实现已落地（2026-03-25）：
+    - `@simpagent/core` 新增 catalog 契约：`CatalogNode / CatalogRelation / CatalogNodeFacet` 及对应 facet payload 类型。
+    - `PromptUnitSpec` 新增 `sourceRef`，`PromptUnitSource` 新增 `catalog_node` 来源标记。
+    - `runtime-node` SQLite 新增 `catalog_nodes / catalog_relations / catalog_node_facets` 三张表。
+    - `AppDatabase` 新增 catalog CRUD、catalog PromptUnit 映射、catalog 上下文 PromptUnit 投影读取。
+    - `seedDefaultConfigs` 与 JSON preset 导入会把旧 PromptBlock / Tool 同步写入 catalog。
+    - `runAgentNode()` 已在 compile 前把 catalog 上下文投影块并入现有 PromptCompiler 主链。
 - 验证：`npm run build:workspaces` 通过、`npm run --workspace @simpagent/runtime-node test:smoke` 通过、根前端 `npm run build` 通过（2026-03-01）；`npm run --workspace @simpagent/app-mededu-cockpit build` 通过（2026-03-04）；`npm run -s build`（`packages/core`、`packages/runtime-node`、root）通过（2026-03-04）。
-- 正在做：统一图谱第一阶段已从“多 payload 表 + 全边模型”收敛为“统一节点 + parent_node_id 树结构 + relations + facets”；下一步进入契约落地与 SQLite schema 实装，按“catalog 契约 -> SQLite schema -> Prompt/Tool 映射 -> Memory/Skill/MCP 接入 -> Shell/权限 -> 全量测试”的顺序推进框架收口。
+- 正在做：统一图谱第一批“catalog -> PromptUnit 主链路”已打通并通过构建/冒烟；当前进入第二批，实现 MCP/skills 的 CodeMode shell bridge、三类 MCP transport 适配，以及对应审计与专项测试。
 - 下一步：
-  1. 将统一图谱契约正式写入 `packages/core/src/types/contracts.ts`，核心先落 `CatalogNode / CatalogRelation / CatalogNodeFacet`。
-  2. 将 `catalog_nodes / catalog_relations / catalog_node_facets` 新表正式写入 `packages/runtime-node/src/storage/schema.ts` 与 `db.ts`。
-  3. 先把 `prompt_blocks` 与 `tools` 映射到 catalog，再接 PromptUnit 投影链路。
-  4. 再把 memory / worldbook / skill / MCP 接入 catalog，避免一开始迁移面过大。
-  5. 重构 Shell/Exec 执行内核与权限模型，默认 Zero Trust，支持 `deny / ask / allow` 与多层覆写。
-  6. 补齐 `runtime-node` 真主后端能力与覆盖核心子系统的全量测试，再进入 AI PPT 等上层业务开发。
+  1. 完成 catalog 第一批实现并跑通构建：类型、表结构、CRUD、PromptCompiler 接入。
+  2. 落地 MCP bridge：支持 `stdio / streamable-http / sse`，并统一为 `simpagent mcp call --args-json` 的 CodeMode 执行入口。
+  3. 落地 skills bridge：本地 bundle 映射为 catalog 节点，并通过 shell bridge 执行脚本型 skill。
+  4. 为 catalog / Prompt 编译 / MCP transport / bridge 命令 / skills 适配补齐专项测试。
+  5. 再继续推进 Shell/Exec 权限模型细化与更完整的审计链路。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：执行内核采用 LangGraph.js（原因：直接获得 checkpoint / interrupt / replay / history / updateState，避免自研运行时黑洞）。

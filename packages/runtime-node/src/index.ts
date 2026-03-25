@@ -38,11 +38,11 @@ const dbPath = path.join(dataDir, "framework.sqlite");
 
 // ===== 存储与种子数据 =====
 const db = new AppDatabase(dbPath);
-seedDefaultConfigs(db);
+seedDefaultConfigs(db, projectId);
 const presetDirRaw = process.env.SIMPAGENT_PRESET_DIR;
 if (presetDirRaw && presetDirRaw.trim()) {
   const presetDir = resolveFromInitCwd(presetDirRaw.trim());
-  const seeded = seedPresetConfigsFromDir(db, presetDir);
+  const seeded = seedPresetConfigsFromDir(db, presetDir, projectId);
   console.log(`Preset loaded from ${presetDir}`, seeded);
 }
 

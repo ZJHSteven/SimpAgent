@@ -15,6 +15,9 @@ import { randomUUID } from "node:crypto";
 import type {
   AgentSpec,
   BuiltinToolConfig,
+  CatalogNode,
+  CatalogNodeFacet,
+  CatalogRelation,
   CanonicalToolSideEffectRecord,
   ForkRunResponse,
   JsonValue,
@@ -30,6 +33,10 @@ import type {
   UserInputRequestState,
   WorkflowSpec
 } from "../types/index.js";
+import {
+  mapCatalogPromptNodeToPromptBlock,
+  projectCatalogNodeToContextPromptBlocks
+} from "../catalog/index.js";
 import { SCHEMA_SQL } from "./schema.js";
 
 function nowIso(): string {
@@ -297,10 +304,17 @@ export class AppDatabase {
    * - 底层沿用旧表 `prompt_blocks`，避免迁移期间破坏兼容性。
    */
   listPromptUnits(): PromptBlock[] {
-    return this.listPromptBlocks();
+    const catalogUnits = this.listCatalogPromptUnits();
+    const legacyUnits = this.listPromptBlocks();
+    const merged = new Map<string, PromptBlock>();
+    for (const unit of legacyUnits) merged.set(unit.id, unit);
+    for (const unit of catalogUnits) merged.set(unit.id, unit);
+    return [...merged.values()].sort((a, b) => a.id.localeCompare(b.id));
   }
 
   getPromptUnit(unitId: string, version?: number): PromptBlock | null {
+    const catalogItem = this.getCatalogPromptUnit(unitId);
+    if (catalogItem) return catalogItem;
     return this.getPromptBlock(unitId, version);
   }
 
@@ -362,6 +376,390 @@ export class AppDatabase {
           )
           .get(toolId) as { payload_json: string } | undefined);
     return row ? fromJson<ToolSpec>(row.payload_json) : null;
+  }
+
+  /**
+   * 读取某项目下的全部图谱节点。
+   */
+  listCatalogNodes(projectId = "default"): CatalogNode[] {
+    const rows = this.db
+      .prepare(
+        `SELECT node_id, project_id, parent_node_id, node_class, name, title,
+                summary_text, content_text, content_format, primary_kind,
+                visibility, expose_mode, enabled, sort_order,
+                tags_json, metadata_json, created_at, updated_at
+         FROM catalog_nodes
+         WHERE project_id = ?
+         ORDER BY parent_node_id ASC, sort_order ASC, name ASC`
+      )
+      .all(projectId) as Array<{
+      node_id: string;
+      project_id: string;
+      parent_node_id: string | null;
+      node_class: CatalogNode["nodeClass"];
+      name: string;
+      title: string | null;
+      summary_text: string | null;
+      content_text: string | null;
+      content_format: NonNullable<CatalogNode["contentFormat"]>;
+      primary_kind: NonNullable<CatalogNode["primaryKind"]>;
+      visibility: CatalogNode["visibility"];
+      expose_mode: CatalogNode["exposeMode"];
+      enabled: number;
+      sort_order: number;
+      tags_json: string | null;
+      metadata_json: string | null;
+      created_at: string;
+      updated_at: string;
+    }>;
+    return rows.map((row) => ({
+      nodeId: row.node_id,
+      projectId: row.project_id,
+      parentNodeId: row.parent_node_id ?? undefined,
+      nodeClass: row.node_class,
+      name: row.name,
+      title: row.title ?? undefined,
+      summaryText: row.summary_text ?? undefined,
+      contentText: row.content_text ?? undefined,
+      contentFormat: row.content_format,
+      primaryKind: row.primary_kind,
+      visibility: row.visibility,
+      exposeMode: row.expose_mode,
+      enabled: row.enabled === 1,
+      sortOrder: row.sort_order,
+      tags: row.tags_json ? fromJson<string[]>(row.tags_json) : undefined,
+      metadata: row.metadata_json ? fromJson<Record<string, JsonValue>>(row.metadata_json) : undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+  }
+
+  getCatalogNode(nodeId: string, projectId = "default"): CatalogNode | null {
+    const row = this.db
+      .prepare(
+        `SELECT node_id, project_id, parent_node_id, node_class, name, title,
+                summary_text, content_text, content_format, primary_kind,
+                visibility, expose_mode, enabled, sort_order,
+                tags_json, metadata_json, created_at, updated_at
+         FROM catalog_nodes
+         WHERE project_id = ? AND node_id = ?`
+      )
+      .get(projectId, nodeId) as
+      | {
+          node_id: string;
+          project_id: string;
+          parent_node_id: string | null;
+          node_class: CatalogNode["nodeClass"];
+          name: string;
+          title: string | null;
+          summary_text: string | null;
+          content_text: string | null;
+          content_format: NonNullable<CatalogNode["contentFormat"]>;
+          primary_kind: NonNullable<CatalogNode["primaryKind"]>;
+          visibility: CatalogNode["visibility"];
+          expose_mode: CatalogNode["exposeMode"];
+          enabled: number;
+          sort_order: number;
+          tags_json: string | null;
+          metadata_json: string | null;
+          created_at: string;
+          updated_at: string;
+        }
+      | undefined;
+    if (!row) return null;
+    return {
+      nodeId: row.node_id,
+      projectId: row.project_id,
+      parentNodeId: row.parent_node_id ?? undefined,
+      nodeClass: row.node_class,
+      name: row.name,
+      title: row.title ?? undefined,
+      summaryText: row.summary_text ?? undefined,
+      contentText: row.content_text ?? undefined,
+      contentFormat: row.content_format,
+      primaryKind: row.primary_kind,
+      visibility: row.visibility,
+      exposeMode: row.expose_mode,
+      enabled: row.enabled === 1,
+      sortOrder: row.sort_order,
+      tags: row.tags_json ? fromJson<string[]>(row.tags_json) : undefined,
+      metadata: row.metadata_json ? fromJson<Record<string, JsonValue>>(row.metadata_json) : undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  saveCatalogNode(node: CatalogNode): CatalogNode {
+    const now = nowIso();
+    this.db
+      .prepare(
+        `INSERT INTO catalog_nodes (
+          node_id, project_id, parent_node_id, node_class, name, title,
+          summary_text, content_text, content_format, primary_kind,
+          visibility, expose_mode, enabled, sort_order,
+          tags_json, metadata_json, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(node_id) DO UPDATE SET
+          project_id = excluded.project_id,
+          parent_node_id = excluded.parent_node_id,
+          node_class = excluded.node_class,
+          name = excluded.name,
+          title = excluded.title,
+          summary_text = excluded.summary_text,
+          content_text = excluded.content_text,
+          content_format = excluded.content_format,
+          primary_kind = excluded.primary_kind,
+          visibility = excluded.visibility,
+          expose_mode = excluded.expose_mode,
+          enabled = excluded.enabled,
+          sort_order = excluded.sort_order,
+          tags_json = excluded.tags_json,
+          metadata_json = excluded.metadata_json,
+          updated_at = excluded.updated_at`
+      )
+      .run(
+        node.nodeId,
+        node.projectId,
+        node.parentNodeId ?? null,
+        node.nodeClass,
+        node.name,
+        node.title ?? null,
+        node.summaryText ?? null,
+        node.contentText ?? null,
+        node.contentFormat ?? "markdown",
+        node.primaryKind ?? "generic",
+        node.visibility,
+        node.exposeMode,
+        node.enabled ? 1 : 0,
+        node.sortOrder,
+        node.tags ? toJson(node.tags) : null,
+        node.metadata ? toJson(node.metadata) : null,
+        node.createdAt || now,
+        now
+      );
+    return {
+      ...node,
+      updatedAt: now,
+      createdAt: node.createdAt || now
+    };
+  }
+
+  deleteCatalogNode(nodeId: string): void {
+    this.db.prepare(`DELETE FROM catalog_node_facets WHERE node_id = ?`).run(nodeId);
+    this.db.prepare(`DELETE FROM catalog_relations WHERE from_node_id = ? OR to_node_id = ?`).run(nodeId, nodeId);
+    this.db.prepare(`DELETE FROM catalog_nodes WHERE node_id = ?`).run(nodeId);
+  }
+
+  listCatalogRelations(projectId = "default"): CatalogRelation[] {
+    const rows = this.db
+      .prepare(
+        `SELECT relation_id, project_id, from_node_id, to_node_id, relation_type, weight, metadata_json, created_at, updated_at
+         FROM catalog_relations
+         WHERE project_id = ?
+         ORDER BY from_node_id ASC, to_node_id ASC`
+      )
+      .all(projectId) as Array<{
+      relation_id: string;
+      project_id: string;
+      from_node_id: string;
+      to_node_id: string;
+      relation_type: CatalogRelation["relationType"];
+      weight: number | null;
+      metadata_json: string | null;
+      created_at: string;
+      updated_at: string;
+    }>;
+    return rows.map((row) => ({
+      relationId: row.relation_id,
+      projectId: row.project_id,
+      fromNodeId: row.from_node_id,
+      toNodeId: row.to_node_id,
+      relationType: row.relation_type,
+      weight: row.weight ?? undefined,
+      metadata: row.metadata_json ? fromJson<Record<string, JsonValue>>(row.metadata_json) : undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+  }
+
+  saveCatalogRelation(relation: CatalogRelation): CatalogRelation {
+    const now = nowIso();
+    this.db
+      .prepare(
+        `INSERT INTO catalog_relations (
+          relation_id, project_id, from_node_id, to_node_id, relation_type, weight, metadata_json, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(relation_id) DO UPDATE SET
+          project_id = excluded.project_id,
+          from_node_id = excluded.from_node_id,
+          to_node_id = excluded.to_node_id,
+          relation_type = excluded.relation_type,
+          weight = excluded.weight,
+          metadata_json = excluded.metadata_json,
+          updated_at = excluded.updated_at`
+      )
+      .run(
+        relation.relationId,
+        relation.projectId,
+        relation.fromNodeId,
+        relation.toNodeId,
+        relation.relationType,
+        relation.weight ?? null,
+        relation.metadata ? toJson(relation.metadata) : null,
+        relation.createdAt || now,
+        now
+      );
+    return {
+      ...relation,
+      createdAt: relation.createdAt || now,
+      updatedAt: now
+    };
+  }
+
+  listCatalogNodeFacets(projectId = "default"): CatalogNodeFacet[] {
+    const rows = this.db
+      .prepare(
+        `SELECT f.facet_id, f.node_id, f.facet_type, f.payload_json, f.updated_at
+         FROM catalog_node_facets f
+         JOIN catalog_nodes n ON n.node_id = f.node_id
+         WHERE n.project_id = ?
+         ORDER BY f.node_id ASC, f.facet_type ASC`
+      )
+      .all(projectId) as Array<{
+      facet_id: string;
+      node_id: string;
+      facet_type: CatalogNodeFacet["facetType"];
+      payload_json: string;
+      updated_at: string;
+    }>;
+    return rows.map((row) => ({
+      facetId: row.facet_id,
+      nodeId: row.node_id,
+      facetType: row.facet_type,
+      payload: fromJson<CatalogNodeFacet["payload"]>(row.payload_json),
+      updatedAt: row.updated_at
+    }));
+  }
+
+  listCatalogFacetsByNodeId(nodeId: string): CatalogNodeFacet[] {
+    const rows = this.db
+      .prepare(
+        `SELECT facet_id, node_id, facet_type, payload_json, updated_at
+         FROM catalog_node_facets
+         WHERE node_id = ?
+         ORDER BY facet_type ASC`
+      )
+      .all(nodeId) as Array<{
+      facet_id: string;
+      node_id: string;
+      facet_type: CatalogNodeFacet["facetType"];
+      payload_json: string;
+      updated_at: string;
+    }>;
+    return rows.map((row) => ({
+      facetId: row.facet_id,
+      nodeId: row.node_id,
+      facetType: row.facet_type,
+      payload: fromJson<CatalogNodeFacet["payload"]>(row.payload_json),
+      updatedAt: row.updated_at
+    }));
+  }
+
+  getCatalogFacet(nodeId: string, facetType: CatalogNodeFacet["facetType"]): CatalogNodeFacet | null {
+    const row = this.db
+      .prepare(
+        `SELECT facet_id, node_id, facet_type, payload_json, updated_at
+         FROM catalog_node_facets
+         WHERE node_id = ? AND facet_type = ?`
+      )
+      .get(nodeId, facetType) as
+      | {
+          facet_id: string;
+          node_id: string;
+          facet_type: CatalogNodeFacet["facetType"];
+          payload_json: string;
+          updated_at: string;
+        }
+      | undefined;
+    if (!row) return null;
+    return {
+      facetId: row.facet_id,
+      nodeId: row.node_id,
+      facetType: row.facet_type,
+      payload: fromJson<CatalogNodeFacet["payload"]>(row.payload_json),
+      updatedAt: row.updated_at
+    };
+  }
+
+  saveCatalogFacet(facet: CatalogNodeFacet): CatalogNodeFacet {
+    const now = nowIso();
+    this.db
+      .prepare(
+        `INSERT INTO catalog_node_facets (facet_id, node_id, facet_type, payload_json, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(node_id, facet_type) DO UPDATE SET
+           facet_id = excluded.facet_id,
+           payload_json = excluded.payload_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(facet.facetId, facet.nodeId, facet.facetType, toJson(facet.payload), now);
+    return {
+      ...facet,
+      updatedAt: now
+    };
+  }
+
+  deleteCatalogFacet(nodeId: string, facetType: CatalogNodeFacet["facetType"]): void {
+    this.db.prepare(`DELETE FROM catalog_node_facets WHERE node_id = ? AND facet_type = ?`).run(nodeId, facetType);
+  }
+
+  /**
+   * 读取 catalog 中显式 PromptUnit 节点，并映射为现有 PromptBlock。
+   */
+  listCatalogPromptUnits(projectId = "default"): PromptBlock[] {
+    const nodes = this.listCatalogNodes(projectId);
+    const facets = this.listCatalogNodeFacets(projectId);
+    const facetsByNode = new Map<string, CatalogNodeFacet[]>();
+    for (const facet of facets) {
+      const list = facetsByNode.get(facet.nodeId) ?? [];
+      list.push(facet);
+      facetsByNode.set(facet.nodeId, list);
+    }
+    return nodes
+      .map((node) => mapCatalogPromptNodeToPromptBlock(node, facetsByNode.get(node.nodeId) ?? []))
+      .filter((item): item is PromptBlock => Boolean(item));
+  }
+
+  getCatalogPromptUnit(nodeId: string, projectId = "default"): PromptBlock | null {
+    const node = this.getCatalogNode(nodeId, projectId);
+    if (!node) return null;
+    return mapCatalogPromptNodeToPromptBlock(node, this.listCatalogFacetsByNodeId(nodeId));
+  }
+
+  /**
+   * 读取 catalog 中可直接注入上下文的说明性 PromptBlock。
+   * 说明：
+   * - 这些块不依赖 Agent 显式绑定；
+   * - 主要用于工具目录、世界书、技能说明、MCP 工具说明。
+   */
+  listCatalogContextPromptUnits(projectId = "default"): PromptBlock[] {
+    const nodes = this.listCatalogNodes(projectId);
+    const facets = this.listCatalogNodeFacets(projectId);
+    const facetsByNode = new Map<string, CatalogNodeFacet[]>();
+    for (const facet of facets) {
+      const list = facetsByNode.get(facet.nodeId) ?? [];
+      list.push(facet);
+      facetsByNode.set(facet.nodeId, list);
+    }
+    const results: PromptBlock[] = [];
+    for (const node of nodes) {
+      for (const item of projectCatalogNodeToContextPromptBlocks(node, facetsByNode.get(node.nodeId) ?? [])) {
+        results.push(item);
+      }
+    }
+    return results;
   }
 
   /**

@@ -28,7 +28,7 @@ async function main() {
   const backendRoot = path.resolve(path.dirname(__filename), "../..");
   const dataDir = path.join(backendRoot, "data", projectId);
   const db = new AppDatabase(path.join(dataDir, "framework-smoke.sqlite"));
-  seedDefaultConfigs(db);
+  seedDefaultConfigs(db, projectId);
 
   const agentRegistry = new AgentRegistry(db);
   const workflowRegistry = new WorkflowRegistry(db);

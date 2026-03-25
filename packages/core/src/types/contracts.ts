@@ -129,6 +129,156 @@ export type PromptInsertionPoint =
 export type MessageRole = "system" | "developer" | "user" | "assistant" | "tool";
 
 /**
+ * 统一图谱：节点基础分类。
+ * 说明：
+ * - group 表示目录/集合节点；
+ * - item 表示具体内容节点或可执行节点。
+ */
+export type CatalogNodeClass = "group" | "item";
+
+/**
+ * 统一图谱：节点主用途标签。
+ * 说明：
+ * - 这是“主用途提示”，不是硬类型系统；
+ * - 真正的能力仍由 facet 决定。
+ */
+export type CatalogPrimaryKind = "generic" | "prompt" | "memory" | "tool" | "skill" | "mcp" | "worldbook";
+
+/**
+ * 图谱节点对模型的暴露模式。
+ */
+export type CatalogExposeMode = "hidden" | "summary_only" | "summary_first" | "content_direct" | "manual";
+
+/**
+ * 图谱节点附加能力类型。
+ */
+export type CatalogFacetType = "prompt" | "memory" | "tool" | "integration";
+
+/**
+ * 图谱横向关系类型。
+ * 说明：
+ * - 父子树结构不走这里，而是直接用 parentNodeId；
+ * - 这里只有跨树或横向引用。
+ */
+export type CatalogRelationType = "reference" | "use" | "depend_on" | "alias" | "expand" | "belong_to" | "trigger";
+
+/**
+ * 图谱节点统一结构。
+ * 说明：
+ * - 所有图谱内容都先落到这一个统一外形中；
+ * - 差异由 facet 补充。
+ */
+export interface CatalogNode {
+  nodeId: ID;
+  projectId: string;
+  parentNodeId?: ID | null;
+  nodeClass: CatalogNodeClass;
+  name: string;
+  title?: string;
+  summaryText?: string;
+  contentText?: string;
+  contentFormat?: "markdown" | "plain_text" | "json";
+  primaryKind?: CatalogPrimaryKind;
+  visibility: "visible" | "internal" | "hidden";
+  exposeMode: CatalogExposeMode;
+  enabled: boolean;
+  sortOrder: number;
+  tags?: string[];
+  metadata?: JsonObject;
+  createdAt: TimestampISO;
+  updatedAt: TimestampISO;
+}
+
+/**
+ * 图谱横向关系。
+ */
+export interface CatalogRelation {
+  relationId: ID;
+  projectId: string;
+  fromNodeId: ID;
+  toNodeId: ID;
+  relationType: CatalogRelationType;
+  weight?: number;
+  metadata?: JsonObject;
+  createdAt: TimestampISO;
+  updatedAt: TimestampISO;
+}
+
+/**
+ * Prompt facet 载荷。
+ * 说明：
+ * - 正文依然在 node.contentText；
+ * - facet 只补 Prompt 编译所需的结构化字段。
+ */
+export interface CatalogPromptFacetPayload {
+  promptKind?: PromptUnitKind;
+  role?: MessageRole;
+  insertionPoint?: PromptInsertionPoint;
+  variablesSchema?: JsonObject;
+  tokenLimit?: number;
+  priority?: number;
+  trigger?: JsonObject;
+}
+
+/**
+ * Memory facet 载荷。
+ */
+export interface CatalogMemoryFacetPayload {
+  memoryType: "fact" | "summary" | "persona" | "worldbook" | "episodic" | "semantic";
+  namespace?: string;
+  source?: string;
+  freshnessScore?: number;
+  confidenceScore?: number;
+  embeddingRef?: string;
+  trigger?: JsonObject;
+}
+
+/**
+ * Tool facet 载荷。
+ */
+export interface CatalogToolFacetPayload {
+  toolKind: "builtin" | "shell" | "exec" | "mcp" | "skill" | "http" | "plugin" | "user_defined";
+  inputSchema?: JsonObject;
+  outputSchema?: JsonObject;
+  executeMode?: "function_call" | "code_mode" | "direct_client";
+  backendRef?: string;
+  timeoutMs?: number;
+  permissionProfileId?: string;
+  workingDirPolicy?: JsonObject;
+  executionConfig?: JsonObject;
+}
+
+/**
+ * Integration facet 载荷。
+ * 说明：
+ * - 用于描述节点外部来源与连接方式；
+ * - 对 MCP server / imported skill bundle 尤其重要。
+ */
+export interface CatalogIntegrationFacetPayload {
+  sourceType: "mcp_server" | "mcp_tool" | "skill_bundle" | "preset" | "imported";
+  transport?: "stdio" | "streamable-http" | "sse" | "custom";
+  serverName?: string;
+  originalName?: string;
+  originalSchema?: JsonObject;
+  clientConfig?: JsonObject;
+}
+
+/**
+ * 图谱 facet 统一结构。
+ */
+export interface CatalogNodeFacet {
+  facetId: ID;
+  nodeId: ID;
+  facetType: CatalogFacetType;
+  payload:
+    | CatalogPromptFacetPayload
+    | CatalogMemoryFacetPayload
+    | CatalogToolFacetPayload
+    | CatalogIntegrationFacetPayload;
+  updatedAt: TimestampISO;
+}
+
+/**
  * Agent 内部对 PromptUnit 的绑定关系。
  * 说明：
  * - PromptUnit 是全局可复用定义；
@@ -251,6 +401,18 @@ export interface PromptUnitSpec {
   enabled?: boolean;
   version: number;
   tags?: string[];
+  /**
+   * 图谱来源引用。
+   * 说明：
+   * - 当 PromptUnit 不是来自旧 `prompt_blocks`，而是由 catalog 节点映射而来时，
+   *   这里记录其原始节点信息，便于 trace 与调试器显示来源。
+   */
+  sourceRef?: {
+    kind: "catalog_node";
+    nodeId: ID;
+    facetType?: CatalogFacetType;
+    primaryKind?: CatalogPrimaryKind;
+  };
 }
 
 /**
@@ -594,6 +756,7 @@ export interface PromptUnit {
 
 export type PromptUnitSource =
   | { kind: "prompt_unit"; unitId: ID; unitVersion?: number; promptKind?: PromptUnitKind }
+  | { kind: "catalog_node"; nodeId: ID; facetType?: CatalogFacetType; primaryKind?: CatalogPrimaryKind; promptKind?: PromptUnitKind }
   | { kind: "prompt_block"; blockId: ID; blockVersion?: number; promptKind?: PromptBlockKind }
   | { kind: "history_message"; messageIndex: number; originalRole: MessageRole }
   | { kind: "memory_delegate"; adapterId?: ID; producerAgentId?: ID }

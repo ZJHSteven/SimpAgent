@@ -441,12 +441,21 @@ export class PromptCompiler {
 
       compiledFromBindings.push({
         id: `compiled.binding.${binding.bindingId ?? binding.unitId}`,
-        source: {
-          kind: "prompt_unit",
-          unitId: unit.id,
-          unitVersion: unit.version,
-          promptKind: unit.kind
-        },
+        source:
+          unit.sourceRef?.kind === "catalog_node"
+            ? {
+                kind: "catalog_node",
+                nodeId: unit.sourceRef.nodeId,
+                facetType: unit.sourceRef.facetType,
+                primaryKind: unit.sourceRef.primaryKind,
+                promptKind: unit.kind
+              }
+            : {
+                kind: "prompt_unit",
+                unitId: unit.id,
+                unitVersion: unit.version,
+                promptKind: unit.kind
+              },
         enabled: true,
         role: binding.roleOverride ?? unit.role ?? (unit.insertionPoint.startsWith("system_") ? "system" : "developer"),
         contentTemplate: unit.template,
@@ -454,7 +463,8 @@ export class PromptCompiler {
         placement: placementFromInsertionPoint(binding.insertionPointOverride ?? unit.insertionPoint),
         sortWeight: binding.priorityOverride ?? unit.priority,
         metadata: {
-          sourceKind: "prompt_unit",
+          sourceKind: unit.sourceRef?.kind === "catalog_node" ? "catalog_node" : "prompt_unit",
+          sourceNodeId: unit.sourceRef?.kind === "catalog_node" ? unit.sourceRef.nodeId : null,
           sourceUnitId: unit.id,
           bindingId: binding.bindingId ?? null,
           promptKind: unit.kind
@@ -543,10 +553,10 @@ export class PromptCompiler {
 
     const groupedUnitIds = new Map<PromptInsertionPoint, string[]>();
     for (const unit of finalCompiledUnits) {
-      if (unit.source.kind !== "prompt_unit") continue;
+      if (unit.source.kind !== "prompt_unit" && unit.source.kind !== "catalog_node") continue;
       if (unit.placement.mode !== "slot") continue;
       const list = groupedUnitIds.get(unit.placement.slot) ?? [];
-      list.push(unit.source.unitId);
+      list.push(unit.source.kind === "catalog_node" ? unit.source.nodeId : unit.source.unitId);
       groupedUnitIds.set(unit.placement.slot, list);
     }
 

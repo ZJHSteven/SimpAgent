@@ -275,8 +275,10 @@
 ## 分阶段计划（本轮）
 1. 读取 `packages/runtime-node` 当前 SQLite schema 与 memory/tool/prompt 现状，确认哪些属于定义层、哪些属于运行层（已完成）
 2. 重写 `docs/统一图谱与统一Schema设计-v0.1.md`，冻结简化模型（已完成）
-3. 更新 `PLANS.md` 与 `PROGRESS.md`，把新基线写回项目记忆（进行中）
-4. 做一致性检查并提交版本（待执行）
+3. 更新 `PLANS.md` 与 `PROGRESS.md`，把新基线写回项目记忆（已完成）
+4. 第一批实现：`contracts + catalog schema/db + catalog -> PromptUnit 接入 runtime`（已完成）
+5. 第二批实现：`MCP/skills shell bridge + transport/client + 审计链路`（进行中）
+6. 全量测试、文档同步与提交版本（待执行）
 
 ## 本轮完成判据
 - 统一图谱正式收敛为三核心结构：

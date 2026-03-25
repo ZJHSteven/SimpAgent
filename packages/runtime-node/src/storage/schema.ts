@@ -104,6 +104,84 @@ CREATE TABLE IF NOT EXISTS system_configs (
   updated_at TEXT NOT NULL
 );
 
+/**
+ * v0.4：统一图谱主表。
+ * 说明：
+ * - 统一存放 Prompt / Memory / Tool / Skill / MCP / Worldbook 等定义层节点；
+ * - 树结构优先直接使用 parent_node_id 表示。
+ */
+CREATE TABLE IF NOT EXISTS catalog_nodes (
+  node_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  parent_node_id TEXT,
+  node_class TEXT NOT NULL,
+  name TEXT NOT NULL,
+  title TEXT,
+  summary_text TEXT,
+  content_text TEXT,
+  content_format TEXT NOT NULL DEFAULT 'markdown',
+  primary_kind TEXT NOT NULL DEFAULT 'generic',
+  visibility TEXT NOT NULL DEFAULT 'visible',
+  expose_mode TEXT NOT NULL DEFAULT 'summary_first',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  tags_json TEXT,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalog_nodes_project_parent
+  ON catalog_nodes(project_id, parent_node_id, sort_order);
+
+CREATE INDEX IF NOT EXISTS idx_catalog_nodes_project_kind
+  ON catalog_nodes(project_id, primary_kind);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_catalog_nodes_project_name
+  ON catalog_nodes(project_id, name);
+
+/**
+ * v0.4：图谱横向关系表。
+ * 说明：
+ * - 只承载横向图关系；
+ * - 父子树结构不走这里。
+ */
+CREATE TABLE IF NOT EXISTS catalog_relations (
+  relation_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  from_node_id TEXT NOT NULL,
+  to_node_id TEXT NOT NULL,
+  relation_type TEXT NOT NULL,
+  weight REAL,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalog_relations_from
+  ON catalog_relations(project_id, from_node_id, relation_type);
+
+CREATE INDEX IF NOT EXISTS idx_catalog_relations_to
+  ON catalog_relations(project_id, to_node_id, relation_type);
+
+/**
+ * v0.4：节点 facet 表。
+ * 说明：
+ * - Prompt / Memory / Tool / Integration 这些附加能力统一走 facet；
+ * - 首版先使用 payload_json 快速收口。
+ */
+CREATE TABLE IF NOT EXISTS catalog_node_facets (
+  facet_id TEXT PRIMARY KEY,
+  node_id TEXT NOT NULL,
+  facet_type TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(node_id, facet_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalog_node_facets_node
+  ON catalog_node_facets(node_id, facet_type);
+
 CREATE TABLE IF NOT EXISTS runs (
   run_id TEXT PRIMARY KEY,
   thread_id TEXT NOT NULL,

@@ -6,14 +6,91 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { AgentSpec, PromptBlock, ToolSpec, WorkflowSpec } from "../types/index.js";
+import type { AgentSpec, CatalogNode, CatalogNodeFacet, JsonObject, PromptBlock, ToolSpec, WorkflowSpec } from "../types/index.js";
 import { AppDatabase } from "./db.js";
+
+function upsertCatalogPromptUnit(db: AppDatabase, block: PromptBlock, projectId: string): void {
+  const node: CatalogNode = {
+    nodeId: block.id,
+    projectId,
+    nodeClass: "item",
+    name: block.name,
+    title: block.name,
+    summaryText: block.name,
+    contentText: block.template,
+    contentFormat: "markdown",
+    primaryKind:
+      block.kind === "worldbook" ? "worldbook" : block.kind === "memory" ? "memory" : "prompt",
+    visibility: "visible",
+    exposeMode: "content_direct",
+    enabled: block.enabled !== false,
+    sortOrder: block.priority,
+    tags: block.tags,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  const promptFacet: CatalogNodeFacet = {
+    facetId: `facet.prompt.${block.id}`,
+    nodeId: block.id,
+    facetType: "prompt",
+    payload: {
+      promptKind: block.kind,
+      role: block.role,
+      insertionPoint: block.insertionPoint,
+      variablesSchema: block.variablesSchema,
+      tokenLimit: block.tokenLimit,
+      priority: block.priority,
+      trigger: block.trigger as JsonObject | undefined
+    },
+    updatedAt: new Date().toISOString()
+  };
+  db.saveCatalogNode(node);
+  db.saveCatalogFacet(promptFacet);
+}
+
+function upsertCatalogToolNode(db: AppDatabase, tool: ToolSpec, projectId: string): void {
+  const node: CatalogNode = {
+    nodeId: tool.id,
+    projectId,
+    nodeClass: "item",
+    name: tool.name,
+    title: tool.name,
+    summaryText: tool.description,
+    contentText: tool.description,
+    contentFormat: "markdown",
+    primaryKind: "tool",
+    visibility: "visible",
+    exposeMode: "summary_first",
+    enabled: tool.enabled,
+    sortOrder: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  const toolFacet: CatalogNodeFacet = {
+    facetId: `facet.tool.${tool.id}`,
+    nodeId: tool.id,
+    facetType: "tool",
+    payload: {
+      toolKind: "user_defined",
+      inputSchema: tool.inputSchema,
+      outputSchema: tool.outputSchema,
+      executeMode: tool.executorType === "function" ? "function_call" : "code_mode",
+      timeoutMs: tool.timeoutMs,
+      permissionProfileId: tool.permissionProfileId,
+      workingDirPolicy: tool.workingDirPolicy,
+      executionConfig: tool.executorConfig
+    },
+    updatedAt: new Date().toISOString()
+  };
+  db.saveCatalogNode(node);
+  db.saveCatalogFacet(toolFacet);
+}
 
 /**
  * 幂等种子函数：
  * - 若已有配置则不重复写入（通过查询数量判断）。
  */
-export function seedDefaultConfigs(db: AppDatabase): void {
+export function seedDefaultConfigs(db: AppDatabase, projectId = "default"): void {
   if (db.listAgents().length > 0) {
     return;
   }
@@ -249,8 +326,14 @@ export function seedDefaultConfigs(db: AppDatabase): void {
     version: 1
   };
 
-  for (const tool of tools) db.saveVersionedConfig("tool", tool);
-  for (const block of blocks) db.saveVersionedConfig("prompt_block", block);
+  for (const tool of tools) {
+    db.saveVersionedConfig("tool", tool);
+    upsertCatalogToolNode(db, tool, projectId);
+  }
+  for (const block of blocks) {
+    db.saveVersionedConfig("prompt_block", block);
+    upsertCatalogPromptUnit(db, block, projectId);
+  }
   for (const agent of agents) db.saveVersionedConfig("agent", agent);
   db.saveVersionedConfig("workflow", workflow);
   db.writeAudit("seed_default_configs", "system", "bootstrap", {
@@ -279,7 +362,8 @@ function readPresetArray<T>(presetDir: string, fileName: string): T[] {
  */
 export function seedPresetConfigsFromDir(
   db: AppDatabase,
-  presetDir: string
+  presetDir: string,
+  projectId = "default"
 ): {
   tools: number;
   promptBlocks: number;
@@ -303,6 +387,7 @@ export function seedPresetConfigsFromDir(
   for (const tool of tools) {
     if (!db.getTool(tool.id)) {
       db.saveVersionedConfig("tool", tool);
+      upsertCatalogToolNode(db, tool, projectId);
       toolsSaved += 1;
     }
   }
@@ -310,6 +395,7 @@ export function seedPresetConfigsFromDir(
   for (const block of promptBlocks) {
     if (!db.getPromptBlock(block.id)) {
       db.saveVersionedConfig("prompt_block", block);
+      upsertCatalogPromptUnit(db, block, projectId);
       blocksSaved += 1;
     }
   }

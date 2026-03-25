@@ -725,6 +725,13 @@ export class FrameworkRuntimeEngine {
     if (!agent) throw new Error(`Agent 不存在：${node.agentId}`);
 
     const promptUnits = this.loadPromptUnitsFromSnapshot(state);
+    const catalogContextPromptUnits = this.deps.db.listCatalogContextPromptUnits(this.deps.projectId);
+    const mergedPromptUnitMap = new Map<string, PromptBlock>();
+    for (const item of promptUnits) mergedPromptUnitMap.set(item.id, item);
+    for (const item of catalogContextPromptUnits) {
+      if (!mergedPromptUnitMap.has(item.id)) mergedPromptUnitMap.set(item.id, item);
+    }
+    const effectivePromptUnits = [...mergedPromptUnitMap.values()];
     const allowSet = new Set((agent.toolAllowList ?? []).map((item) => String(item)));
     let canonicalTools = this.deps.toolRegistry.listCanonicalTools().filter((tool) => {
       if (!tool.enabled) return false;
@@ -767,7 +774,7 @@ export class FrameworkRuntimeEngine {
 
     const compile = this.deps.promptCompiler.compile({
       agent,
-      blocks: promptUnits,
+      blocks: effectivePromptUnits,
       request: compileReq
     });
 
