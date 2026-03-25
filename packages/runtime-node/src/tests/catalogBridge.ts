@@ -254,7 +254,8 @@ async function main() {
   const __filename = fileURLToPath(import.meta.url);
   const runtimeRoot = path.resolve(path.dirname(__filename), "../..");
   const workspaceRoot = path.resolve(runtimeRoot, "..", "..");
-  const dataDir = path.join(runtimeRoot, "data", projectId);
+  // 使用唯一测试目录，避免 catalog bridge 与其他测试并发时删除同一路径触发 EPERM。
+  const dataDir = path.join(runtimeRoot, "data", `${projectId}-${process.pid}-${Date.now()}`);
   rmSync(dataDir, { recursive: true, force: true });
 
   const db = new AppDatabase(path.join(dataDir, "framework-catalog-bridge.sqlite"));

@@ -15,6 +15,7 @@ import path from "node:path";
 import { Annotation, Command, END, START, StateGraph, interrupt } from "@langchain/langgraph";
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 import type {
+  ApprovalRequest,
   AgentSpec,
   CanonicalToolSpec,
   CanonicalToolCallIntent,
@@ -62,6 +63,7 @@ import { PromptCompiler } from "../core/prompt/index.js";
 import { TraceEventBus } from "../core/trace/index.js";
 import { UnifiedProviderClient, validateProviderRequestCapabilities } from "../providers/index.js";
 import { InternalShellBridge } from "../bridges/index.js";
+import { evaluateShellPermission, parseApprovalAnswer } from "../security/permissions.js";
 import { AgentRoundExecutor, ToolLoopExecutor } from "./index.js";
 
 type GraphEnvelope = { state: RunState };
@@ -1403,6 +1405,112 @@ export class FrameworkRuntimeEngine {
 
       if (builtinName === "shell_command") {
         const rawCommand = String(args.command ?? "");
+        const shellPermission = evaluateShellPermission({
+          command: rawCommand,
+          requestedWorkdir: typeof args.workdir === "string" ? String(args.workdir) : undefined,
+          workspaceRoot: envelope.workspaceRoot,
+          workingDirPolicy: canonicalTool.permissionPolicy?.workingDirPolicy,
+          projectPermissionConfig: this.deps.db.getSystemConfig(this.deps.projectId).permissionPolicy,
+          toolPermissionPolicy: canonicalTool.permissionPolicy
+        });
+
+        if (shellPermission.decision === "deny") {
+          return buildResult({
+            ok: false,
+            error: {
+              code: "SHELL_PERMISSION_DENIED",
+              message: shellPermission.reason,
+              details: shellPermission as unknown as JsonValue
+            },
+            toolId: canonicalTool.id,
+            toolName: canonicalTool.name
+          });
+        }
+
+        if (shellPermission.decision === "ask") {
+          const approvalRequestId = newId("approval");
+          const approvalPayload = {
+            requestId: approvalRequestId,
+            type: "tool_approval",
+            toolId: canonicalTool.id,
+            toolName: canonicalTool.name,
+            command: rawCommand,
+            workdir: shellPermission.resolvedWorkdir,
+            reason: shellPermission.reason,
+            matches: shellPermission.matches
+          } as unknown as JsonValue;
+          const approvalRecord: ApprovalRequest = {
+            requestId: approvalRequestId,
+            runId: envelope.runId,
+            threadId: envelope.threadId,
+            nodeId: envelope.nodeId,
+            agentId: envelope.agentId,
+            toolId: canonicalTool.id,
+            toolName: canonicalTool.name,
+            scope: "command",
+            status: "pending",
+            summary: `shell_command 需要审批：${rawCommand}`,
+            payload: approvalPayload,
+            requestedAt: nowIso()
+          };
+          this.deps.db.upsertApprovalRequest(approvalRecord);
+          this.deps.traceBus.emit({
+            runId: envelope.runId,
+            threadId: envelope.threadId,
+            type: "interrupt_emitted",
+            nodeId: envelope.nodeId,
+            agentId: envelope.agentId,
+            summary: "shell_command 触发权限审批",
+            payload: summarize(approvalPayload)
+          });
+          const approvalAnswer = interrupt(approvalPayload);
+          const normalizedApproval = parseApprovalAnswer(approvalAnswer as JsonValue);
+          this.deps.db.upsertApprovalRequest({
+            ...approvalRecord,
+            status: normalizedApproval.approved ? "approved" : "rejected",
+            answer: approvalAnswer as JsonValue,
+            answeredAt: nowIso()
+          });
+          sideEffects.push({
+            sideEffectId: newId("sfx"),
+            runId: envelope.runId,
+            threadId: envelope.threadId,
+            nodeId: envelope.nodeId,
+            agentId: envelope.agentId,
+            type: "approval",
+            target: approvalRequestId,
+            summary: normalizedApproval.approved ? "shell_command 审批已通过" : "shell_command 审批被拒绝",
+            details: {
+              command: rawCommand,
+              action: normalizedApproval.action,
+              justification: normalizedApproval.justification
+            } as unknown as JsonValue,
+            timestamp: nowIso()
+          });
+          this.deps.traceBus.emit({
+            runId: envelope.runId,
+            threadId: envelope.threadId,
+            type: "resume_received",
+            nodeId: envelope.nodeId,
+            agentId: envelope.agentId,
+            summary: normalizedApproval.approved ? "shell_command 审批通过" : "shell_command 审批拒绝",
+            payload: summarize(approvalAnswer as JsonValue)
+          });
+          if (!normalizedApproval.approved) {
+            return buildResult({
+              ok: false,
+              error: {
+                code: "SHELL_APPROVAL_REJECTED",
+                message: normalizedApproval.justification || "人工审批拒绝执行该命令",
+                details: approvalPayload
+              },
+              toolId: canonicalTool.id,
+              toolName: canonicalTool.name
+            });
+          }
+        }
+
+        args.workdir = shellPermission.resolvedWorkdir;
         const bridgeResult = await this.internalShellBridge.tryExecute(rawCommand, {
           runId: envelope.runId,
           threadId: envelope.threadId,
@@ -1411,7 +1519,7 @@ export class FrameworkRuntimeEngine {
           toolCallId: intent.toolCallId,
           toolId: canonicalTool.id,
           toolName: canonicalTool.name,
-          workspaceRoot: envelope.workspaceRoot
+          workspaceRoot: shellPermission.resolvedWorkdir
         });
         if (bridgeResult?.handled && bridgeResult.toolResult) {
           return {
@@ -1438,10 +1546,15 @@ export class FrameworkRuntimeEngine {
           permissionProfileId: String(canonicalTool.permissionPolicy?.permissionProfileId ?? "perm.readonly"),
           timeoutMs: Number(canonicalTool.permissionPolicy?.timeoutMs ?? 15000),
           workingDirPolicy: canonicalTool.permissionPolicy?.workingDirPolicy,
+          executorConfig: {
+            permissionPolicy: canonicalTool.permissionPolicy
+          } as unknown as JsonObject,
           enabled: true,
           version: 1
         };
-        const { result, trace } = await this.deps.toolRuntime.execute(syntheticShellSpec, args, envelope.agentId);
+        const { result, trace } = await this.deps.toolRuntime.execute(syntheticShellSpec, args, envelope.agentId, {
+          shellApprovalGranted: true
+        });
         sideEffects.push({
           sideEffectId: newId("sfx"),
           runId: envelope.runId,

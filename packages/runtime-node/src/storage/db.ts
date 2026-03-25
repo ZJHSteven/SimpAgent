@@ -13,6 +13,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import type {
+  ApprovalRequest,
   AgentSpec,
   BuiltinToolConfig,
   CatalogNode,
@@ -37,6 +38,7 @@ import {
   mapCatalogPromptNodeToPromptBlock,
   projectCatalogNodeToContextPromptBlocks
 } from "../catalog/index.js";
+import { createDefaultPermissionConfig, normalizePermissionConfig } from "../security/permissions.js";
 import { SCHEMA_SQL } from "./schema.js";
 
 function nowIso(): string {
@@ -91,6 +93,7 @@ export interface SystemConfig {
   contextWindow: {
     conversationRounds: number;
   };
+  permissionPolicy: import("../types/index.js").PermissionConfig;
   tracePolicy: {
     wsLogLimit: number;
     traceEventLimit: number;
@@ -131,6 +134,11 @@ export interface UserInputRequestRow {
   answeredAt?: string;
 }
 
+/**
+ * 接口层使用的审批请求行视图。
+ */
+export interface ApprovalRequestRow extends ApprovalRequest {}
+
 function defaultSystemConfig(): SystemConfig {
   return {
     defaultModelRoute: {
@@ -143,6 +151,7 @@ function defaultSystemConfig(): SystemConfig {
     contextWindow: {
       conversationRounds: 5
     },
+    permissionPolicy: createDefaultPermissionConfig(),
     tracePolicy: {
       wsLogLimit: 200,
       traceEventLimit: 2000,
@@ -618,6 +627,10 @@ export class AppDatabase {
     };
   }
 
+  deleteCatalogRelation(relationId: string): void {
+    this.db.prepare(`DELETE FROM catalog_relations WHERE relation_id = ?`).run(relationId);
+  }
+
   listCatalogNodeFacets(projectId = "default"): CatalogNodeFacet[] {
     const rows = this.db
       .prepare(
@@ -818,6 +831,7 @@ export class AppDatabase {
         ...defaultSystemConfig().contextWindow,
         ...(parsed.contextWindow ?? {})
       },
+      permissionPolicy: normalizePermissionConfig(parsed.permissionPolicy),
       tracePolicy: {
         ...defaultSystemConfig().tracePolicy,
         ...(parsed.tracePolicy ?? {})
@@ -838,6 +852,7 @@ export class AppDatabase {
         ...current.contextWindow,
         ...(nextConfig.contextWindow ?? {})
       },
+      permissionPolicy: normalizePermissionConfig(nextConfig.permissionPolicy ?? current.permissionPolicy),
       tracePolicy: {
         ...current.tracePolicy,
         ...(nextConfig.tracePolicy ?? {})
@@ -1393,6 +1408,81 @@ export class AppDatabase {
       nodeId: row.node_id ?? undefined,
       agentId: row.agent_id ?? undefined,
       status: row.status,
+      payload: fromJson<JsonValue>(row.payload_json),
+      answer: row.answer_json ? fromJson<JsonValue>(row.answer_json) : undefined,
+      requestedAt: row.requested_at,
+      answeredAt: row.answered_at ?? undefined
+    }));
+  }
+
+  upsertApprovalRequest(input: ApprovalRequest): void {
+    this.db
+      .prepare(
+        `INSERT INTO approval_requests (
+          request_id, run_id, thread_id, node_id, agent_id, tool_id, tool_name, scope, status,
+          summary, payload_json, answer_json, requested_at, answered_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(request_id) DO UPDATE SET
+          status = excluded.status,
+          summary = excluded.summary,
+          payload_json = excluded.payload_json,
+          answer_json = excluded.answer_json,
+          answered_at = excluded.answered_at`
+      )
+      .run(
+        input.requestId,
+        input.runId,
+        input.threadId,
+        input.nodeId ?? null,
+        input.agentId ?? null,
+        input.toolId,
+        input.toolName,
+        input.scope,
+        input.status,
+        input.summary,
+        toJson(input.payload),
+        input.answer ? toJson(input.answer) : null,
+        input.requestedAt,
+        input.answeredAt ?? null
+      );
+  }
+
+  listApprovalRequestRows(runId: string): ApprovalRequestRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT request_id, run_id, thread_id, node_id, agent_id, tool_id, tool_name, scope, status,
+                summary, payload_json, answer_json, requested_at, answered_at
+         FROM approval_requests
+         WHERE run_id = ?
+         ORDER BY requested_at DESC`
+      )
+      .all(runId) as Array<{
+      request_id: string;
+      run_id: string;
+      thread_id: string;
+      node_id: string | null;
+      agent_id: string | null;
+      tool_id: string;
+      tool_name: string;
+      scope: ApprovalRequest["scope"];
+      status: ApprovalRequest["status"];
+      summary: string;
+      payload_json: string;
+      answer_json: string | null;
+      requested_at: string;
+      answered_at: string | null;
+    }>;
+    return rows.map((row) => ({
+      requestId: row.request_id,
+      runId: row.run_id,
+      threadId: row.thread_id,
+      nodeId: row.node_id ?? undefined,
+      agentId: row.agent_id ?? undefined,
+      toolId: row.tool_id,
+      toolName: row.tool_name,
+      scope: row.scope,
+      status: row.status,
+      summary: row.summary,
       payload: fromJson<JsonValue>(row.payload_json),
       answer: row.answer_json ? fromJson<JsonValue>(row.answer_json) : undefined,
       requestedAt: row.requested_at,

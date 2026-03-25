@@ -138,6 +138,20 @@
   - 根级 `npm run test:workspaces` 必须真实执行统一图谱与工具桥接回归，而不是只返回空成功
 - 这样后续继续推进 Shell/Exec 权限模型时，package 层已经具备最小统一回归入口。
 
+## 收口补齐完成（2026-03-25）
+- 已补齐 package 层剩余核心缺口：
+  - `shell_command` 权限内核：`deny / ask / allow`
+  - `approval_requests` 审批记录与恢复链路
+  - `catalog` 的节点 / facet / relation HTTP CRUD
+  - `permissions-catalog` 专项测试
+- 当前统一图谱 + MCP/skills 主链已经不再只停留在“能跑”，而是具备：
+  - 定义层统一
+  - MCP/skill shell bridge
+  - 权限/审批主链
+  - 最小编辑 API
+  - 根级统一测试入口
+- 后续剩余工作将转向“更细粒度权限维度（network / fs 等）”与“更完整的 API/WS 测试矩阵”，不再属于这一轮统一图谱主链的未完成项。
+
 ## 假设与默认
 - `AgentSpec` 继续独立于图谱，不进入 catalog。
 - PromptUnit 的稳定 ID 由图谱节点 ID 承担，Agent 绑定的就是这个 ID。

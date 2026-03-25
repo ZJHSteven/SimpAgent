@@ -264,7 +264,8 @@
 3. MCP `stdio / streamable-http / sse` 三类 transport 适配（已完成）
 4. catalog / bridge / skill 专项测试脚本（已完成）
 5. 根级统一测试入口收口，避免 `test:workspaces` 空转（已完成）
-6. Shell/Exec 权限规则细化与审批链路（下一轮）
+6. Shell/Exec 权限规则细化、审批链路与 catalog HTTP CRUD（已完成）
+7. 更细粒度 network / fs 规则与更大测试矩阵（后续增强）
 
 ## 本轮完成判据（计划层）
 - `PLANS.md` 已完整记录本轮框架收口路线，不再停留在零散讨论。
@@ -315,3 +316,25 @@
 - `npm run test:workspaces` 不再空跑，而是实际执行统一图谱与工具桥接测试。
 - 文档中的“已完成/进行中”状态与真实仓库行为一致。
 - 本轮改动只集中在 package/framework 层与项目记忆文件，不触碰前端页面实现。
+
+## 任务名称（2026-03-25，继续补齐）
+- 统一图谱剩余收口：Shell/Exec 权限审批 + catalog API + 权限/HTTP 测试
+
+## 执行目标（本轮继续补齐）
+- 将 `shell_command` 从“前缀白名单”升级为统一权限内核，落地 `deny / ask / allow`。
+- 为高风险命令增加 `approval_requests` 审批记录与恢复入口，而不是只返回一条字符串报错。
+- 为统一图谱补齐最小 HTTP CRUD，让 catalog 不再只有 DB 层接口。
+- 新增 package 级专项测试，覆盖权限拒绝、审批请求与 catalog HTTP 路由。
+
+## 分阶段计划（本轮继续补齐）
+1. 扩展 core 契约：权限规则、审批请求、副作用类型（已完成）
+2. 落地 runtime-node 权限内核与审批存储（已完成）
+3. 为 catalog 增加节点 / facet / relation HTTP CRUD（已完成）
+4. 新增 `test:permissions-catalog` 并接入统一 `test` 聚合脚本（已完成）
+5. 回归执行 `runtime-node build/test`、`test:workspaces`、`build:workspaces`、根 `build`（已完成）
+
+## 本轮完成判据（继续补齐）
+- `shell_command` 已具备 `deny / ask / allow` 决策和审批记录。
+- `catalog` 已具备最小 HTTP CRUD，不再只剩 SQLite 调用口。
+- `runtime-node test` 已覆盖 smoke / catalog bridge / permissions-catalog 三套测试。
+- 根级 `test:workspaces`、`build:workspaces`、根 `build` 均通过。

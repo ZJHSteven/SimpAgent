@@ -47,6 +47,10 @@ export type RunStatus =
 
 export type ToolExecutorType = "function" | "shell" | "http" | "mcp_proxy";
 export type ShellPermissionLevel = "readonly" | "workspace_write" | "dangerous";
+export type PermissionMode = "deny" | "ask" | "allow";
+export type PermissionScope = "command" | "path" | "fs" | "network" | "tool";
+export type PermissionRuleLayer = "system" | "project" | "agent" | "node";
+export type PermissionMatcherType = "exact" | "prefix" | "regex" | "schema";
 /**
  * 首批内置工具名称（借鉴 Codex 工具思路）。
  * 说明：
@@ -276,6 +280,52 @@ export interface CatalogNodeFacet {
     | CatalogToolFacetPayload
     | CatalogIntegrationFacetPayload;
   updatedAt: TimestampISO;
+}
+
+/**
+ * 统一权限规则。
+ * 说明：
+ * - 首版主要用于 shell/工作目录权限判定；
+ * - 但字段设计保留了 `network / fs / tool` 等作用域，便于后续扩展。
+ */
+export interface PermissionRule {
+  ruleId: ID;
+  layer: PermissionRuleLayer;
+  scope: PermissionScope;
+  action: PermissionMode;
+  matcher: {
+    type: PermissionMatcherType;
+    value: string;
+  };
+  description?: string;
+  metadata?: JsonObject;
+}
+
+/**
+ * 一组权限规则。
+ * 说明：
+ * - `defaultMode` 表示“没有命中任何规则时怎么办”；
+ * - 这正是 Zero Trust 是否成立的关键开关。
+ */
+export interface PermissionConfig {
+  defaultMode: PermissionMode;
+  rules: PermissionRule[];
+}
+
+/**
+ * 权限命中详情。
+ * 说明：
+ * - 用于 error details、trace、approval request；
+ * - 这样前端和开发者都能看到“到底是哪个规则生效了”。
+ */
+export interface PermissionMatchDetail {
+  ruleId: ID;
+  layer: PermissionRuleLayer;
+  scope: PermissionScope;
+  action: PermissionMode;
+  matcherType: PermissionMatcherType;
+  matcherValue: string;
+  reason: string;
 }
 
 /**
@@ -543,6 +593,7 @@ export interface CanonicalToolPermissionPolicy {
   requiresHumanApproval?: boolean;
   workingDirPolicy?: ToolSpec["workingDirPolicy"];
   allowCommandPrefixes?: string[];
+  extraRules?: PermissionRule[];
   timeoutMs?: number;
 }
 
@@ -616,7 +667,7 @@ export interface CanonicalToolSideEffectRecord {
   threadId: ID;
   nodeId?: ID;
   agentId?: ID;
-  type: "tool_exec" | "file_write" | "file_read" | "http_request" | "web_search" | "plan_update" | "user_input" | "image_read";
+  type: "tool_exec" | "file_write" | "file_read" | "http_request" | "web_search" | "plan_update" | "user_input" | "image_read" | "approval";
   target?: string;
   summary: string;
   details?: JsonValue;
@@ -1248,6 +1299,31 @@ export interface UserInputRequestState {
   }>;
   answer?: JsonValue;
   requestedAt?: TimestampISO;
+  answeredAt?: TimestampISO;
+}
+
+export type ApprovalRequestStatus = "pending" | "approved" | "rejected";
+
+/**
+ * 工具审批请求。
+ * 说明：
+ * - 与普通 `request_user_input` 分开存储；
+ * - 因为权限审批有更强的结构化语义：工具、作用域、通过/拒绝。
+ */
+export interface ApprovalRequest {
+  requestId: ID;
+  runId: ID;
+  threadId: ID;
+  nodeId?: ID;
+  agentId?: ID;
+  toolId: ID;
+  toolName: string;
+  scope: PermissionScope;
+  status: ApprovalRequestStatus;
+  summary: string;
+  payload: JsonValue;
+  answer?: JsonValue;
+  requestedAt: TimestampISO;
   answeredAt?: TimestampISO;
 }
 

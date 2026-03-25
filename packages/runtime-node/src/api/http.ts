@@ -170,6 +170,15 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
     }
   });
 
+  app.get("/api/runs/:runId/approval-requests", (req, res) => {
+    try {
+      const data = deps.db.listApprovalRequestRows(req.params.runId);
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "approval requests 查询失败");
+    }
+  });
+
   app.post("/api/runs/:runId/pause", async (req, res) => {
     try {
       const body = asObject(req.body);
@@ -187,6 +196,32 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
       res.json({ ok: true });
     } catch (error) {
       sendError(res, 500, error instanceof Error ? error.message : "resume 失败");
+    }
+  });
+
+  app.post("/api/runs/:runId/approval-requests/:requestId/respond", async (req, res) => {
+    try {
+      const request = deps.db
+        .listApprovalRequestRows(req.params.runId)
+        .find((item) => item.requestId === req.params.requestId);
+      if (!request) {
+        sendError(res, 404, "approval request 不存在");
+        return;
+      }
+      if (request.status !== "pending") {
+        sendError(res, 400, "approval request 已处理");
+        return;
+      }
+      const body = asObject(req.body);
+      await deps.engine.resumeRun(req.params.runId, {
+        requestId: req.params.requestId,
+        action: typeof body.action === "string" ? body.action : undefined,
+        approved: typeof body.approved === "boolean" ? body.approved : undefined,
+        justification: typeof body.justification === "string" ? body.justification : undefined
+      } as unknown as any);
+      res.json({ ok: true });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "approval respond 失败");
     }
   });
 
@@ -354,6 +389,167 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
       res.json({ ok: true, data: saved });
     } catch (error) {
       sendError(res, 500, error instanceof Error ? error.message : "更新 workflow 失败");
+    }
+  });
+
+  /**
+   * v0.4：统一图谱 HTTP CRUD。
+   * 说明：
+   * - 之前 catalog 只有 DB 层接口，不足以支持调试台做正式编辑；
+   * - 这里补齐最小节点/关系/facet 接口。
+   */
+  app.get("/api/catalog/nodes", (_req, res) => {
+    try {
+      res.json({ ok: true, data: deps.db.listCatalogNodes(deps.projectId) });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "查询 catalog nodes 失败");
+    }
+  });
+
+  app.get("/api/catalog/nodes/:nodeId", (req, res) => {
+    try {
+      const node = deps.db.getCatalogNode(req.params.nodeId, deps.projectId);
+      if (!node) {
+        sendError(res, 404, "catalog node 不存在");
+        return;
+      }
+      res.json({ ok: true, data: node });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "查询 catalog node 失败");
+    }
+  });
+
+  app.post("/api/catalog/nodes", (req, res) => {
+    try {
+      const saved = deps.db.saveCatalogNode({
+        ...(asObject(req.body) as any),
+        projectId: deps.projectId
+      });
+      deps.db.writeAudit("save_catalog_node", "catalog_node", saved.nodeId, saved as unknown as JsonObject);
+      res.json({ ok: true, data: saved });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "保存 catalog node 失败");
+    }
+  });
+
+  app.put("/api/catalog/nodes/:nodeId", (req, res) => {
+    try {
+      const saved = deps.db.saveCatalogNode({
+        ...(asObject(req.body) as any),
+        nodeId: req.params.nodeId,
+        projectId: deps.projectId
+      });
+      deps.db.writeAudit("update_catalog_node", "catalog_node", saved.nodeId, saved as unknown as JsonObject);
+      res.json({ ok: true, data: saved });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "更新 catalog node 失败");
+    }
+  });
+
+  app.delete("/api/catalog/nodes/:nodeId", (req, res) => {
+    try {
+      deps.db.deleteCatalogNode(req.params.nodeId);
+      deps.db.writeAudit("delete_catalog_node", "catalog_node", req.params.nodeId);
+      res.json({ ok: true, data: { nodeId: req.params.nodeId } });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "删除 catalog node 失败");
+    }
+  });
+
+  app.get("/api/catalog/nodes/:nodeId/facets", (req, res) => {
+    try {
+      res.json({ ok: true, data: deps.db.listCatalogFacetsByNodeId(req.params.nodeId) });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "查询 catalog facets 失败");
+    }
+  });
+
+  app.put("/api/catalog/nodes/:nodeId/facets/:facetType", (req, res) => {
+    try {
+      const body = asObject(req.body);
+      const payload = asObject(body.payload ?? body) as any;
+      const saved = deps.db.saveCatalogFacet({
+        facetId: typeof body.facetId === "string" ? body.facetId : `facet.${req.params.facetType}.${req.params.nodeId}`,
+        nodeId: req.params.nodeId,
+        facetType: req.params.facetType as any,
+        payload,
+        updatedAt: new Date().toISOString()
+      });
+      deps.db.writeAudit("save_catalog_facet", "catalog_facet", saved.facetId, saved as unknown as JsonObject);
+      res.json({ ok: true, data: saved });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "保存 catalog facet 失败");
+    }
+  });
+
+  app.delete("/api/catalog/nodes/:nodeId/facets/:facetType", (req, res) => {
+    try {
+      deps.db.deleteCatalogFacet(req.params.nodeId, req.params.facetType as any);
+      deps.db.writeAudit("delete_catalog_facet", "catalog_facet", `${req.params.nodeId}:${req.params.facetType}`);
+      res.json({ ok: true, data: { nodeId: req.params.nodeId, facetType: req.params.facetType } });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "删除 catalog facet 失败");
+    }
+  });
+
+  app.get("/api/catalog/relations", (_req, res) => {
+    try {
+      res.json({ ok: true, data: deps.db.listCatalogRelations(deps.projectId) });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "查询 catalog relations 失败");
+    }
+  });
+
+  app.post("/api/catalog/relations", (req, res) => {
+    try {
+      const saved = deps.db.saveCatalogRelation({
+        ...(asObject(req.body) as any),
+        projectId: deps.projectId
+      });
+      deps.db.writeAudit("save_catalog_relation", "catalog_relation", saved.relationId, saved as unknown as JsonObject);
+      res.json({ ok: true, data: saved });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "保存 catalog relation 失败");
+    }
+  });
+
+  app.put("/api/catalog/relations/:relationId", (req, res) => {
+    try {
+      const saved = deps.db.saveCatalogRelation({
+        ...(asObject(req.body) as any),
+        relationId: req.params.relationId,
+        projectId: deps.projectId
+      });
+      deps.db.writeAudit("update_catalog_relation", "catalog_relation", saved.relationId, saved as unknown as JsonObject);
+      res.json({ ok: true, data: saved });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "更新 catalog relation 失败");
+    }
+  });
+
+  app.delete("/api/catalog/relations/:relationId", (req, res) => {
+    try {
+      deps.db.deleteCatalogRelation(req.params.relationId);
+      deps.db.writeAudit("delete_catalog_relation", "catalog_relation", req.params.relationId);
+      res.json({ ok: true, data: { relationId: req.params.relationId } });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "删除 catalog relation 失败");
+    }
+  });
+
+  app.get("/api/catalog/prompt-units", (_req, res) => {
+    try {
+      res.json({ ok: true, data: deps.db.listCatalogPromptUnits(deps.projectId) });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "查询 catalog prompt units 失败");
+    }
+  });
+
+  app.get("/api/catalog/context-prompt-units", (_req, res) => {
+    try {
+      res.json({ ok: true, data: deps.db.listCatalogContextPromptUnits(deps.projectId) });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "查询 catalog context prompt units 失败");
     }
   });
 

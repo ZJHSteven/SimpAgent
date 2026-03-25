@@ -338,6 +338,31 @@ CREATE TABLE IF NOT EXISTS user_input_requests (
 
 CREATE INDEX IF NOT EXISTS idx_user_input_requests_run_id ON user_input_requests(run_id, requested_at);
 
+/**
+ * v0.4：工具审批请求。
+ * 说明：
+ * - 与普通 user_input 分开，避免“普通提问”和“权限审批”混淆；
+ * - 当前主要服务 shell_command 的 ask 审批链路。
+ */
+CREATE TABLE IF NOT EXISTS approval_requests (
+  request_id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  node_id TEXT,
+  agent_id TEXT,
+  tool_id TEXT NOT NULL,
+  tool_name TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  status TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  answer_json TEXT,
+  requested_at TEXT NOT NULL,
+  answered_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_approval_requests_run_id ON approval_requests(run_id, requested_at);
+
 CREATE TABLE IF NOT EXISTS state_patches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   thread_id TEXT NOT NULL,

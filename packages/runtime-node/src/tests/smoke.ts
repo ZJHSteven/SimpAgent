@@ -26,7 +26,8 @@ async function main() {
   const projectId = "smoke";
   const __filename = fileURLToPath(import.meta.url);
   const backendRoot = path.resolve(path.dirname(__filename), "../..");
-  const dataDir = path.join(backendRoot, "data", projectId);
+  // 使用唯一测试目录，避免并发执行时多个 smoke 互相抢占同一 SQLite 文件。
+  const dataDir = path.join(backendRoot, "data", `${projectId}-${process.pid}-${Date.now()}`);
   const db = new AppDatabase(path.join(dataDir, "framework-smoke.sqlite"));
   seedDefaultConfigs(db, projectId);
 

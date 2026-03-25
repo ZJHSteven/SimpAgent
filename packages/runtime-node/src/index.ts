@@ -61,7 +61,8 @@ const traceBus = new TraceEventBus(db);
 const toolRuntime = new ToolRuntime({
   workspaceRoot: path.resolve(projectRoot, ".."),
   // 首版白名单保守一些，后续通过配置化权限策略替换。
-  shellAllowPrefixes: ["echo ", "dir", "ls", "pwd", "cd ", "where ", "which ", "node -v", "npm -v"]
+  shellAllowPrefixes: ["echo ", "dir", "ls", "pwd", "cd ", "where ", "which ", "node -v", "npm -v"],
+  getPermissionConfig: () => db.getSystemConfig(projectId).permissionPolicy
 });
 
 const { nodeEngine: engine } = createNodeBoundRuntimeEngine({

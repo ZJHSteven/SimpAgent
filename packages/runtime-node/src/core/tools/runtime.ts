@@ -13,12 +13,14 @@ import { randomUUID } from "node:crypto";
 import type {
   JsonObject,
   JsonValue,
+  PermissionConfig,
   ShellPermissionLevel,
   ToolCall,
   ToolResult,
   ToolSpec,
   ToolTrace
 } from "../../types/index.js";
+import { createDefaultPermissionConfig, evaluateShellPermission } from "../../security/permissions.js";
 
 interface FunctionToolHandler {
   name: string;
@@ -47,6 +49,7 @@ export class ToolRuntime {
     private readonly options: {
       workspaceRoot: string;
       shellAllowPrefixes: string[];
+      getPermissionConfig?: () => PermissionConfig;
     }
   ) {
     // 注册首批内置函数工具（教学用简单实现）。
@@ -68,7 +71,14 @@ export class ToolRuntime {
    * - ToolResult（业务结果）
    * - ToolTrace（调试器详情）
    */
-  async execute(spec: ToolSpec, args: JsonObject, agentId?: string): Promise<{ result: ToolResult; trace: ToolTrace }> {
+  async execute(
+    spec: ToolSpec,
+    args: JsonObject,
+    agentId?: string,
+    runtimeHints?: {
+      shellApprovalGranted?: boolean;
+    }
+  ): Promise<{ result: ToolResult; trace: ToolTrace }> {
     const toolCallId = `toolcall_${randomUUID().replace(/-/g, "")}`;
     const issuedAt = nowIso();
     const call: ToolCall = {
@@ -84,7 +94,7 @@ export class ToolRuntime {
       return this.executeFunctionTool(spec, call);
     }
     if (spec.executorType === "shell") {
-      return this.executeShellTool(spec, call);
+      return this.executeShellTool(spec, call, runtimeHints);
     }
 
     const startedAt = nowIso();
@@ -201,26 +211,40 @@ export class ToolRuntime {
 
   private async executeShellTool(
     spec: ToolSpec,
-    call: ToolCall
+    call: ToolCall,
+    runtimeHints?: {
+      shellApprovalGranted?: boolean;
+    }
   ): Promise<{ result: ToolResult; trace: ToolTrace }> {
     const start = Date.now();
     const startedAt = nowIso();
     const permissionLevel = permissionLevelFromProfile(spec.permissionProfileId);
     const command = String(call.arguments.command ?? "");
+    const permissionConfig = this.options.getPermissionConfig?.() ?? createDefaultPermissionConfig();
+    const evaluation = evaluateShellPermission({
+      command,
+      requestedWorkdir: typeof call.arguments.workdir === "string" ? String(call.arguments.workdir) : undefined,
+      workspaceRoot: this.options.workspaceRoot,
+      workingDirPolicy: spec.workingDirPolicy,
+      projectPermissionConfig: permissionConfig,
+      toolPermissionPolicy:
+        (extractPermissionPolicy(spec.executorConfig) as any) ??
+        ({
+          permissionProfileId: spec.permissionProfileId,
+          allowCommandPrefixes: this.options.shellAllowPrefixes
+        } as any)
+    });
 
-    // 首版 shell 白名单策略：按命令前缀匹配。
-    const isAllowed = this.options.shellAllowPrefixes.some((prefix) =>
-      command.toLowerCase().startsWith(prefix.toLowerCase())
-    );
-    if (!isAllowed) {
+    if (evaluation.decision === "deny") {
       const finishedAt = nowIso();
       const result: ToolResult = {
         toolCallId: call.toolCallId,
         toolId: spec.id,
         ok: false,
         error: {
-          code: "SHELL_COMMAND_NOT_ALLOWED",
-          message: `命令未命中白名单前缀：${command}`
+          code: "SHELL_PERMISSION_DENIED",
+          message: evaluation.reason,
+          details: evaluation as unknown as JsonValue
         },
         startedAt,
         finishedAt,
@@ -235,21 +259,54 @@ export class ToolRuntime {
           executorType: "shell",
           arguments: call.arguments,
           permissionLevel,
-          workingDir: this.options.workspaceRoot,
+          workingDir: evaluation.resolvedWorkdir,
           result
         }
       };
     }
 
-    const timeoutMs = spec.timeoutMs || 15_000;
-    const shellExe = process.platform === "win32" ? "powershell.exe" : "bash";
+    if (evaluation.decision === "ask" && !runtimeHints?.shellApprovalGranted) {
+      const finishedAt = nowIso();
+      const result: ToolResult = {
+        toolCallId: call.toolCallId,
+        toolId: spec.id,
+        ok: false,
+        error: {
+          code: "SHELL_APPROVAL_REQUIRED",
+          message: evaluation.reason,
+          details: evaluation as unknown as JsonValue
+        },
+        startedAt,
+        finishedAt,
+        durationMs: Date.now() - start
+      };
+      return {
+        result,
+        trace: {
+          toolCallId: call.toolCallId,
+          toolId: spec.id,
+          toolName: spec.name,
+          executorType: "shell",
+          arguments: call.arguments,
+          permissionLevel,
+          workingDir: evaluation.resolvedWorkdir,
+          result
+        }
+      };
+    }
+
+    const timeoutMs = typeof call.arguments.timeout_ms === "number" ? Number(call.arguments.timeout_ms) : spec.timeoutMs || 15_000;
+    const shellExe =
+      process.platform === "win32"
+        ? pathToWindowsPowerShell()
+        : "bash";
     const shellArgs =
       process.platform === "win32"
         ? ["-NoProfile", "-Command", command]
         : ["-lc", command];
 
     const child = spawn(shellExe, shellArgs, {
-      cwd: this.options.workspaceRoot,
+      cwd: evaluation.resolvedWorkdir,
       stdio: ["ignore", "pipe", "pipe"]
     });
 
@@ -310,7 +367,7 @@ export class ToolRuntime {
         executorType: "shell",
         arguments: call.arguments,
         permissionLevel,
-        workingDir: this.options.workspaceRoot,
+        workingDir: evaluation.resolvedWorkdir,
         stdoutPreview: stdout.slice(-1000),
         stderrPreview: stderr.slice(-1000),
         result
@@ -319,3 +376,16 @@ export class ToolRuntime {
   }
 }
 
+function extractPermissionPolicy(value: unknown): JsonObject | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (!record.permissionPolicy || typeof record.permissionPolicy !== "object" || Array.isArray(record.permissionPolicy)) {
+    return null;
+  }
+  return record.permissionPolicy as JsonObject;
+}
+
+function pathToWindowsPowerShell(): string {
+  const systemRoot = process.env.SystemRoot || "C:\\Windows";
+  return `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+}

@@ -85,18 +85,24 @@
     - skill bridge 已支持本地脚本执行、`args_json / flags` 两种参数模式、超时、stdout/stderr 捕获与结构化输出。
     - `AppDatabase.getPromptUnit/listPromptUnits` 与 runtime snapshot 读取已补上 `projectId` 作用域，避免 catalog 兼容读取串项目。
     - 新增 `test:catalog-bridge`，覆盖 catalog PromptUnit 兼容读取、relation CRUD、三类 MCP transport、两种参数输入、skill 成功/缺参/失败路径，以及 catalog 上下文 PromptUnit 投影检查。
-- 统一图谱收口补齐（2026-03-25）：
+  - 统一图谱收口补齐（2026-03-25）：
   - `@simpagent/runtime-node` 已新增统一 `test` 聚合脚本，根级 `npm run test:workspaces` 不再空转。
   - 根测试入口现在会真实执行 `test:smoke + test:catalog-bridge` 两套 package 级回归。
   - 本轮收口已完成提交，计划状态与仓库当前行为已重新对齐。
+  - 统一图谱剩余 package 层收口已完成（2026-03-25）：
+    - core 契约新增统一权限规则与审批请求类型。
+    - `runtime-node` 新增 `security/permissions.ts`，落地 `deny / ask / allow` Shell 权限内核。
+    - `shell_command` 已接入 `approval_requests` 审批记录、人工恢复与 trace/side effect 审计。
+    - `system_config` 已支持持久化 `permissionPolicy`。
+    - HTTP 已补齐 `catalog` 的 node / facet / relation CRUD，以及 run 级审批请求查询/回复接口。
+    - 新增 `test:permissions-catalog`，覆盖权限允许/审批/拒绝、审批请求落库、catalog HTTP CRUD。
 - 验证：`npm run build:workspaces` 通过、`npm run test:workspaces` 通过、`npm run --workspace @simpagent/runtime-node test:smoke` 通过、`npm run --workspace @simpagent/runtime-node test:catalog-bridge` 通过、根前端 `npm run build` 通过（2026-03-25）。
-- 正在做：统一图谱与工具桥接这一轮已完成收口，当前转入下一阶段的 Shell/Exec 权限规则细化、审批链路与更完整的 catalog CRUD/API 暴露。
+- 正在做：统一图谱、MCP/skills bridge、Shell/Exec 权限审批与 catalog API 这一轮 package 层收口已经完成，当前转入后续增强阶段。
 - 下一步：
-  1. 为 catalog 增加更完整的 API / Registry / 编辑入口，而不只停留在 SQLite CRUD。
-  2. 推进 Shell/Exec 权限模型细化：命令/路径/网络维度规则、审批与审计命中原因。
-  3. 把更多 skill bundle / MCP server 导入逻辑做成正式适配层，而不只是运行时桥接。
-  4. 把 catalog 项目隔离继续往更多旧 API/旧表兼容路径上收紧，避免默认 `projectId=default` 泄漏。
-  5. 继续补 runtime-node API / WS / trace 的全量测试矩阵。
+  1. 继续细化更高维度权限：network / fs / 额外权限申请，而不只限于 command/path。
+  2. 把更多 skill bundle / MCP server 导入逻辑做成正式适配层，而不只是运行时桥接。
+  3. 把 catalog 项目隔离继续往更多旧 API/旧表兼容路径上收紧，避免默认 `projectId=default` 泄漏。
+  4. 继续补 runtime-node API / WS / trace 的全量测试矩阵。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：执行内核采用 LangGraph.js（原因：直接获得 checkpoint / interrupt / replay / history / updateState，避免自研运行时黑洞）。
