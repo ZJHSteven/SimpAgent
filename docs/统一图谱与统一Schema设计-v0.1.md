@@ -1,192 +1,184 @@
-# 统一图谱与统一 Schema 设计 v0.1
+# 统一图谱与统一 Schema 设计 v0.1（简化收敛版）
 
 ## 1. 文档目的
 
-本文档用于冻结 SimpAgent 框架下一阶段的核心数据模型，解决当前以下问题：
+这份文档用于把“统一图谱”收敛到一个更简单、可落地、可逐步迁移的版本。
 
-1. `Prompt / Memory / Tool / Skill / MCP / Worldbook` 的定义彼此分散，虽然运行时已经在“提示词装配”层逐步靠近统一，但持久化层仍然是分裂的。
-2. 当前 `PromptUnit` 已经证明“万物可提示词化”的方向是正确的，但如果把 Tool 本体完全退化成纯文本 Prompt，又会失去执行定义、权限策略、可观测性与审计能力。
-3. 当前 `packages/runtime-node` 的 SQLite schema 仍以 `agents / prompt_blocks / workflows / tools / builtin_tool_configs` 为主，适合 v0.2/v0.3 的配置式框架，但不适合后续的统一目录、层级暴露、MCP/skills/记忆统一图谱。
-4. 当前 Memory 仍然只有最小接口与空实现，尚未纳入统一装配与统一存储系统。
+当前仓库里已经有两类 SQLite 数据：
 
-因此，本设计的目标不是“再加几个表”，而是给框架建立一套统一的上层内容图谱模型，并明确：
+1. 定义层：
+   - `agents`
+   - `prompt_blocks`
+   - `workflows`
+   - `tools`
+   - `builtin_tool_configs`
+   - `system_configs`
+2. 运行层 / 审计层：
+   - `runs`
+   - `trace_events`
+   - `prompt_compiles`
+   - `tool_calls`
+   - `state_diffs`
+   - `side_effects`
+   - `run_plans`
+   - `user_input_requests`
 
-- 什么东西属于统一图谱。
-- 什么东西属于 PromptUnit 投影层。
-- 什么东西属于末端执行载荷层。
-- SQLite 应该怎么存，运行时应该怎么取，旧结构应该怎么迁移。
+这次统一图谱要统一的，是“定义层”，不是把运行日志也揉进图谱。
 
----
+本轮目标很明确：
 
-## 2. 设计总原则
-
-### 2.1 万物进入统一图谱，但不等于万物只有一张 JSON 表
-
-统一图谱的含义是：
-
-- 高层目录、集合、工具组、记忆组、Prompt 集、skills 集、MCP 工作集，全部使用统一节点/边模型表达。
-- 任意节点都允许被投影为 Prompt 暴露单元。
-- 任意节点都允许通过父子边形成树，也允许通过关系边形成图。
-
-统一图谱 **不** 等于：
-
-- 所有实体都塞进一张大表一个 `payload_json` 了事。
-- Tool、Memory、Prompt 不再有各自的结构。
-
-正确做法是：
-
-- 高层使用统一节点/边；
-- 末端实体使用统一节点挂接不同载荷表；
-- Prompt 投影是统一的，但执行载荷不是统一文本，而是结构化定义。
-
-### 2.2 树是图的特例
-
-本框架中的绝大多数“工作集/目录/集合”关系，本质上是父子关系，可以直接用树表达。
-
-但是以下情况必须允许图关系：
-
-- 一个记忆同时属于多个集合。
-- 一个工具既属于某个通用工具集，也属于某个场景工作流集合。
-- 一个 skill 同时关联多个 Prompt 或多个工具。
-- MCP 工作集与本地 skills、Prompt 目录、记忆集合发生横向引用。
-
-因此设计上：
-
-- 默认优先用 `parent_of / child_of` 形成树。
-- 当需要交叉引用时，再用 `related_to / depends_on / aliases / uses / derives_from` 等图边。
-
-### 2.3 PromptUnit 是统一暴露单位，不是唯一存储本体
-
-统一图谱中的任意节点，最终都可以投影为 Prompt 暴露单元，这是为了实现：
-
-- 渐进式暴露；
-- 短描述/长描述切换；
-- 命中后展开；
-- 世界书、记忆、skills、工具目录共用一套装配逻辑。
-
-但 Tool 节点不能只有 Prompt 投影，还必须保留：
-
-- 输入 schema；
-- 执行后端；
-- 权限策略；
-- 工作目录策略；
-- 超时；
-- 可观测性与副作用记录。
-
-### 2.4 默认采用 Zero Trust
-
-统一图谱中只要某个节点带有可执行载荷，就必须默认走 Zero Trust：
-
-- 不在规则里明示放行的命令，不默认执行。
-- 不在规则里明示允许的路径，不默认读写。
-- 不在规则里明示允许的网络，不默认访问。
-- 不在策略中显式允许的工具，不默认暴露给 Agent。
-
-后续权限模型将以 `deny / ask / allow` 为主，不在本文件深入展开权限细则，但 schema 设计必须预留对应字段与规则挂点。
+- 让 `Prompt / Memory / Tool / Skill / MCP / Worldbook` 用一套统一节点模型存储。
+- 支持树状目录，也支持图状引用。
+- 支持“短描述给模型看，长内容按需展开”。
+- 支持“有些节点只是内容，有些节点带可执行工具定义”。
+- 保留工具的结构化 schema 与执行配置，不能退化为纯文本。
 
 ---
 
-## 3. 统一图谱的概念分层
+## 2. 先冻结几个核心结论
 
-统一图谱分为四层理解：
+### 2.1 统一图谱只统一“定义层”，不统一“运行层”
 
-### 3.1 图谱层
+这件事必须先说死，否则后面一定越做越乱。
 
-这是持久化层的统一表达，回答的是：
+统一图谱负责：
 
-- 有哪些节点？
-- 节点之间如何组织？
-- 节点之间有什么关系？
+- 存什么内容；
+- 怎么分组；
+- 怎么被引用；
+- 怎么暴露给 Agent；
+- 哪些节点带工具执行能力。
 
-### 3.2 暴露层
+统一图谱不负责：
 
-这是运行时暴露给模型看的内容层，回答的是：
+- 一次 run 的状态；
+- trace 事件流；
+- tool call 历史；
+- diff / side effect / user input 请求。
 
-- 当前轮次先给模型看哪些节点？
-- 是只暴露名称？
-- 还是暴露短描述？
-- 还是命中后才展开长描述？
+所以结论是：
 
-### 3.3 载荷层
+- `catalog_*` 系列表只承载“静态定义 + 项目级配置快照”。
+- `runs / trace_events / tool_calls / side_effects ...` 继续保留为运行时数据库。
 
-这是节点所附带的具体内容或执行定义，回答的是：
+### 2.2 所有节点都长一个样，差别只在“附加 facet”
 
-- 这是普通 Prompt 文本？
-- 还是 Memory 内容？
-- 还是 Tool 的输入输出 schema？
-- 还是某个 MCP 工作集的元信息？
+你前面说的重点是对的：
 
-### 3.4 执行层
+- 大工具集、小工具集、最终工具节点，本质上都是节点；
+- 记忆集、Prompt 集、skills 集，本质上也都是节点；
+- 真正的区别只是“这个节点额外带了什么能力”。
 
-这是末端节点的执行语义，回答的是：
+所以这里不再坚持把节点拆成很多强类型顶层表，而采用：
 
-- 这是纯内容节点，还是可执行节点？
-- 如果可执行，它走 shell、exec、builtin、MCP client，还是其他 runtime？
+- 一个统一节点主表；
+- 一个图关系表；
+- 一个可选 facet 表。
+
+节点主表负责“共性”；
+facet 表负责“个性”。
+
+### 2.3 树结构是主路径，图关系是补充路径
+
+旧文档把“所有结构都抽象成边”写得太重了。
+
+实际上你这里 80% 以上的需求都是目录树：
+
+- 大集 -> 小集 -> 更小集 -> 最终节点；
+- MCP 工作集 -> 工具；
+- Prompt 集 -> Prompt 单元；
+- Memory 集 -> 记忆条目。
+
+因此这次改成：
+
+- 树结构直接放在节点表里：`parent_node_id + sort_order`
+- 只有横向关系才走 `catalog_relations`
+
+这样查询目录树会简单很多，也更符合实际使用方式。
+
+### 2.4 skill 不是特殊物种，MCP 也不是特殊物种
+
+后面统一后：
+
+- skill = 普通节点 + Prompt facet + 可选 Tool facet
+- MCP server = 普通节点（通常是 group）+ integration facet
+- MCP tool = 普通节点 + Tool facet + source 信息
+
+也就是说：
+
+- 不再把 skill 当成一套完全独立系统；
+- 不再把 MCP 单独做一整套重型专属结构；
+- 都只是统一节点体系里的具体用法。
+
+### 2.5 Tool 仍然必须保留 schema
+
+这一点不变，而且必须继续坚持。
+
+原因很简单：
+
+- function-call 直通时要用；
+- CodeMode 时也要做参数校验；
+- 前端 UI 以后要渲染工具表单也要用；
+- MCP 原始 schema、用户自定义工具 schema、技能执行参数，本质上都是契约。
+
+所以：
+
+- “是否 function-call 暴露”是一层策略；
+- “工具有没有 schema”是工具本体属性；
+- 这两件事不能混为一谈。
 
 ---
 
-## 4. 统一节点模型
+## 3. 简化后的总模型
 
-### 4.1 节点分类
+### 3.1 三张核心表就够了
 
-统一节点先分为两大类：
+本轮建议把统一图谱的核心压缩到三张表：
 
-1. 集合节点（Collection Node）
-2. 末端节点（Leaf / Payload Node）
+1. `catalog_nodes`
+   - 存所有节点的共性字段。
+   - 直接表达树结构。
+2. `catalog_relations`
+   - 只存横向图关系。
+3. `catalog_node_facets`
+   - 存节点的可选附加能力。
 
-集合节点主要负责组织结构，本身一般不直接执行。
+这三张表之外，如果后续真有必要，再增补：
 
-末端节点主要承载最终内容或执行载荷。
+- 版本表；
+- 暴露快照表；
+- 全文索引表；
+- embedding / 检索索引表。
 
-### 4.2 建议的节点类型枚举
+但这些都不应该成为第一阶段的阻碍。
 
-建议新增统一节点类型枚举 `CatalogNodeKind`：
+### 3.2 节点长什么样
 
 ```ts
-type CatalogNodeKind =
-  | "collection"
-  | "prompt_unit"
-  | "memory_entry"
-  | "tool"
-  | "skill"
-  | "mcp_server"
-  | "mcp_tool"
-  | "worldbook_entry"
-  | "artifact"
-  | "tag"
-  | "alias";
-```
+type CatalogNodeClass = "group" | "item";
 
-说明：
+type CatalogExposeMode =
+  | "hidden"
+  | "summary_only"
+  | "summary_first"
+  | "content_direct"
+  | "manual";
 
-- `collection`：高层集合节点，工具集、记忆集、Prompt 集、场景集都可以用它。
-- `prompt_unit`：显式 Prompt 节点。
-- `memory_entry`：记忆节点。
-- `tool`：统一末端工具节点。
-- `skill`：skills 节点，本质上是内容节点，可选带执行挂载。
-- `mcp_server`：MCP 工作集节点。
-- `mcp_tool`：某个 MCP 服务器下的具体工具节点。
-- `worldbook_entry`：世界书条目，可视作记忆的一个偏特化分类。
-- `artifact`：文档、素材、模板、截图等可引用内容。
-- `tag` / `alias`：辅助分类或别名节点。
-
-### 4.3 节点通用字段
-
-所有节点建议共享以下字段：
-
-```ts
 interface CatalogNode {
   nodeId: string;
   projectId: string;
-  kind: CatalogNodeKind;
+  parentNodeId?: string | null;
+  nodeClass: CatalogNodeClass;
   name: string;
   title?: string;
-  shortDescription?: string;
-  longDescription?: string;
-  visibility: "visible" | "hidden" | "internal";
-  exposePolicy: "name_only" | "short_first" | "long_direct" | "manual";
+  summaryText?: string;
+  contentText?: string;
+  contentFormat?: "markdown" | "plain_text" | "json";
+  primaryKind?: "generic" | "prompt" | "memory" | "tool" | "skill" | "mcp" | "worldbook";
+  visibility: "visible" | "internal" | "hidden";
+  exposeMode: CatalogExposeMode;
   enabled: boolean;
-  version: number;
+  sortOrder: number;
   tags?: string[];
   metadata?: JsonObject;
   createdAt: string;
@@ -194,81 +186,62 @@ interface CatalogNode {
 }
 ```
 
-字段语义：
+字段解释：
 
-- `name`：稳定标识名，偏程序引用。
-- `title`：展示标题，偏 UI。
-- `shortDescription`：用于首层暴露的短描述。
-- `longDescription`：用于命中后展开的正文说明。
-- `visibility`：是否默认可见。
-- `exposePolicy`：暴露策略，决定首轮暴露什么。
-- `metadata`：保留扩展位，但不能取代正式载荷表。
+- `parentNodeId`：
+  - 用来直接表示树；
+  - 比“什么都走 edge”更直观。
+- `summaryText`：
+  - 给 Agent 首轮暴露看的短描述；
+  - 对应你说的 `description` 那一类东西。
+- `contentText`：
+  - 节点正文；
+  - 可以是 Prompt 正文、记忆正文、技能正文、工具详细说明。
+- `primaryKind`：
+  - 只是 UI / 查询辅助标签；
+  - 不是强类型分表开关；
+  - 真正能力看 facet，不看这个字段。
 
-### 4.4 集合节点的语义
+### 3.3 facet 长什么样
 
-集合节点本身不需要复杂专属载荷，只需要：
+```ts
+type CatalogFacetType = "prompt" | "memory" | "tool" | "integration";
 
-- 是否允许展开；
-- 默认展开层级；
-- 展开后的排序策略；
-- 是否允许混合子类型。
-
-因此集合节点可用 `node_payloads` 或 `collection_payloads` 记录简单控制字段，例如：
-
-```json
-{
-  "allowMixedChildren": true,
-  "defaultExpandDepth": 1,
-  "sortMode": "manual"
+interface CatalogNodeFacet {
+  facetId: string;
+  nodeId: string;
+  facetType: CatalogFacetType;
+  payload: JsonObject;
+  updatedAt: string;
 }
 ```
 
----
+核心思想：
 
-## 5. 统一边模型
+- 一个节点可以没有 facet，只当目录或纯内容节点；
+- 一个节点也可以同时挂多个 facet；
+- skill 最典型的例子就是：
+  - 同时有 `prompt` facet；
+  - 也可能再挂一个 `tool` facet。
 
-### 5.1 边分类
-
-建议统一边类型枚举 `CatalogEdgeKind`：
-
-```ts
-type CatalogEdgeKind =
-  | "parent_of"
-  | "belongs_to"
-  | "related_to"
-  | "depends_on"
-  | "uses"
-  | "derives_from"
-  | "aliases"
-  | "references"
-  | "expands_to"
-  | "triggered_by";
-```
-
-### 5.2 父子边与关系边的使用规则
-
-- `parent_of`：默认树结构边，用于目录、集合、上下级归属。
-- `belongs_to`：某节点归属于某集合，但不一定以主树结构体现。
-- `related_to`：泛关联。
-- `depends_on`：依赖关系，适合工具、Prompt、skills、工作流节点。
-- `uses`：某 skill / tool / prompt 使用了另一个节点。
-- `derives_from`：从模板、原型或外部来源派生。
-- `aliases`：别名。
-- `references`：引用内容。
-- `expands_to`：命中某节点后，推荐展开某子节点。
-- `triggered_by`：触发关系。
-
-### 5.3 边字段
+### 3.4 图关系长什么样
 
 ```ts
-interface CatalogEdge {
-  edgeId: string;
+type CatalogRelationType =
+  | "reference"
+  | "use"
+  | "depend_on"
+  | "alias"
+  | "expand"
+  | "belong_to"
+  | "trigger";
+
+interface CatalogRelation {
+  relationId: string;
   projectId: string;
   fromNodeId: string;
   toNodeId: string;
-  kind: CatalogEdgeKind;
-  enabled: boolean;
-  sortOrder?: number;
+  relationType: CatalogRelationType;
   weight?: number;
   metadata?: JsonObject;
   createdAt: string;
@@ -276,31 +249,35 @@ interface CatalogEdge {
 }
 ```
 
-说明：
+注意：
 
-- `sortOrder` 主要给父子结构排序。
-- `weight` 主要给图关系排序或打分。
+- 父子关系不再放这里；
+- 这里只有“横向关系”。
 
 ---
 
-## 6. 末端载荷模型
+## 4. 四类 facet 的建议载荷
 
-统一图谱的关键点在于：**所有节点共享上层结构，但末端节点的业务载荷分表存储。**
+### 4.1 Prompt facet
 
-### 6.1 Prompt 载荷
+用于：
 
-适用于：
-
-- `prompt_unit`
-- `skill` 的文本正文
-- 可被投影成 Prompt 的集合展开说明
+- Prompt 单元；
+- skill 正文；
+- 某些目录节点的展开说明；
+- 某些工具节点的人工使用说明。
 
 ```ts
-interface PromptPayload {
-  nodeId: string;
+interface PromptFacetPayload {
   role?: "system" | "developer" | "user" | "assistant" | "tool";
-  insertionPoint?: string;
-  template: string;
+  insertionPoint?:
+    | "system_pre"
+    | "system_post"
+    | "developer"
+    | "task_pre"
+    | "task_post"
+    | "memory_context"
+    | "tool_context";
   variablesSchema?: JsonObject;
   tokenLimit?: number;
   priority?: number;
@@ -308,19 +285,25 @@ interface PromptPayload {
 }
 ```
 
-### 6.2 Memory 载荷
+说明：
 
-适用于：
+- 具体正文不放 facet 里，直接放 `catalog_nodes.content_text`；
+- 这样“所有节点都有短描述与正文”就能成立；
+- Prompt facet 只补 Prompt 编译所需的结构化信息。
 
-- `memory_entry`
-- `worldbook_entry`
+### 4.2 Memory facet
+
+用于：
+
+- 事实记忆；
+- 人设；
+- 世界书；
+- 摘要记忆；
+- 情节记忆。
 
 ```ts
-interface MemoryPayload {
-  nodeId: string;
+interface MemoryFacetPayload {
   memoryType: "fact" | "summary" | "persona" | "worldbook" | "episodic" | "semantic";
-  content: string;
-  summary?: string;
   namespace?: string;
   source?: string;
   freshnessScore?: number;
@@ -330,483 +313,530 @@ interface MemoryPayload {
 }
 ```
 
-### 6.3 Tool 载荷
+说明：
 
-适用于：
+- 记忆正文仍然放 `content_text`；
+- Memory facet 只保存记忆检索与分类元数据。
 
-- `tool`
-- `mcp_tool`
-- `skill` 的可执行变体
+### 4.3 Tool facet
+
+用于：
+
+- 内置工具；
+- 用户自定义工具；
+- MCP 工具；
+- 带执行能力的 skill；
+- 以后可能的 plugin / http / exec 节点。
 
 ```ts
-interface ToolPayload {
-  nodeId: string;
+interface ToolFacetPayload {
   toolKind: "builtin" | "shell" | "exec" | "mcp" | "skill" | "http" | "plugin" | "user_defined";
   inputSchema?: JsonObject;
   outputSchema?: JsonObject;
-  backendRefId?: string;
+  executeMode?: "function_call" | "code_mode" | "direct_client";
+  backendRef?: string;
   timeoutMs?: number;
-  workingDirPolicy?: JsonObject;
   permissionProfileId?: string;
+  workingDirPolicy?: JsonObject;
   executionConfig?: JsonObject;
 }
 ```
 
-### 6.4 Skill 载荷
+这里最关键的几个字段：
 
-`skill` 节点建议拆成两部分：
+- `inputSchema / outputSchema`
+  - 工具契约；
+  - 一定要保留。
+- `executeMode`
+  - 表示运行时怎么执行；
+  - 不是暴露给模型的唯一方式。
 
-- 文本正文走 Prompt 载荷；
-- 若可执行，则再挂 Tool 载荷。
+本轮建议解释为：
 
-也就是说 skill 不需要单独发明一套完全不同的结构，它是：
+- `function_call`
+  - 当模型能力足够稳定时，允许把 schema 直通成 function/tool。
+- `code_mode`
+  - 默认主路线；
+  - 模型只先看到节点的摘要/说明；
+  - 真执行时通过统一 `execute` 工具或统一 runtime 路由。
+- `direct_client`
+  - 某些高稳定内置能力可以绕过 shell，直连专用客户端。
 
-- 一个节点；
-- 一份 Prompt 正文；
-- 可选一份 Tool 执行载荷。
+### 4.4 Integration facet
 
-### 6.5 MCP 载荷
+这个 facet 只做“来源与接入信息”，不要把它做太重。
 
-MCP 建议区分：
+用于：
 
-- `mcp_server`：工作集节点
-- `mcp_tool`：具体工具节点
-
-`mcp_server` 载荷：
-
-```ts
-interface McpServerPayload {
-  nodeId: string;
-  serverName: string;
-  transport: "stdio" | "http" | "ws" | "custom";
-  clientConfig?: JsonObject;
-  source?: string;
-}
-```
-
-`mcp_tool` 载荷：
-
-- 共享 Tool 载荷
-- 额外记录 MCP 原始字段
+- MCP server 配置；
+- 外部资源来源；
+- 远程工具注册来源。
 
 ```ts
-interface McpToolPayload {
-  nodeId: string;
-  serverNodeId: string;
-  originalToolName: string;
-  originalDescription?: string;
+interface IntegrationFacetPayload {
+  sourceType: "mcp_server" | "mcp_tool" | "skill_bundle" | "preset" | "imported";
+  serverName?: string;
+  transport?: "stdio" | "http" | "ws" | "custom";
+  originalName?: string;
   originalSchema?: JsonObject;
-  executionMode: "prompt_plus_shell" | "prompt_plus_exec" | "direct_client";
+  clientConfig?: JsonObject;
 }
 ```
+
+说明：
+
+- 这只是“来源信息”；
+- 真正执行仍看 Tool facet；
+- 真正文仍看 `content_text`。
 
 ---
 
-## 7. Prompt 投影模型
+## 5. 这个模型怎么覆盖你的场景
 
-### 7.1 为什么要做 Prompt 投影
+### 5.1 工具树
 
-统一图谱不是直接喂给模型的。模型看到的必须是经过裁剪、排序、策略控制后的 Prompt 暴露。
-
-因此新增一个运行时概念：
-
-```ts
-interface GraphPromptProjection {
-  projectionId: string;
-  nodeId: string;
-  exposeLevel: "name" | "short" | "long" | "payload";
-  renderedTitle?: string;
-  renderedText: string;
-  sourceKind: CatalogNodeKind;
-  metadata?: JsonObject;
-}
-```
-
-### 7.2 暴露规则
-
-建议默认规则如下：
-
-1. 集合节点：
-- 首轮优先暴露 `name + shortDescription`
-- 没有 `shortDescription` 时，按策略决定是只暴露名称还是直接暴露 `longDescription`
-
-2. Prompt / Memory 节点：
-- 默认可直接投影为 PromptUnit
-
-3. Tool / Skill / MCP 节点：
-- 首轮暴露 `name + shortDescription`
-- 命中后再暴露 `longDescription`
-- 若需要执行，再进入末端执行流程
-
-### 7.3 与现有 PromptUnit 的关系
-
-现有 `PromptUnit` 不应删除，而应作为“最终装配时的统一中间体”保留。
-
-新的关系是：
+你举的例子：
 
 ```text
-CatalogNode / Edge
-  -> GraphPromptProjection
-  -> PromptUnit
-  -> PromptAssemblyPlan
-  -> finalMessages
+A 工具大集
+  -> A1 工具小集
+    -> A1.1 工具小集
+      -> gamma 工具
+      -> beta 工具
 ```
+
+在新模型里就是：
+
+- 每一个“集”都是 `catalog_nodes` 里的 `group` 节点；
+- 最终 `gamma / beta` 也是 `catalog_nodes` 里的 `item` 节点；
+- `gamma / beta` 再额外挂 `tool` facet；
+- 如果要给模型看简短说明，就填 `summary_text`；
+- 如果要给模型看完整用法，就填 `content_text`。
+
+### 5.2 记忆树
+
+同理：
+
+```text
+B 记忆大集
+  -> 角色记忆
+  -> 世界设定
+  -> 剧情摘要
+```
+
+也是同一套节点。
+
+区别只在于：
+
+- 这些叶子节点通常挂的是 `memory` facet；
+- 有些也可能同时挂 `prompt` facet；
+- 世界书本质上只是 `memoryType = worldbook` 的一种记忆。
+
+### 5.3 skill
+
+skill 统一成：
+
+- 一个普通节点；
+- `summary_text` 是简介；
+- `content_text` 是详细正文；
+- 如果只是纯文本指导，则只挂 `prompt` facet；
+- 如果还能触发执行，则再挂 `tool` facet。
+
+### 5.4 MCP
+
+MCP 统一成：
+
+- server 节点通常是 `group`；
+- tool 节点通常是 `item`；
+- server 节点可挂 `integration` facet；
+- tool 节点挂 `tool` facet；
+- 如果要记录原始 schema / 原始名字，再放进 `integration` facet。
 
 ---
 
-## 8. SQLite Schema 设计
+## 6. 对运行时的直接影响
 
-以下 schema 是本阶段建议的 v0.1 新结构，后续实现时可先新增，不要立刻破坏旧表。
+### 6.1 Agent 首轮看到什么
 
-### 8.1 节点表
+默认建议：
+
+1. 先暴露 group 节点的：
+   - `name`
+   - `title`
+   - `summary_text`
+2. 叶子节点默认也是先暴露：
+   - `name`
+   - `summary_text`
+3. 命中后再展开：
+   - `content_text`
+   - 对应 facet 的额外信息
+
+这样就能实现你要的：
+
+- 先披露目录；
+- 再下钻；
+- 再执行。
+
+### 6.2 function-call 与 CodeMode 怎么统一
+
+统一规则建议这样定：
+
+1. 节点是否是工具，看它有没有 `tool` facet。
+2. 工具是否能 function-call 直通，看当前路由策略与模型能力。
+3. 即使不走 function-call，也照样保留 `inputSchema`。
+
+运行时大致流程：
+
+```text
+catalog_nodes
+  + catalog_node_facets
+  -> 生成对 Agent 可见的摘要目录
+  -> 命中节点
+  -> 若节点带 tool facet：
+       - function-call 模式：把 inputSchema 暴露给模型
+       - code_mode 模式：把说明注入上下文，执行时统一走 runtime.execute(...)
+  -> 记录 side_effect / tool_call / trace
+```
+
+### 6.3 PromptUnit 在新模型里的位置
+
+PromptUnit 继续保留，但它不再是数据库顶层本体。
+
+新的关系应当是：
+
+```text
+catalog node
+  -> 按 exposeMode / facet 生成 PromptUnit 视图
+  -> PromptAssemblyPlan
+  -> final messages
+```
+
+所以：
+
+- PromptUnit 是“编译中间体”；
+- catalog node 才是“统一存储本体”。
+
+---
+
+## 7. SQLite 建议 DDL（简化版）
+
+### 7.1 节点表
 
 ```sql
 CREATE TABLE IF NOT EXISTS catalog_nodes (
   node_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
-  kind TEXT NOT NULL,
+  parent_node_id TEXT,
+  node_class TEXT NOT NULL,
   name TEXT NOT NULL,
   title TEXT,
-  short_description TEXT,
-  long_description TEXT,
+  summary_text TEXT,
+  content_text TEXT,
+  content_format TEXT NOT NULL DEFAULT 'markdown',
+  primary_kind TEXT NOT NULL DEFAULT 'generic',
   visibility TEXT NOT NULL DEFAULT 'visible',
-  expose_policy TEXT NOT NULL DEFAULT 'short_first',
+  expose_mode TEXT NOT NULL DEFAULT 'summary_first',
   enabled INTEGER NOT NULL DEFAULT 1,
-  version INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
   tags_json TEXT,
   metadata_json TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_catalog_nodes_project_parent
+  ON catalog_nodes(project_id, parent_node_id, sort_order);
+
 CREATE INDEX IF NOT EXISTS idx_catalog_nodes_project_kind
-  ON catalog_nodes(project_id, kind);
+  ON catalog_nodes(project_id, primary_kind);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_catalog_nodes_project_name
   ON catalog_nodes(project_id, name);
 ```
 
-### 8.2 边表
+### 7.2 图关系表
 
 ```sql
-CREATE TABLE IF NOT EXISTS catalog_edges (
-  edge_id TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS catalog_relations (
+  relation_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
   from_node_id TEXT NOT NULL,
   to_node_id TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  enabled INTEGER NOT NULL DEFAULT 1,
-  sort_order INTEGER,
+  relation_type TEXT NOT NULL,
   weight REAL,
   metadata_json TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_catalog_edges_from
-  ON catalog_edges(project_id, from_node_id, kind, sort_order);
+CREATE INDEX IF NOT EXISTS idx_catalog_relations_from
+  ON catalog_relations(project_id, from_node_id, relation_type);
 
-CREATE INDEX IF NOT EXISTS idx_catalog_edges_to
-  ON catalog_edges(project_id, to_node_id, kind);
+CREATE INDEX IF NOT EXISTS idx_catalog_relations_to
+  ON catalog_relations(project_id, to_node_id, relation_type);
 ```
 
-### 8.3 Prompt 载荷表
+### 7.3 facet 表
 
 ```sql
-CREATE TABLE IF NOT EXISTS catalog_prompt_payloads (
-  node_id TEXT PRIMARY KEY,
-  role TEXT,
-  insertion_point TEXT,
-  template_text TEXT NOT NULL,
-  variables_schema_json TEXT,
-  token_limit INTEGER,
-  priority INTEGER,
-  trigger_json TEXT,
-  updated_at TEXT NOT NULL
-);
-```
-
-### 8.4 Memory 载荷表
-
-```sql
-CREATE TABLE IF NOT EXISTS catalog_memory_payloads (
-  node_id TEXT PRIMARY KEY,
-  memory_type TEXT NOT NULL,
-  content_text TEXT NOT NULL,
-  summary_text TEXT,
-  namespace TEXT,
-  source TEXT,
-  freshness_score REAL,
-  confidence_score REAL,
-  embedding_ref TEXT,
-  trigger_json TEXT,
-  updated_at TEXT NOT NULL
-);
-```
-
-### 8.5 Tool 载荷表
-
-```sql
-CREATE TABLE IF NOT EXISTS catalog_tool_payloads (
-  node_id TEXT PRIMARY KEY,
-  tool_kind TEXT NOT NULL,
-  input_schema_json TEXT,
-  output_schema_json TEXT,
-  backend_ref_id TEXT,
-  timeout_ms INTEGER,
-  working_dir_policy_json TEXT,
-  permission_profile_id TEXT,
-  execution_config_json TEXT,
-  updated_at TEXT NOT NULL
-);
-```
-
-### 8.6 MCP Server 载荷表
-
-```sql
-CREATE TABLE IF NOT EXISTS catalog_mcp_server_payloads (
-  node_id TEXT PRIMARY KEY,
-  server_name TEXT NOT NULL,
-  transport TEXT NOT NULL,
-  client_config_json TEXT,
-  source TEXT,
-  updated_at TEXT NOT NULL
-);
-```
-
-### 8.7 MCP Tool 载荷表
-
-```sql
-CREATE TABLE IF NOT EXISTS catalog_mcp_tool_payloads (
-  node_id TEXT PRIMARY KEY,
-  server_node_id TEXT NOT NULL,
-  original_tool_name TEXT NOT NULL,
-  original_description TEXT,
-  original_schema_json TEXT,
-  execution_mode TEXT NOT NULL DEFAULT 'prompt_plus_shell',
-  updated_at TEXT NOT NULL
-);
-```
-
-### 8.8 暴露快照表（可选）
-
-如果后续需要审计“某轮到底向模型暴露了哪些图谱节点”，建议增加：
-
-```sql
-CREATE TABLE IF NOT EXISTS graph_prompt_projections (
-  projection_id TEXT PRIMARY KEY,
-  run_id TEXT NOT NULL,
-  thread_id TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS catalog_node_facets (
+  facet_id TEXT PRIMARY KEY,
   node_id TEXT NOT NULL,
-  expose_level TEXT NOT NULL,
-  rendered_text TEXT NOT NULL,
-  metadata_json TEXT,
-  created_at TEXT NOT NULL
+  facet_type TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(node_id, facet_type)
 );
+
+CREATE INDEX IF NOT EXISTS idx_catalog_node_facets_node
+  ON catalog_node_facets(node_id, facet_type);
 ```
 
-### 8.9 统一版本/审计（建议沿用现有 audit_logs）
+### 7.4 为什么这次不再一开始就拆很多 payload 表
 
-现有 `audit_logs` 可以继续复用，不急着重造。
+因为本轮最重要的是先把抽象收敛，而不是先把表拆得很“工整”。
 
----
+如果一上来就拆成：
 
-## 9. 与现有结构的映射关系
+- prompt payload 表
+- memory payload 表
+- tool payload 表
+- mcp server payload 表
+- mcp tool payload 表
 
-### 9.1 PromptBlock / PromptUnit
+那么现在的问题会变成：
 
-当前：
+- 逻辑没收敛；
+- 表先膨胀了；
+- 迁移更难；
+- 技能和 MCP 还是容易被重新特殊化。
 
-- `prompt_blocks`
-- `prompt_block_versions`
+所以第一阶段先用 facet 表收口，是更稳的做法。
 
-未来映射：
-
-- `prompt_blocks` -> `catalog_nodes(kind='prompt_unit')`
-- `prompt_block_versions.payload_json.template` -> `catalog_prompt_payloads.template_text`
-
-迁移策略：
-
-- 首阶段保留旧表读取兼容；
-- 新写入优先落新图谱表；
-- 提供兼容视图或兼容读取函数。
-
-### 9.2 ToolSpec / BuiltinToolConfig
-
-当前：
-
-- `tools`
-- `tool_versions`
-- `builtin_tool_configs`
-
-未来映射：
-
-- `tools` -> `catalog_nodes(kind='tool')`
-- `tool_versions.payload_json` -> `catalog_tool_payloads`
-- `builtin_tool_configs` 暂时保留，后续可映射成某类系统级 Tool 覆写规则
-
-说明：
-
-- builtin tool 不是要立刻消失，而是后续可以视作“系统预装末端 Tool 节点 + 项目级覆写配置”。
-
-### 9.3 Memory
-
-当前：
-
-- 只有接口，没有正式存储结构。
-
-未来映射：
-
-- 新增 `catalog_nodes(kind='memory_entry' | 'worldbook_entry')`
-- 内容进入 `catalog_memory_payloads`
-
-### 9.4 MCP / skills
-
-当前：
-
-- MCP 仍主要停留在 CanonicalToolRouteTarget / 未实现执行分支。
-- skills 主要还是外部文档与 prompt 注入思路。
-
-未来映射：
-
-- `mcp_server` / `mcp_tool` 节点正式入图谱。
-- `skill` 节点正式入图谱。
-- 统一通过 Prompt 投影层控制暴露与命中展开。
+后面若某类 facet 查询压力很大，再单独拆表即可。
 
 ---
 
-## 10. 运行时读取策略
+## 8. 与现有 SQLite 的映射关系
 
-### 10.1 启动时
+### 8.1 保留不动的部分
 
-`runtime-node` 启动时应加载：
+以下表暂时不要并进统一图谱：
 
-- 当前 project 的图谱节点；
-- 当前 project 的图谱边；
-- 必要的 Prompt/Tool/Memory/MCP payload；
-- 旧表兼容数据。
+- `runs`
+- `run_threads`
+- `run_checkpoints_index`
+- `trace_events`
+- `prompt_compiles`
+- `tool_calls`
+- `state_diffs`
+- `side_effects`
+- `tool_exposure_plans`
+- `run_plans`
+- `user_input_requests`
+- `audit_logs`
 
-### 10.2 编译 Prompt 时
+原因：
 
-PromptCompiler 不再只接收 `PromptBlock[]`，后续应支持：
+- 它们是运行记录，不是资源目录。
 
-```text
-Catalog Graph
-  -> 按 Agent / Workflow / Context 筛选相关节点
-  -> 按 exposePolicy 决定暴露级别
-  -> 投影成 GraphPromptProjection
-  -> 转为 PromptUnit
+### 8.2 暂时继续保留的配置表
+
+以下表第一阶段也先不强拆：
+
+- `agents`
+- `agent_versions`
+- `workflows`
+- `workflow_versions`
+- `system_configs`
+
+原因：
+
+- 它们更接近“编排配置”；
+- 不是这次最急需统一的“内容节点库”；
+- 第一阶段应该让 Agent / Workflow 去引用 catalog node，而不是先把自己也塞进去。
+
+### 8.3 重点迁移对象
+
+第一批最值得迁移的是：
+
+1. `prompt_blocks`
+   - 转成 `catalog_nodes + prompt facet`
+2. `tools`
+   - 转成 `catalog_nodes + tool facet`
+3. `builtin_tool_configs`
+   - 先保留为“系统预装工具的项目级覆写表”
+   - 后续再考虑映射成 catalog 节点覆写
+4. memory / worldbook
+   - 直接从无到有落在 `catalog_nodes + memory facet`
+5. skills / MCP
+   - 从一开始就按统一节点方案进入，不再额外造体系
+
+---
+
+## 9. 最小示例
+
+### 9.1 一个“技能 + 工具 + 记忆”混合目录
+
+```json
+{
+  "nodes": [
+    {
+      "nodeId": "group.root",
+      "nodeClass": "group",
+      "name": "root",
+      "title": "项目根目录",
+      "summaryText": "统一内容入口"
+    },
+    {
+      "nodeId": "group.tools",
+      "parentNodeId": "group.root",
+      "nodeClass": "group",
+      "name": "tools",
+      "title": "工具目录",
+      "summaryText": "可供 Agent 下钻选择的工具集合"
+    },
+    {
+      "nodeId": "node.read_file",
+      "parentNodeId": "group.tools",
+      "nodeClass": "item",
+      "name": "read_file",
+      "title": "读取文件",
+      "summaryText": "读取本地文件内容",
+      "contentText": "用于读取工作区中的文件，适合查看配置、源码、文档。"
+    },
+    {
+      "nodeId": "group.memories",
+      "parentNodeId": "group.root",
+      "nodeClass": "group",
+      "name": "memories",
+      "title": "记忆目录",
+      "summaryText": "长期记忆与世界书"
+    },
+    {
+      "nodeId": "node.world.rule1",
+      "parentNodeId": "group.memories",
+      "nodeClass": "item",
+      "name": "world_rule_1",
+      "title": "世界规则一",
+      "summaryText": "魔法只能在夜间生效",
+      "contentText": "在当前设定中，所有魔法效果只有在夜间才可以稳定触发。"
+    },
+    {
+      "nodeId": "node.skill.review",
+      "parentNodeId": "group.root",
+      "nodeClass": "item",
+      "name": "review_skill",
+      "title": "代码审查技能",
+      "summaryText": "发现 bug、风险和测试缺口",
+      "contentText": "优先找行为回归、边界缺陷、缺失测试，不先做风格润色。"
+    }
+  ],
+  "facets": [
+    {
+      "nodeId": "node.read_file",
+      "facetType": "tool",
+      "payload": {
+        "toolKind": "builtin",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string" }
+          },
+          "required": ["path"]
+        },
+        "executeMode": "function_call"
+      }
+    },
+    {
+      "nodeId": "node.world.rule1",
+      "facetType": "memory",
+      "payload": {
+        "memoryType": "worldbook"
+      }
+    },
+    {
+      "nodeId": "node.skill.review",
+      "facetType": "prompt",
+      "payload": {
+        "role": "developer",
+        "insertionPoint": "developer"
+      }
+    }
+  ]
+}
 ```
 
-### 10.3 执行 Tool 时
+这个例子体现了一个关键事实：
 
-工具执行不能直接依赖 Prompt 文本，而应由末端 `catalog_tool_payloads` 提供：
-
-- `tool_kind`
-- `input_schema`
-- `execution_config`
-- `permission_profile`
-
-然后再由运行时根据 `tool_kind` 路由到：
-
-- shell/exec
-- builtin
-- mcp adapter
-- skill runtime
-- user-defined runtime
+- 三种完全不同用途的东西；
+- 仍然可以落到同一个节点结构里；
+- 区别只在 facet。
 
 ---
 
-## 11. 为什么 MCP 默认走 prompt + shell/exec
+## 10. 实施顺序建议
 
-本轮设计采纳当前主线决策：
-
-- MCP 不以 function-style 作为默认主路线。
-- MCP 默认主路线是：
-  - `mcp_server / mcp_tool` 进入统一图谱；
-  - 首轮只暴露名称/短描述；
-  - 命中后暴露长描述或详细说明；
-  - 真正执行时走 shell/exec 或专用 client。
-
-这样做的好处：
-
-1. 统一纳入 PromptUnit 管控。
-2. 与 skills、记忆、世界书暴露逻辑一致。
-3. 更容易做层级化暴露与审计。
-4. 更容易接入统一权限模型。
-
-这样做的代价：
-
-1. 需要补一层“图谱节点 -> Prompt 投影 -> 命中 -> 执行”的中间态。
-2. 需要构建明确的末端执行载荷，而不能只靠 MCP 原始 schema。
-
----
-
-## 12. 为什么 Tool 仍然要保留 schema
-
-虽然本轮主路线不以 function-style 为默认，但 Tool 节点仍然必须保留 `input_schema / output_schema`：
-
-1. schema 是工具自身契约，不等于 function-style。
-2. 即便最终走 shell/exec，也要靠 schema 约束参数结构、校验与 UI。
-3. MCP 原始 schema、用户自定义工具 schema、skills 执行载荷，本质上都需要统一契约层。
-4. 后续若某类工具确实适合 function-style，可以无缝切回兼容层。
-
-因此本设计强调：
-
-- **主暴露路线** 可以是 prompt + shell/exec；
-- **底层工具契约** 仍保留 schema。
-
----
-
-## 13. 实施顺序建议
-
-### 阶段 A：只加新结构，不拆旧结构
+### 阶段 A：先冻结抽象，不急着改运行时
 
 本阶段只做：
 
-- 新增图谱表；
-- 新增统一节点/边/载荷契约；
-- 新增读取与写入 API；
-- 不删除旧 `prompt_blocks / tools` 表。
+1. 文档冻结。
+2. `packages/core/src/types/contracts.ts` 增加 catalog 契约。
+3. `packages/runtime-node/src/storage/schema.ts` 增加三张新表。
+4. `packages/runtime-node/src/storage/db.ts` 增加 CRUD。
 
-### 阶段 B：增加兼容映射
+### 阶段 B：先接 Prompt 与 Tool，再接 Memory
 
-- 旧 PromptUnit / ToolSpec 继续能跑；
-- 新结构开始成为新功能主来源；
-- 运行时双读或映射。
+顺序建议：
 
-### 阶段 C：让 PromptCompiler 接图谱
+1. 先把 `prompt_blocks` 映射成 catalog node。
+2. 再把 `tools` 映射成 catalog node。
+3. 再接 `builtin_tool_configs` 的覆写逻辑。
+4. 最后再把 memory / worldbook / skill / MCP 正式接入。
 
-- 开始从图谱节点生成 Prompt 投影；
-- 旧 PromptBlock 编译路径逐步退居兼容层。
+原因：
 
-### 阶段 D：让 Tool Runtime 接统一末端节点
+- Prompt 和 Tool 已经有现成表与运行逻辑；
+- 迁移成本最低；
+- 能最快验证“统一节点模型是不是顺手”。
 
-- 统一 `tool_kind`
-- 统一权限与执行策略
-- 把 MCP / skills 正式纳入执行链路
+### 阶段 C：再做 Prompt 投影
+
+PromptCompiler 后续应改成：
+
+```text
+catalog nodes
+  -> 按 parent / relation / facet 筛选
+  -> 生成 PromptUnit 视图
+  -> 进入 PromptAssemblyPlan
+```
+
+### 阶段 D：最后再统一 CodeMode 执行链
+
+等节点系统稳定后，再继续做：
+
+- CodeMode 风格工具暴露；
+- 统一 execute runtime；
+- Shell / Exec 权限内核；
+- MCP / skill 执行接入。
 
 ---
 
-## 14. 本文档对应的直接产出
+## 11. 本轮冻结结论
 
-本文档冻结以下事项，后续实现应以此为基线：
+本轮正式冻结以下结论：
 
-1. 统一图谱采用“节点 + 边 + 末端载荷表”模型。
-2. Prompt / Memory / Tool / Skill / MCP 都进入同一图谱。
-3. PromptUnit 是统一投影层，不是唯一存储本体。
-4. Tool 节点必须保留结构化 schema 与执行定义。
-5. SQLite 新增 `catalog_nodes / catalog_edges / catalog_*_payloads` 系列表。
-6. 旧表先兼容，不做破坏性迁移。
+1. 统一图谱只统一“定义层”，不合并运行日志与 trace。
+2. 节点统一为一张主表，所有节点共用同一外形。
+3. 树结构优先用 `parent_node_id`，横向引用才走关系表。
+4. 节点的差异不靠很多顶层 node type 分裂，而靠 facet。
+5. 最小核心结构收敛为：
+   - `catalog_nodes`
+   - `catalog_relations`
+   - `catalog_node_facets`
+6. `summary_text` 与 `content_text` 成为统一的“短描述 / 正文”承载字段。
+7. Tool 只是在节点上额外挂一个 `tool` facet，但必须保留 schema。
+8. skill / MCP / memory / prompt 都不再额外发明平行存储体系。
 
----
-
-## 15. 下一步实现入口
-
-基于本文档，后续实现顺序建议为：
-
-1. 在 `packages/core/src/types/contracts.ts` 新增统一图谱契约。
-2. 在 `packages/runtime-node/src/storage/schema.ts` 新增图谱表 DDL。
-3. 在 `packages/runtime-node/src/storage/db.ts` 增加图谱 CRUD。
-4. 设计图谱节点到 `PromptUnit` 的投影器。
-5. 再进入 Shell/Exec 权限模型与 MCP/skills 适配实现。
+这版比旧版更适合马上开始写代码，也更贴近你当前真正想要的“大统一目录 + 渐进披露 + 按需执行”目标。

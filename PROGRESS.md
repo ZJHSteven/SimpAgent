@@ -56,12 +56,13 @@
   - `runtime-node` 启动新增 `SIMPAGENT_PROJECT_ID` 项目隔离目录（默认 `dev-console`）。
   - WS 增强：`run_snapshot.latestTraceSeq`、`REPLAY_WINDOW_MISS` warning。
   - 前端测试工作台（Vite/React）：白皮书风单页，多面板覆盖 run/trace/history/fork/builtin/apply_patch/WS 日志。
-  - 新增统一图谱与统一 schema 设计文档（2026-03-24）：
+  - 新增统一图谱与统一 schema 设计文档，并在 2026-03-25 完成第一轮简化收敛：
     - 文档：`docs/统一图谱与统一Schema设计-v0.1.md`
-    - 明确统一图谱采用“节点 + 边 + 末端载荷表”模型；
-    - 明确 Prompt / Memory / Tool / Skill / MCP 统一入图谱；
-    - 明确 PromptUnit 是统一投影层，而不是唯一存储本体；
-    - 明确 SQLite 新增 `catalog_nodes / catalog_edges / catalog_*_payloads` 系列表的方向。
+    - 明确统一图谱只统一“定义层”，不合并 `runs / trace_events / tool_calls / side_effects / user_input_requests` 等运行态表。
+    - 明确统一图谱收敛为“统一节点主表 + 树父子字段 + 图关系表 + facet 表”。
+    - 明确所有节点共用一套外形，差异优先通过 `prompt / memory / tool / integration` facet 表达。
+    - 明确 `summary_text / content_text` 作为统一的“短描述 / 正文”承载字段。
+    - 明确 Tool 仍保留 `inputSchema / outputSchema` 与执行定义，function-call 只是一种暴露策略。
   - Prompt 与 Agent 契约完成新一轮升级（2026-03-04）：
     - 持久化层统一为 `PromptUnit`（兼容旧 `PromptBlock` 命名与路由）。
     - Agent 新增 `promptBindings`（启停/顺序/覆盖下沉到 Agent 层）。
@@ -70,13 +71,13 @@
     - workflow `tool` 节点支持 `inputMapping/outputMapping` 与 `expression` 条件边。
     - `shell_only` 路由语义修正为“仅暴露 shell bridge + 优先原生工具协议”，而非直接走提示词回退。
 - 验证：`npm run build:workspaces` 通过、`npm run --workspace @simpagent/runtime-node test:smoke` 通过、根前端 `npm run build` 通过（2026-03-01）；`npm run --workspace @simpagent/app-mededu-cockpit build` 通过（2026-03-04）；`npm run -s build`（`packages/core`、`packages/runtime-node`、root）通过（2026-03-04）。
-- 正在做：统一图谱第一阶段文档冻结已完成，下一步将进入契约落地与 SQLite schema 实装，按“统一图谱 -> SQLite schema -> Prompt/Memory/Tool 装配 -> Shell/权限 -> MCP/skills 适配 -> Node runtime 补齐 -> 全量测试”的顺序推进框架收口。
+- 正在做：统一图谱第一阶段已从“多 payload 表 + 全边模型”收敛为“统一节点 + parent_node_id 树结构 + relations + facets”；下一步进入契约落地与 SQLite schema 实装，按“catalog 契约 -> SQLite schema -> Prompt/Tool 映射 -> Memory/Skill/MCP 接入 -> Shell/权限 -> 全量测试”的顺序推进框架收口。
 - 下一步：
-  1. 将统一图谱契约正式写入 `packages/core/src/types/contracts.ts`。
-  2. 将 `catalog_nodes / catalog_edges / catalog_*_payloads` 新表正式写入 `packages/runtime-node/src/storage/schema.ts` 与 `db.ts`。
-  3. 将 Prompt / Memory / Tool / Skill / MCP 统一接入“图谱节点 -> PromptUnit 投影”的装配链路。
-  4. 重构 Shell/Exec 执行内核与权限模型，默认 Zero Trust，支持 `deny / ask / allow` 与多层覆写。
-  5. 设计 MCP 与 skills 的 CodeMode 风格适配：默认走 prompt 暴露 + shell/exec 执行，function-style 仅保留兼容层。
+  1. 将统一图谱契约正式写入 `packages/core/src/types/contracts.ts`，核心先落 `CatalogNode / CatalogRelation / CatalogNodeFacet`。
+  2. 将 `catalog_nodes / catalog_relations / catalog_node_facets` 新表正式写入 `packages/runtime-node/src/storage/schema.ts` 与 `db.ts`。
+  3. 先把 `prompt_blocks` 与 `tools` 映射到 catalog，再接 PromptUnit 投影链路。
+  4. 再把 memory / worldbook / skill / MCP 接入 catalog，避免一开始迁移面过大。
+  5. 重构 Shell/Exec 执行内核与权限模型，默认 Zero Trust，支持 `deny / ask / allow` 与多层覆写。
   6. 补齐 `runtime-node` 真主后端能力与覆盖核心子系统的全量测试，再进入 AI PPT 等上层业务开发。
 
 ## 关键决策与理由（防止“吃书”）
@@ -93,8 +94,10 @@
 - 决策K：`backend` 保留兼容壳而不是立即删除，原因：一次性重构期间降低迁移风险，兼容旧脚本和使用习惯。
 - 决策L：Prompt 全局定义与 Agent 运行态绑定分离（`PromptUnit` vs `promptBindings`），原因：同一提示词要被多 Agent 复用时，启停/顺序属于 Agent 上下文而非全局属性。
 - 决策M：`toolRoutePolicy` 放在 Agent（不是 Tool），原因：内层 API 路由取决于模型能力与场景策略，而非单个工具本体定义。
-- 决策N：后续框架主线采用“统一图谱 + PromptUnit 投影 + 末端执行载荷”模型，原因：既保留“万物可提示词化”的统一视角，又不丢失 Tool/Memory 的结构化执行与存储能力。
+- 决策N：后续框架主线采用“统一图谱 + PromptUnit 投影 + 可选 facet 执行载荷”模型，原因：既保留“万物可提示词化”的统一视角，又避免节点类型与 payload 表继续裂变。
 - 决策O：MCP/skills 后续默认优先走 CodeMode 风格的“prompt 暴露 + shell/exec 执行”路线，而不是全面 function-style，原因：便于统一纳入 PromptUnit 管控、层级化暴露与可审计权限链路。
+- 决策P：统一图谱优先统一定义层，不吞并运行态表，原因：`runs / trace / tool_calls / side_effects` 属于执行审计，不属于资源目录。
+- 决策Q：树结构优先通过 `parent_node_id` 建模，关系表只承载横向图关系，原因：目录树是主路径，若所有结构都强行走 edge，会让查询、迁移与心智模型同时变重。
 
 ## 常见坑 / 复现方法
 - 坑1：PowerShell 命令语法与 bash 花括号展开不同，批量创建目录时容易写错；需使用数组循环创建。

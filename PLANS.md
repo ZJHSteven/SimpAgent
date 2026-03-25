@@ -137,7 +137,7 @@
 
 ## 执行目标（本轮总计划）
 - 不再只做“ToolSpec 小修小补”，而是一次性把框架主干收口路线写清楚，后续严格按此计划推进。
-- 统一 `Prompt / Memory / Tool / Skill / MCP / Worldbook` 的上层编排模型，落到 SQLite 图谱式存储设计（节点 + 边 + 末端载荷）。
+- 统一 `Prompt / Memory / Tool / Skill / MCP / Worldbook` 的上层编排模型，落到 SQLite 图谱式存储设计（统一节点主表 + 树父子字段 + 图关系表 + facet 载荷）。
 - 明确“万物可投影为 PromptUnit，但工具末端节点仍保留结构化执行载荷”的边界，避免把工具本体退化为纯 prompt 文本。
 - 采用 CodeMode 思路重整工具体系：
   - MCP 与 skills 优先走“prompt 暴露 + shell/exec 执行”路径；
@@ -156,6 +156,7 @@
 
 ## 关键设计约束（本轮必须先定）
 - 统一图谱是“上层内容/暴露/关系模型”，不是要求所有底层实体都只剩一张大 JSON 表。
+- 第一阶段的“统一”，优先统一节点外形与目录组织方式，不追求一上来把 payload 拆成很多专表。
 - PromptUnit 是统一暴露/装配单位，但 Tool 节点必须保留独立执行定义：
   - 名称、短描述、长描述；
   - 输入 schema；
@@ -163,20 +164,22 @@
   - 权限与审批策略；
   - 可观测性与副作用记录。
 - 树是图的特例：
-  - 高层集合节点默认走父子边；
-  - 需要横向引用/归属/关联时再走关系边；
+  - 高层集合节点优先直接使用 `parent_node_id` 表达树结构；
+  - 只有横向引用/归属/关联时再走关系表；
   - Tool 集、Memory 集、Prompt 集允许互相嵌套，不做类型隔离墙。
 - MCP 默认按“工作集 -> 工具末节点”建模，不强制做多级层次；若后续发现某类 MCP 有天然层级，再通过集合节点补上。
 - skills 视为“内容节点 + 可选执行载荷”的复合体：
   - 短描述先暴露；
   - 命中后展开正文；
   - 若携带执行能力，则走 shell/exec 权限链路。
+- skill / MCP / memory / prompt 的差异，优先通过 facet 表达，而不是顶层节点表继续裂变。
+- 统一图谱本轮只统一“定义层”；`runs / trace_events / tool_calls / side_effects / user_input_requests` 继续留在运行时表，不合并进 catalog。
 - `packages/runtime-node` 是当前主实现真源；`backend` 兼容壳与重复实现后续要纳入收口计划，避免双份维护。
 
 ## 分阶段计划（总执行序列）
 1. 统一图谱与类型契约设计
-- 设计统一节点/边模型，明确哪些是通用字段，哪些是末端载荷字段。
-- 设计 Tool / Memory / Prompt / Skill / MCP 的节点类型与边类型枚举。
+- 设计统一节点/关系/facet 模型，明确哪些是通用字段，哪些是可选 facet 载荷。
+- 收敛节点模型：统一外形，节点差异优先靠 `prompt / memory / tool / integration` 这类 facet 表达。
 - 明确短描述、长描述、展开策略、命中后暴露策略、末端执行定义的契约。
 - 梳理现有 `PromptUnit / ToolSpec / BuiltinToolConfig / MemoryAdapter` 与新图谱模型的映射关系。
 - 先产出正式设计文档，冻结 v0.1 基线：
@@ -185,9 +188,8 @@
 2. SQLite Schema 与存储层改造
 - 设计并落地图谱存储 schema：
   - 节点主表；
-  - 边表；
-  - Tool 末端载荷表；
-  - Memory/Prompt 载荷表；
+  - 图关系表；
+  - facet 表；
   - 可选的版本表/审计表。
 - 设计版本化、项目隔离、热更新与回滚策略。
 - 提供最小迁移/seed 路径，保证现有 preset/config 能映射到新结构。
@@ -260,3 +262,27 @@
 - `PLANS.md` 已完整记录本轮框架收口路线，不再停留在零散讨论。
 - 统一图谱、Shell/权限、MCP/skills、测试补齐、runtime-node 收口都已纳入执行序列。
 - 后续实现阶段将按本节序列推进，并在 `PROGRESS.md` 持续同步最新状态。
+
+## 任务名称（2026-03-25）
+- 统一图谱设计收敛：从“节点类型裂变 + 多 payload 表”收敛为“统一节点 + 树父子字段 + 图关系 + facet”
+
+## 执行目标（本轮实现）
+- 基于当前仓库真实现状，重新梳理统一图谱设计边界，避免 schema 继续复杂化。
+- 明确统一图谱只覆盖定义层，不吞并运行态日志、trace、tool call、审批请求等表。
+- 将旧版“所有关系都抽象成边 + Prompt/Memory/Tool/MCP 各拆 payload 表”的思路，收敛为更贴近目录系统的简化模型。
+- 同步更新设计文档、计划与项目进度文档，作为后续落代码的唯一基线。
+
+## 分阶段计划（本轮）
+1. 读取 `packages/runtime-node` 当前 SQLite schema 与 memory/tool/prompt 现状，确认哪些属于定义层、哪些属于运行层（已完成）
+2. 重写 `docs/统一图谱与统一Schema设计-v0.1.md`，冻结简化模型（已完成）
+3. 更新 `PLANS.md` 与 `PROGRESS.md`，把新基线写回项目记忆（进行中）
+4. 做一致性检查并提交版本（待执行）
+
+## 本轮完成判据
+- 统一图谱正式收敛为三核心结构：
+  - `catalog_nodes`
+  - `catalog_relations`
+  - `catalog_node_facets`
+- 树结构主路径改为 `parent_node_id`，图关系只用于横向引用。
+- skill / MCP / memory / prompt 不再继续平行发明存储体系。
+- 文档、计划、进度记录三处保持一致。
