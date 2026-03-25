@@ -61,6 +61,7 @@ import {
 import { PromptCompiler } from "../core/prompt/index.js";
 import { TraceEventBus } from "../core/trace/index.js";
 import { UnifiedProviderClient, validateProviderRequestCapabilities } from "../providers/index.js";
+import { InternalShellBridge } from "../bridges/index.js";
 import { AgentRoundExecutor, ToolLoopExecutor } from "./index.js";
 
 type GraphEnvelope = { state: RunState };
@@ -194,10 +195,16 @@ export class FrameworkRuntimeEngine {
   private readonly checkpointer: SqliteSaver;
   private readonly graphCache = new Map<string, any>();
   private readonly activeRuns = new Map<string, RunRecord>();
+  private readonly internalShellBridge: InternalShellBridge;
 
   constructor(private readonly deps: RuntimeDeps) {
     mkdirSync(this.deps.dataDir, { recursive: true });
     this.checkpointer = SqliteSaver.fromConnString(path.join(this.deps.dataDir, "langgraph-checkpoints.sqlite"));
+    this.internalShellBridge = new InternalShellBridge({
+      projectId: this.deps.projectId,
+      db: this.deps.db,
+      workspaceRoot: this.deps.workspaceRoot
+    });
   }
 
   async createRun(request: CreateRunRequest): Promise<CreateRunResponse> {
@@ -1395,6 +1402,32 @@ export class FrameworkRuntimeEngine {
       const builtinName = canonicalTool.routeTarget.builtin as string;
 
       if (builtinName === "shell_command") {
+        const rawCommand = String(args.command ?? "");
+        const bridgeResult = await this.internalShellBridge.tryExecute(rawCommand, {
+          runId: envelope.runId,
+          threadId: envelope.threadId,
+          nodeId: envelope.nodeId,
+          agentId: envelope.agentId,
+          toolCallId: intent.toolCallId,
+          toolId: canonicalTool.id,
+          toolName: canonicalTool.name,
+          workspaceRoot: envelope.workspaceRoot
+        });
+        if (bridgeResult?.handled && bridgeResult.toolResult) {
+          return {
+            intent,
+            canonicalTool: {
+              id: canonicalTool.id,
+              name: canonicalTool.name,
+              kind: canonicalTool.kind,
+              routeTarget: canonicalTool.routeTarget
+            },
+            toolResult: bridgeResult.toolResult,
+            toolTrace: bridgeResult.toolTrace,
+            sideEffects: bridgeResult.sideEffects ?? sideEffects
+          };
+        }
+
         const syntheticShellSpec: ToolSpec = {
           id: canonicalTool.id,
           name: "shell_command",
@@ -1419,7 +1452,7 @@ export class FrameworkRuntimeEngine {
           target: builtinName,
           summary: `执行 shell_command（ok=${String(result.ok)}）`,
           details: {
-            command: String(args.command ?? ""),
+            command: rawCommand,
             durationMs: result.durationMs
           },
           timestamp: nowIso()
@@ -1825,7 +1858,7 @@ export class FrameworkRuntimeEngine {
     const map = ((refs.promptUnits ?? refs.promptBlocks ?? {}) as Record<string, number>) ?? {};
     const list: PromptBlock[] = [];
     for (const [id, version] of Object.entries(map)) {
-      const item = this.deps.db.getPromptUnit(id, version);
+      const item = this.deps.db.getPromptUnit(id, version, this.deps.projectId);
       if (item) list.push(item);
     }
     return list;
@@ -1867,7 +1900,7 @@ export class FrameworkRuntimeEngine {
     }
 
     // 运行开始时冻结当前 PromptUnit 版本，避免 run 中途受全局热更新污染。
-    for (const unit of this.deps.db.listPromptUnits()) {
+    for (const unit of this.deps.db.listPromptUnits(this.deps.projectId)) {
       promptUnits[unit.id] = unit.version;
     }
 

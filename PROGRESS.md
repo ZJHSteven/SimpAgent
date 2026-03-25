@@ -77,14 +77,22 @@
     - `AppDatabase` 新增 catalog CRUD、catalog PromptUnit 映射、catalog 上下文 PromptUnit 投影读取。
     - `seedDefaultConfigs` 与 JSON preset 导入会把旧 PromptBlock / Tool 同步写入 catalog。
     - `runAgentNode()` 已在 compile 前把 catalog 上下文投影块并入现有 PromptCompiler 主链。
+  - 统一图谱第二批 CodeMode bridge 已落地（2026-03-25）：
+    - 新增 `InternalShellBridge`，在 `shell_command` 内部拦截 `simpagent mcp call ...` 与 `simpagent skill call ...`。
+    - MCP bridge 已接入官方 MCP TypeScript SDK，并支持 `stdio / streamable-http / sse` 三种 transport。
+    - bridge 内部参数标准固定为 `--args-json`，同时兼容 flags 输入并在执行前归一化。
+    - `syncMcpServer()` 会把 `tools/list` 结果映射成 catalog 子节点，并写入 `tool + integration` facet。
+    - skill bridge 已支持本地脚本执行、`args_json / flags` 两种参数模式、超时、stdout/stderr 捕获与结构化输出。
+    - `AppDatabase.getPromptUnit/listPromptUnits` 与 runtime snapshot 读取已补上 `projectId` 作用域，避免 catalog 兼容读取串项目。
+    - 新增 `test:catalog-bridge`，覆盖 catalog PromptUnit 兼容读取、relation CRUD、三类 MCP transport、两种参数输入、skill 成功/缺参/失败路径，以及 catalog 上下文 PromptUnit 投影检查。
 - 验证：`npm run build:workspaces` 通过、`npm run --workspace @simpagent/runtime-node test:smoke` 通过、根前端 `npm run build` 通过（2026-03-01）；`npm run --workspace @simpagent/app-mededu-cockpit build` 通过（2026-03-04）；`npm run -s build`（`packages/core`、`packages/runtime-node`、root）通过（2026-03-04）。
-- 正在做：统一图谱第一批“catalog -> PromptUnit 主链路”已打通并通过构建/冒烟；当前进入第二批，实现 MCP/skills 的 CodeMode shell bridge、三类 MCP transport 适配，以及对应审计与专项测试。
+- 正在做：统一图谱第二批已收口完成，当前转入下一阶段的 Shell/Exec 权限规则细化、审批链路与更完整的 catalog CRUD/API 暴露。
 - 下一步：
-  1. 完成 catalog 第一批实现并跑通构建：类型、表结构、CRUD、PromptCompiler 接入。
-  2. 落地 MCP bridge：支持 `stdio / streamable-http / sse`，并统一为 `simpagent mcp call --args-json` 的 CodeMode 执行入口。
-  3. 落地 skills bridge：本地 bundle 映射为 catalog 节点，并通过 shell bridge 执行脚本型 skill。
-  4. 为 catalog / Prompt 编译 / MCP transport / bridge 命令 / skills 适配补齐专项测试。
-  5. 再继续推进 Shell/Exec 权限模型细化与更完整的审计链路。
+  1. 为 catalog 增加更完整的 API / Registry / 编辑入口，而不只停留在 SQLite CRUD。
+  2. 推进 Shell/Exec 权限模型细化：命令/路径/网络维度规则、审批与审计命中原因。
+  3. 把更多 skill bundle / MCP server 导入逻辑做成正式适配层，而不只是运行时桥接。
+  4. 把 catalog 项目隔离继续往更多旧 API/旧表兼容路径上收紧，避免默认 `projectId=default` 泄漏。
+  5. 继续补 runtime-node API / WS / trace 的全量测试矩阵。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：执行内核采用 LangGraph.js（原因：直接获得 checkpoint / interrupt / replay / history / updateState，避免自研运行时黑洞）。
@@ -104,6 +112,7 @@
 - 决策O：MCP/skills 后续默认优先走 CodeMode 风格的“prompt 暴露 + shell/exec 执行”路线，而不是全面 function-style，原因：便于统一纳入 PromptUnit 管控、层级化暴露与可审计权限链路。
 - 决策P：统一图谱优先统一定义层，不吞并运行态表，原因：`runs / trace / tool_calls / side_effects` 属于执行审计，不属于资源目录。
 - 决策Q：树结构优先通过 `parent_node_id` 建模，关系表只承载横向图关系，原因：目录树是主路径，若所有结构都强行走 edge，会让查询、迁移与心智模型同时变重。
+- 决策R：同一项目下不同 MCP server 的同名 tool 在 catalog 中必须使用“唯一节点名 + 原始工具名分离”策略，原因：`catalog_nodes(project_id, name)` 的唯一约束是真实存在的，显示名与内部稳定名不能混用。
 
 ## 常见坑 / 复现方法
 - 坑1：PowerShell 命令语法与 bash 花括号展开不同，批量创建目录时容易写错；需使用数组循环创建。
@@ -113,3 +122,4 @@
 - 坑5：`JsonValue` 类型不允许 `undefined`，前端/执行器返回对象里如果带 `undefined` 字段会导致 TypeScript 报错；需在返回前删除字段或改用显式 `null`。
 - 坑6：PowerShell 会把 `rg` 正则中的 `|` 当成管道符；复杂正则查询时需改用更简单模式或额外转义。
 - 坑7：部分 npm 版本不支持 `workspace:*` 依赖声明；若安装报 `EUNSUPPORTEDPROTOCOL`，需改为明确版本号并依赖 workspaces 的本地链接机制。
+- 坑8：`createMcpExpressApp()` 已内置 `express.json()`；测试或适配代码若再额外 `app.use(express.json())`，会导致 MCP 请求体被重复读取，出现 `stream is not readable`。

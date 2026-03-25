@@ -303,8 +303,8 @@ export class AppDatabase {
    * - 持久化层统一命名为 PromptUnit；
    * - 底层沿用旧表 `prompt_blocks`，避免迁移期间破坏兼容性。
    */
-  listPromptUnits(): PromptBlock[] {
-    const catalogUnits = this.listCatalogPromptUnits();
+  listPromptUnits(projectId = "default"): PromptBlock[] {
+    const catalogUnits = this.listCatalogPromptUnits(projectId);
     const legacyUnits = this.listPromptBlocks();
     const merged = new Map<string, PromptBlock>();
     for (const unit of legacyUnits) merged.set(unit.id, unit);
@@ -312,8 +312,8 @@ export class AppDatabase {
     return [...merged.values()].sort((a, b) => a.id.localeCompare(b.id));
   }
 
-  getPromptUnit(unitId: string, version?: number): PromptBlock | null {
-    const catalogItem = this.getCatalogPromptUnit(unitId);
+  getPromptUnit(unitId: string, version?: number, projectId = "default"): PromptBlock | null {
+    const catalogItem = this.getCatalogPromptUnit(unitId, projectId);
     if (catalogItem) return catalogItem;
     return this.getPromptBlock(unitId, version);
   }

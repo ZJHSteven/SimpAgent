@@ -258,6 +258,13 @@
 - 对“当前真实主实现”“兼容壳”“占位工程”的状态给出明确标识，避免后续继续混淆。
 - 在进入 AI PPT 等上层业务功能前，以“Node runtime 主干齐套 + 测试通过”作为门槛。
 
+## 本轮子任务进度（2026-03-25）
+1. catalog -> PromptUnit 主链路接入（已完成）
+2. MCP/skills CodeMode shell bridge（已完成）
+3. MCP `stdio / streamable-http / sse` 三类 transport 适配（已完成）
+4. catalog / bridge / skill 专项测试脚本（已完成）
+5. Shell/Exec 权限规则细化与审批链路（下一轮）
+
 ## 本轮完成判据（计划层）
 - `PLANS.md` 已完整记录本轮框架收口路线，不再停留在零散讨论。
 - 统一图谱、Shell/权限、MCP/skills、测试补齐、runtime-node 收口都已纳入执行序列。
