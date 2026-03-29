@@ -365,3 +365,28 @@
 - 文档明确说明 `packages/runtime-node` 是当前主实现，`backend` 是兼容壳，`apps` 不属于本次梳理范围。
 - 文档能帮助定位 Prompt、catalog、tool、workflow、runtime、permissions、bridge、API、测试等关键模块对应文件。
 - `PROGRESS.md` 已同步本轮文档成果与后续使用方式。
+
+---
+
+## 任务名称（2026-03-29，架构核查）
+- 核查“统一图谱 / 三层工具架构 / MCP&skill bridge / Agent 角色与 handoff”是否真正接成一条可运行主链
+
+## 执行目标（本轮）
+- 不新增业务功能，直接基于当前仓库实现做一次“反文档化”的代码核查，判断哪些连接点已经真实打通，哪些只是概念上相邻但运行时仍然分离。
+- 重点核查四条主线：
+  - `catalog -> PromptUnit / Tool / MCP / skill` 的统一程度；
+  - `ToolRegistry -> CanonicalTool -> exposure -> runtime -> shell bridge` 的真实执行链；
+  - `Agent.role / promptBindings / toolRoutePolicy / handoffPolicy / routingPolicies / outputContract` 的实际生效程度；
+  - “3 个 agent + MCP/skill + 总结/审查”的多节点通路能否按当前框架完整跑通。
+- 将核查结论写回 `PROGRESS.md`，避免后续继续把“已定义类型”误当成“已接线功能”。
+
+## 分阶段计划（本轮）
+1. 对照 `docs/SimpleAgent框架总览与代码导览.md` 与 `packages/runtime-node` 核查关键连接点（已完成）
+2. 核查 `handoff / routingPolicies / outputContract / role` 等字段是否只有配置声明没有运行时实现（已完成）
+3. 回归执行现有 package 级测试，确认真实可运行链路边界（进行中）
+4. 更新 `PROGRESS.md` 并提交本次架构核查结论（待执行）
+
+## 本轮完成判据
+- 明确指出哪些链路已经打通，哪些仍是“两条并行链”或“仅类型/配置占位”。
+- 明确回答当前框架能否支撑“问题提出 -> 搜索 -> 总结/审查”的 3 agent 通路，以及限制条件。
+- `PROGRESS.md` 与最终结论保持一致，避免文档继续过度乐观。

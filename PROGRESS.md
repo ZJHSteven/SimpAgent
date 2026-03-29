@@ -102,13 +102,20 @@
   - 已明确当前框架梳理边界只看 `packages/core`、`packages/runtime-node`、`packages/runtime-worker`、`packages/runtime-tauri-bridge` 与 `backend` 兼容壳。
   - 已明确 `packages/runtime-node` 是当前 SimpleAgent 框架真源，`backend` 仅是兼容壳，`apps/*` 与根 `src/*` 不属于本次框架导览范围。
   - 已把 PromptUnit、统一图谱、三层工具架构、LangGraph 运行时、权限审批、MCP/skill bridge、HTTP/WS、测试入口等主线能力与关键文件位置写成可复用索引，供后续 AI/人工协作先查后改。
-- 正在做：统一图谱、MCP/skills bridge、Shell/Exec 权限审批与 catalog API 这一轮 package 层收口已经完成，当前转入后续增强阶段。
+- 新增架构核查结论（2026-03-29，进行中）：
+  - `catalog -> PromptUnit 投影` 与 `shell_command -> InternalShellBridge -> MCP/skill` 两段链路已经真实接通，并且已有专项测试覆盖。
+  - 但 `catalog` 中的 MCP/skill/tool 节点目前主要用于“Prompt 投影 + shell bridge 执行提示”，还没有并入 `ToolRegistry.listCanonicalTools()` 这条 canonical tool 主链；也就是说，“统一图谱里的工具”和“runtime 暴露给模型的 canonical tools”目前仍是并行关系，不是单一真源。
+  - `Agent.toolRoutePolicy` 真实生效，作用是“模型工具暴露协议路由策略”，不是“业务角色策略”；它会影响 `responses/chat_function/prompt_protocol` 等适配器选择。
+  - `Agent.role`、`handoffPolicy`、`Workflow.routingPolicies`、`outputContract`、`modelPolicyId/contextPolicyId/toolPolicyId/postChecks` 当前主要还是配置/类型层占位，尚未形成完整运行时闭环；其中动态路由现在只对硬编码的 `agent.orchestrator + latestAssistantText.nextAgentId` 做了首版特判。
+- 正在做：基于现有测试入口继续核对“多 agent + MCP/skill + 审查”整条链是否真的已形成端到端闭环。
 - 下一步：
   1. 继续细化更高维度权限：network / fs / 额外权限申请，而不只限于 command/path。
   2. 把更多 skill bundle / MCP server 导入逻辑做成正式适配层，而不只是运行时桥接。
+  3. 把 catalog 中的 MCP/skill/tool 节点正式并入 `ToolRegistry -> CanonicalToolSpec` 主链，消除“Prompt 投影链”和“canonical tool 链”双轨并存的问题。
   3. 把 catalog 项目隔离继续往更多旧 API/旧表兼容路径上收紧，避免默认 `projectId=default` 泄漏。
   4. 继续补 runtime-node API / WS / trace 的全量测试矩阵。
-  5. 后续任何 package/framework 层改动，优先对照 `docs/SimpleAgent框架总览与代码导览.md` 检查是否已有现成实现，避免重复造轮子。
+  5. 补齐真正的 handoff 机制：至少需要明确是“workflow 路由原语”还是“注册为工具的 handoff command”，并补测试，而不是只保留 `handoffPolicy` 类型。
+  6. 后续任何 package/framework 层改动，优先对照 `docs/SimpleAgent框架总览与代码导览.md` 检查是否已有现成实现，避免重复造轮子。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：执行内核采用 LangGraph.js（原因：直接获得 checkpoint / interrupt / replay / history / updateState，避免自研运行时黑洞）。
