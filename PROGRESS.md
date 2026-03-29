@@ -107,7 +107,12 @@
   - 但 `catalog` 中的 MCP/skill/tool 节点目前主要用于“Prompt 投影 + shell bridge 执行提示”，还没有并入 `ToolRegistry.listCanonicalTools()` 这条 canonical tool 主链；也就是说，“统一图谱里的工具”和“runtime 暴露给模型的 canonical tools”目前仍是并行关系，不是单一真源。
   - `Agent.toolRoutePolicy` 真实生效，作用是“模型工具暴露协议路由策略”，不是“业务角色策略”；它会影响 `responses/chat_function/prompt_protocol` 等适配器选择。
   - `Agent.role`、`handoffPolicy`、`Workflow.routingPolicies`、`outputContract`、`modelPolicyId/contextPolicyId/toolPolicyId/postChecks` 当前主要还是配置/类型层占位，尚未形成完整运行时闭环；其中动态路由现在只对硬编码的 `agent.orchestrator + latestAssistantText.nextAgentId` 做了首版特判。
-- 正在做：基于现有测试入口继续核对“多 agent + MCP/skill + 审查”整条链是否真的已形成端到端闭环。
+- 新增核查测试结果（2026-03-29）：
+  - `runtime-node test:smoke` 通过，证明默认 3 节点工作流最小链路能跑通到 `node.review`，但使用的是 `mock provider`，不能视为真实工具闭环证明。
+  - `runtime-node test:catalog-bridge` 通过，证明 MCP/skill bridge 与 catalog 上下文 Prompt 投影有效，但它走的是 `InternalShellBridge` 直连测试，不是 canonical mcp/skill tool 路由。
+  - `runtime-node test:permissions-catalog` 通过，证明 shell 审批与 catalog API 有真实落地。
+  - `runtime-node build` 通过，当前 Node 主运行时编译层面正常。
+- 正在做：将这次核查结论固化为后续收口基线，避免再把“分段已通”误判成“整链已通”。
 - 下一步：
   1. 继续细化更高维度权限：network / fs / 额外权限申请，而不只限于 command/path。
   2. 把更多 skill bundle / MCP server 导入逻辑做成正式适配层，而不只是运行时桥接。

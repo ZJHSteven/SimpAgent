@@ -383,8 +383,21 @@
 ## 分阶段计划（本轮）
 1. 对照 `docs/SimpleAgent框架总览与代码导览.md` 与 `packages/runtime-node` 核查关键连接点（已完成）
 2. 核查 `handoff / routingPolicies / outputContract / role` 等字段是否只有配置声明没有运行时实现（已完成）
-3. 回归执行现有 package 级测试，确认真实可运行链路边界（进行中）
-4. 更新 `PROGRESS.md` 并提交本次架构核查结论（待执行）
+3. 回归执行现有 package 级测试，确认真实可运行链路边界（已完成）
+4. 更新 `PROGRESS.md` 并提交本次架构核查结论（进行中）
+
+## 测试回归结果（本轮）
+- `npm run --workspace @simpagent/runtime-node test:smoke` 通过：
+  - 默认 3 节点工作流可完成一次最小运行；
+  - 结束状态为 `completed`，最终节点停在 `node.review`；
+  - 但该测试使用 `mock provider`，不能证明真实工具调用、handoff 或 MCP 搜索闭环。
+- `npm run --workspace @simpagent/runtime-node test:catalog-bridge` 通过：
+  - 证明 `catalog PromptUnit 兼容读取`、`MCP/skill bridge`、`tool 节点 Prompt 投影` 已接通；
+  - 但测试直接调用 `InternalShellBridge`，不是通过 `ToolRegistry -> CanonicalTool(mcp/skill)` 主链进入。
+- `npm run --workspace @simpagent/runtime-node test:permissions-catalog` 通过：
+  - 证明 `shell_command` 权限审批与 `catalog HTTP CRUD` 已接通。
+- `npm run --workspace @simpagent/runtime-node build` 通过：
+  - 说明当前 `runtime-node` 编译层面自洽。
 
 ## 本轮完成判据
 - 明确指出哪些链路已经打通，哪些仍是“两条并行链”或“仅类型/配置占位”。
