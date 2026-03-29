@@ -97,12 +97,18 @@
     - HTTP 已补齐 `catalog` 的 node / facet / relation CRUD，以及 run 级审批请求查询/回复接口。
     - 新增 `test:permissions-catalog`，覆盖权限允许/审批/拒绝、审批请求落库、catalog HTTP CRUD。
 - 验证：`npm run build:workspaces` 通过、`npm run test:workspaces` 通过、`npm run --workspace @simpagent/runtime-node test:smoke` 通过、`npm run --workspace @simpagent/runtime-node test:catalog-bridge` 通过、根前端 `npm run build` 通过（2026-03-25）。
+- 新增框架导览文档（2026-03-29）：
+  - 文档：`docs/SimpleAgent框架总览与代码导览.md`
+  - 已明确当前框架梳理边界只看 `packages/core`、`packages/runtime-node`、`packages/runtime-worker`、`packages/runtime-tauri-bridge` 与 `backend` 兼容壳。
+  - 已明确 `packages/runtime-node` 是当前 SimpleAgent 框架真源，`backend` 仅是兼容壳，`apps/*` 与根 `src/*` 不属于本次框架导览范围。
+  - 已把 PromptUnit、统一图谱、三层工具架构、LangGraph 运行时、权限审批、MCP/skill bridge、HTTP/WS、测试入口等主线能力与关键文件位置写成可复用索引，供后续 AI/人工协作先查后改。
 - 正在做：统一图谱、MCP/skills bridge、Shell/Exec 权限审批与 catalog API 这一轮 package 层收口已经完成，当前转入后续增强阶段。
 - 下一步：
   1. 继续细化更高维度权限：network / fs / 额外权限申请，而不只限于 command/path。
   2. 把更多 skill bundle / MCP server 导入逻辑做成正式适配层，而不只是运行时桥接。
   3. 把 catalog 项目隔离继续往更多旧 API/旧表兼容路径上收紧，避免默认 `projectId=default` 泄漏。
   4. 继续补 runtime-node API / WS / trace 的全量测试矩阵。
+  5. 后续任何 package/framework 层改动，优先对照 `docs/SimpleAgent框架总览与代码导览.md` 检查是否已有现成实现，避免重复造轮子。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：执行内核采用 LangGraph.js（原因：直接获得 checkpoint / interrupt / replay / history / updateState，避免自研运行时黑洞）。
