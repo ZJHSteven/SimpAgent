@@ -338,3 +338,30 @@
 - `catalog` 已具备最小 HTTP CRUD，不再只剩 SQLite 调用口。
 - `runtime-node test` 已覆盖 smoke / catalog bridge / permissions-catalog 三套测试。
 - 根级 `test:workspaces`、`build:workspaces`、根 `build` 均通过。
+
+---
+
+## 任务名称（2026-03-29）
+- 补写 Simple Agent 框架总览导览文档（仅 packages/framework 层，不含 apps 与前端）
+
+## 执行目标（本轮）
+- 只聚焦 `packages/core`、`packages/runtime-node`、`packages/runtime-worker`、`packages/runtime-tauri-bridge` 与 `backend` 兼容壳，系统梳理当前 Simple Agent 框架真实实现。
+- 新增一份“框架总版导览”文档，明确：
+  - 当前真实主实现边界；
+  - 核心能力清单（Prompt 装配、统一图谱、工具体系、Agent/Workflow、LangGraph 状态流转、权限、桥接、API、测试）；
+  - 关键目录与关键文件职责；
+  - 哪些部分已完成、哪些仍是兼容层或轻量适配层。
+- 同步更新 `PROGRESS.md`，把“新增框架导览文档”写入项目记忆，避免后续上下文变长后重复造轮子或重复实现。
+
+## 分阶段计划（本轮）
+1. 盘点 `packages/*` 与 `backend` 的目录、入口与关键实现，确认真实主干（已完成）
+2. 将本次任务写入 `PLANS.md`，冻结执行边界（进行中）
+3. 新增框架导览文档，按“能力地图 + 目录地图 + 文件职责 + 调用链”展开（待执行）
+4. 更新 `PROGRESS.md`，记录文档产出与当前框架认知基线（待执行）
+5. 回归执行文档相关校验并提交版本（待执行）
+
+## 本轮完成判据
+- 仓库内新增一份面向后续开发/AI 协作的框架导览文档。
+- 文档明确说明 `packages/runtime-node` 是当前主实现，`backend` 是兼容壳，`apps` 不属于本次梳理范围。
+- 文档能帮助定位 Prompt、catalog、tool、workflow、runtime、permissions、bridge、API、测试等关键模块对应文件。
+- `PROGRESS.md` 已同步本轮文档成果与后续使用方式。
