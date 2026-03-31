@@ -125,6 +125,12 @@
     - `ToolRegistry` 已改为从 catalog 构造 canonical tool，而不是从旧 `tools/tool_versions` 读取；
     - tool 的 catalog prompt 投影已去掉 shell 命令模板，改为纯结构化执行说明；
     - 默认 seed 已开始把 builtin 直接写入 catalog，并把 `handoff` 纳入默认 agent 白名单。
+  - 第三批运行时主链已进入收口：
+    - 新增 `McpToolExecutor / SkillToolExecutor`，开始承接 canonical `mcp / skill_tool` 直连执行；
+    - `InternalShellBridge` 已开始退化为“命令解析 + 转调结构化执行器”；
+    - `engine.runAgentNode()` 已开始消费 snapshot 中冻结的 resolved canonical tools，并在 handoff 成功后写入 `pendingHandoff` 候选包；
+    - `engine.decideNextNode()` 已开始优先读取 `pendingHandoff`，逐步移除旧的 `agent.orchestrator + nextAgentId` 硬编码路由思路；
+    - `/api/tools` 的旧更新入口、模板旧字段、preset 旧字段与 handoff 专项测试仍在继续清理中。
 - 下一步：
   1. 继续细化更高维度权限：network / fs / 额外权限申请，而不只限于 command/path。
   2. 把更多 skill bundle / MCP server 导入逻辑做成正式适配层，而不只是运行时桥接。

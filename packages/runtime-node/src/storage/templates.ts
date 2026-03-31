@@ -139,20 +139,14 @@ const MEDEDU_TEMPLATE: RuntimeTemplateDefinition = {
         { bindingId: "bind.patient.world", unitId: "block.mededu.worldbook.report", enabled: true, order: 30 },
         { bindingId: "bind.patient.tool", unitId: "block.mededu.tools.hint", enabled: true, order: 40 }
       ],
-      toolAllowList: ["web_search", "read_file", "request_user_input"],
+      toolAllowList: ["web_search", "read_file", "request_user_input", "handoff"],
       toolRoutePolicy: { mode: "auto", reason: "按 provider 能力自动选择路由" },
-      modelPolicyId: "model.default",
-      promptAssemblyPolicyId: "prompt.default",
-      contextPolicyId: "context.default",
-      toolPolicyId: "toolpolicy.patient",
       memoryPolicies: ["memory.timeline", "memory.affinity", "memory.exam"],
       handoffPolicy: {
         allowedTargets: ["agent.mededu.mentor.clinical", "agent.mededu.mentor.research"],
         allowDynamicHandoff: true,
         strategy: "hybrid"
       },
-      outputContract: { type: "text" },
-      postChecks: [],
       enabled: true,
       version: 1,
       tags: ["mededu", "patient"]
@@ -166,14 +160,9 @@ const MEDEDU_TEMPLATE: RuntimeTemplateDefinition = {
         { bindingId: "bind.timeline.system", unitId: "block.mededu.system.core", enabled: true, order: 10 },
         { bindingId: "bind.timeline.world", unitId: "block.mededu.worldbook.report", enabled: true, order: 20 }
       ],
-      toolAllowList: ["update_plan"],
+      toolAllowList: ["update_plan", "handoff"],
       toolRoutePolicy: { mode: "native_function_first" },
-      modelPolicyId: "model.default",
-      promptAssemblyPolicyId: "prompt.default",
-      contextPolicyId: "context.default",
-      toolPolicyId: "toolpolicy.memory",
       memoryPolicies: [],
-      postChecks: [],
       enabled: true,
       version: 1,
       tags: ["mededu", "memory"]
@@ -186,14 +175,9 @@ const MEDEDU_TEMPLATE: RuntimeTemplateDefinition = {
       promptBindings: [
         { bindingId: "bind.affinity.system", unitId: "block.mededu.system.core", enabled: true, order: 10 }
       ],
-      toolAllowList: ["update_plan"],
+      toolAllowList: ["update_plan", "handoff"],
       toolRoutePolicy: { mode: "native_function_first" },
-      modelPolicyId: "model.default",
-      promptAssemblyPolicyId: "prompt.default",
-      contextPolicyId: "context.default",
-      toolPolicyId: "toolpolicy.memory",
       memoryPolicies: [],
-      postChecks: [],
       enabled: true,
       version: 1,
       tags: ["mededu", "memory"]
@@ -207,14 +191,9 @@ const MEDEDU_TEMPLATE: RuntimeTemplateDefinition = {
         { bindingId: "bind.exam.system", unitId: "block.mededu.system.core", enabled: true, order: 10 },
         { bindingId: "bind.exam.world", unitId: "block.mededu.worldbook.report", enabled: true, order: 20 }
       ],
-      toolAllowList: ["read_file", "update_plan"],
+      toolAllowList: ["read_file", "update_plan", "handoff"],
       toolRoutePolicy: { mode: "native_function_first" },
-      modelPolicyId: "model.default",
-      promptAssemblyPolicyId: "prompt.default",
-      contextPolicyId: "context.default",
-      toolPolicyId: "toolpolicy.memory",
       memoryPolicies: [],
-      postChecks: [],
       enabled: true,
       version: 1,
       tags: ["mededu", "memory"]
@@ -227,14 +206,9 @@ const MEDEDU_TEMPLATE: RuntimeTemplateDefinition = {
       promptBindings: [
         { bindingId: "bind.trigger.system", unitId: "block.mededu.system.core", enabled: true, order: 10 }
       ],
-      toolAllowList: ["update_plan"],
+      toolAllowList: ["update_plan", "handoff"],
       toolRoutePolicy: { mode: "native_function_first" },
-      modelPolicyId: "model.default",
-      promptAssemblyPolicyId: "prompt.default",
-      contextPolicyId: "context.default",
-      toolPolicyId: "toolpolicy.router",
       memoryPolicies: [],
-      postChecks: [],
       enabled: true,
       version: 1,
       tags: ["mededu", "router"]
@@ -249,14 +223,9 @@ const MEDEDU_TEMPLATE: RuntimeTemplateDefinition = {
         { bindingId: "bind.clinical.persona", unitId: "block.mededu.clinical.mentor", enabled: true, order: 20 },
         { bindingId: "bind.clinical.tool", unitId: "block.mededu.tools.hint", enabled: true, order: 30 }
       ],
-      toolAllowList: ["web_search", "read_file"],
+      toolAllowList: ["web_search", "read_file", "handoff"],
       toolRoutePolicy: { mode: "native_function_first" },
-      modelPolicyId: "model.default",
-      promptAssemblyPolicyId: "prompt.default",
-      contextPolicyId: "context.default",
-      toolPolicyId: "toolpolicy.mentor",
       memoryPolicies: [],
-      postChecks: [],
       enabled: true,
       version: 1,
       tags: ["mededu", "mentor"]
@@ -271,14 +240,9 @@ const MEDEDU_TEMPLATE: RuntimeTemplateDefinition = {
         { bindingId: "bind.research.persona", unitId: "block.mededu.research.mentor", enabled: true, order: 20 },
         { bindingId: "bind.research.tool", unitId: "block.mededu.tools.hint", enabled: true, order: 30 }
       ],
-      toolAllowList: ["web_search", "read_file", "view_image"],
+      toolAllowList: ["web_search", "read_file", "view_image", "handoff"],
       toolRoutePolicy: { mode: "native_function_first" },
-      modelPolicyId: "model.default",
-      promptAssemblyPolicyId: "prompt.default",
-      contextPolicyId: "context.default",
-      toolPolicyId: "toolpolicy.mentor",
       memoryPolicies: [],
-      postChecks: [],
       enabled: true,
       version: 1,
       tags: ["mededu", "mentor", "research"]
@@ -305,14 +269,6 @@ const MEDEDU_TEMPLATE: RuntimeTemplateDefinition = {
         { id: "edge.affinity_exam", from: "node.affinity", to: "node.exam", condition: { type: "always" } },
         { id: "edge.exam_clinical", from: "node.exam", to: "node.clinical", condition: { type: "always" } },
         { id: "edge.clinical_research", from: "node.clinical", to: "node.research", condition: { type: "always" } }
-      ],
-      routingPolicies: [
-        { id: "route.trigger", nodeId: "node.trigger", mode: "hybrid" },
-        { id: "route.patient", nodeId: "node.patient", mode: "hybrid" },
-        { id: "route.timeline", nodeId: "node.timeline", mode: "fixed" },
-        { id: "route.affinity", nodeId: "node.affinity", mode: "fixed" },
-        { id: "route.exam", nodeId: "node.exam", mode: "fixed" },
-        { id: "route.clinical", nodeId: "node.clinical", mode: "fixed" }
       ],
       interruptPolicy: {
         defaultInterruptBefore: false,

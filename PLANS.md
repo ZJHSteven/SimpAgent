@@ -403,3 +403,28 @@
 - 明确指出哪些链路已经打通，哪些仍是“两条并行链”或“仅类型/配置占位”。
 - 明确回答当前框架能否支撑“问题提出 -> 搜索 -> 总结/审查”的 3 agent 通路，以及限制条件。
 - `PROGRESS.md` 与最终结论保持一致，避免文档继续过度乐观。
+
+---
+
+## 任务名称（2026-03-31）
+- Catalog 单一工具真源收口 + MCP/Skill 直连执行落地 + Handoff 工具化编排
+
+## 执行目标（本轮）
+- 让 `catalog` 成为工具系统唯一真源，停止运行时继续从旧 `ToolSpec / builtin_tool_configs` 主链拼装工具。
+- 落地 `CanonicalToolRouteTarget = builtin | mcp | skill_tool` 的真实执行器，不再让 `mcp / skill` 只能通过 shell bridge 间接工作。
+- 将 `handoff` 做成一等 builtin tool，并让 workflow 以“合法拓扑包络”的形式承接动态路由。
+- 把 run snapshot 从“假装只有版本号”改为“冻结 resolved prompt/tool payload”，避免热更新污染运行中的多 agent 通路。
+- 用 deterministic 测试验证 `research -> summary -> review` 一类 handoff 主链能完整跑通。
+
+## 分阶段计划（本轮）
+1. `contracts / registry / canonical` 收口到 catalog 单一工具真源（已完成）
+2. 抽出结构化 `McpToolExecutor / SkillToolExecutor`，让 runtime 直连 canonical route（进行中）
+3. 落地 `handoff` builtin tool、`pendingHandoff` 路由优先级与 workflow 后继校验（待执行）
+4. 清理旧 `/api/tools` 更新入口、模板旧字段、旧 route 分支与测试夹带物（待执行）
+5. 回归执行 `core/runtime-node build` 与 package 级专项测试，更新 `PROGRESS.md` 并提交版本（待执行）
+
+## 本轮完成判据
+- `ToolRegistry` 运行时只从 catalog 产出 canonical tools。
+- `engine.executeCanonicalToolIntent()` 能直接执行 `builtin / mcp / skill_tool`。
+- `handoff` 能写出 packet，并让 `decideNextNode()` 优先消费 `pendingHandoff`。
+- 默认 deterministic 测试可覆盖 handoff 三节点通路；旧 `smoke / catalog-bridge / permissions-catalog` 继续通过。

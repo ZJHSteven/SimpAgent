@@ -25,6 +25,7 @@ import type {
   CreateRunResponse,
   ForkRunRequest,
   ForkRunResponse,
+  HandoffPacket,
   JsonObject,
   JsonValue,
   PromptBlock,
@@ -36,7 +37,6 @@ import type {
   RunStatus,
   StateDiffTrace,
   StatePatchRequest,
-  ToolSpec,
   UnifiedMessage,
   UnifiedModelRequest,
   WorkflowEdgeSpec,
@@ -50,6 +50,8 @@ import type { ToolRegistry } from "../core/tools/index.js";
 import { ToolRuntime } from "../core/tools/index.js";
 import {
   CanonicalToolRouter,
+  McpToolExecutor,
+  SkillToolExecutor,
   buildUserInputRequestState,
   executeBuiltinApplyPatch,
   executeBuiltinReadFile,
@@ -198,11 +200,23 @@ export class FrameworkRuntimeEngine {
   private readonly graphCache = new Map<string, any>();
   private readonly activeRuns = new Map<string, RunRecord>();
   private readonly internalShellBridge: InternalShellBridge;
+  private readonly mcpToolExecutor: McpToolExecutor;
+  private readonly skillToolExecutor: SkillToolExecutor;
 
   constructor(private readonly deps: RuntimeDeps) {
     mkdirSync(this.deps.dataDir, { recursive: true });
     this.checkpointer = SqliteSaver.fromConnString(path.join(this.deps.dataDir, "langgraph-checkpoints.sqlite"));
     this.internalShellBridge = new InternalShellBridge({
+      projectId: this.deps.projectId,
+      db: this.deps.db,
+      workspaceRoot: this.deps.workspaceRoot
+    });
+    this.mcpToolExecutor = new McpToolExecutor({
+      projectId: this.deps.projectId,
+      db: this.deps.db,
+      workspaceRoot: this.deps.workspaceRoot
+    });
+    this.skillToolExecutor = new SkillToolExecutor({
       projectId: this.deps.projectId,
       db: this.deps.db,
       workspaceRoot: this.deps.workspaceRoot
@@ -742,7 +756,7 @@ export class FrameworkRuntimeEngine {
     }
     const effectivePromptUnits = [...mergedPromptUnitMap.values()];
     const allowSet = new Set((agent.toolAllowList ?? []).map((item) => String(item)));
-    let canonicalTools = this.deps.toolRegistry.listCanonicalTools().filter((tool) => {
+    let canonicalTools = this.loadCanonicalToolsFromSnapshot(state).filter((tool) => {
       if (!tool.enabled) return false;
       if (allowSet.size === 0) return true;
       return allowSet.has(tool.id) || allowSet.has(tool.name);
@@ -987,6 +1001,7 @@ export class FrameworkRuntimeEngine {
     const canonicalResultRecords: CanonicalToolCallResult[] = [];
     const toolCalls: RunState["toolState"]["lastToolCalls"] = [];
     const toolResults: RunState["toolState"]["lastToolResults"] = [];
+    let pendingHandoffPacket: HandoffPacket | undefined;
 
     const loopResult = await loopExecutor.execute({
       initialRequest: modelReq,
@@ -1104,6 +1119,9 @@ export class FrameworkRuntimeEngine {
             nodeId: node.id,
             agentId: agent.id,
             workspaceRoot: this.deps.workspaceRoot,
+            workflow,
+            state,
+            agentSnapshot: agent,
             provider: {
               vendor: provider.vendor,
               apiMode: provider.apiMode,
@@ -1168,6 +1186,15 @@ export class FrameworkRuntimeEngine {
             issuedAt: nowIso()
           });
 
+          if (canonicalTool.name === "handoff" && executed.toolResult.ok) {
+            const packet = this.buildAcceptedHandoffPacket({
+              output: executed.toolResult.output,
+              args: intent.args ?? {},
+              issuedByAgentId: agent.id
+            });
+            if (packet) pendingHandoffPacket = packet;
+          }
+
           const toolResultText = JSON.stringify(executed.toolResult.ok ? executed.toolResult.output : executed.toolResult.error);
           if (
             exposurePlan.adapterKind === "structured_output_tool_call" ||
@@ -1195,7 +1222,8 @@ export class FrameworkRuntimeEngine {
           toolRoleMessages,
           toolResults: roundToolResults
         };
-      }
+      },
+      shouldStopAfterToolCalls: () => Boolean(pendingHandoffPacket)
     });
 
     const finalText = loopResult.finalText;
@@ -1211,6 +1239,12 @@ export class FrameworkRuntimeEngine {
 
     return {
       ...state,
+      artifacts: pendingHandoffPacket
+        ? {
+            ...state.artifacts,
+            outputs: [...state.artifacts.outputs, { id: newId("artifact"), type: "handoff_packet", content: pendingHandoffPacket }]
+          }
+        : state.artifacts,
       conversationState: {
         ...state.conversationState,
         messages: [...state.conversationState.messages, assistantMessage],
@@ -1223,6 +1257,12 @@ export class FrameworkRuntimeEngine {
         lastCanonicalToolResults: canonicalResultRecords,
         lastToolExposurePlanId: exposurePlan.planId
       },
+      routingState: pendingHandoffPacket
+        ? {
+            ...state.routingState,
+            pendingHandoff: pendingHandoffPacket
+          }
+        : state.routingState,
       debugRefs: {
         ...state.debugRefs,
         promptCompileIds: [...state.debugRefs.promptCompileIds, compile.promptTrace.compileId]
@@ -1231,7 +1271,7 @@ export class FrameworkRuntimeEngine {
   }
 
   private async runToolNode(node: WorkflowNodeSpec, state: RunState): Promise<RunState> {
-    const tool = this.deps.toolRegistry.get(node.toolId!);
+    const tool = this.loadCanonicalToolsFromSnapshot(state).find((item) => item.id === node.toolId || item.name === node.toolId) ?? null;
     if (!tool) throw new Error(`Tool 不存在：${node.toolId}`);
     const cfg = node.config && typeof node.config === "object" && !Array.isArray(node.config) ? (node.config as JsonObject) : {};
     const cfgArgs = cfg.args;
@@ -1250,15 +1290,57 @@ export class FrameworkRuntimeEngine {
       args.input = state.conversationState.latestAssistantText;
     }
 
-    const { result } = await this.deps.toolRuntime.execute(tool, args);
+    const intent: CanonicalToolCallIntent = {
+      toolCallId: newId("toolcall"),
+      canonicalToolId: tool.id,
+      toolName: tool.name,
+      adapterKind: "prompt_protocol_fallback",
+      payloadMode: "json_args",
+      args
+    };
+    const executed = await this.executeCanonicalToolIntent(intent, tool, {
+      runId: state.runMeta.runId,
+      threadId: state.runMeta.threadId,
+      nodeId: node.id,
+      agentId: node.agentId ?? "workflow_tool",
+      workspaceRoot: this.deps.workspaceRoot,
+      workflow: state.workflowSnapshot,
+      state
+    });
+    const result = executed.toolResult;
     let nextState: RunState = {
       ...state,
       toolState: {
         ...state.toolState,
-        lastToolCalls: [],
-        lastToolResults: [result]
+        lastToolCalls: [
+          {
+            toolCallId: intent.toolCallId,
+            toolId: tool.id,
+            toolName: tool.name,
+            arguments: args,
+            issuedByAgentId: node.agentId,
+            issuedAt: nowIso()
+          }
+        ],
+        lastToolResults: [result],
+        lastCanonicalToolCalls: [intent],
+        lastCanonicalToolResults: [executed]
       }
     };
+
+    if (executed.toolTrace) {
+      this.deps.db.insertToolCallTrace({
+        toolCallId: executed.toolTrace.toolCallId,
+        runId: state.runMeta.runId,
+        threadId: state.runMeta.threadId,
+        toolId: executed.toolTrace.toolId,
+        toolName: executed.toolTrace.toolName,
+        traceJson: executed.toolTrace as unknown as JsonValue
+      });
+    }
+    for (const effect of executed.sideEffects) {
+      this.deps.db.insertSideEffect(effect);
+    }
 
     const packet = {
       nodeId: node.id,
@@ -1327,18 +1409,21 @@ export class FrameworkRuntimeEngine {
   /**
    * v0.2：执行 CanonicalToolCallIntent（中间统一层）。
    * 说明：
-   * - 这里先实现 builtin + user_defined 两类；
-   * - MCP / plugin / skill_tool 先返回结构化未实现错误（后续迭代接入）。
+   * - 现在直接支持 builtin / mcp / skill_tool 三类；
+   * - 不再把 MCP / skill 退化成 shell 文本后再兜一圈。
    */
   private async executeCanonicalToolIntent(
     intent: CanonicalToolCallIntent,
-    canonicalTool: any,
+    canonicalTool: CanonicalToolSpec,
     envelope: {
       runId: string;
       threadId: string;
       nodeId: string;
       agentId: string;
       workspaceRoot: string;
+      workflow?: WorkflowSpec;
+      state?: RunState;
+      agentSnapshot?: AgentSpec;
       provider: { vendor: string; apiMode: string; model: string };
     }
   ): Promise<CanonicalToolCallResult> {
@@ -1536,7 +1621,7 @@ export class FrameworkRuntimeEngine {
           };
         }
 
-        const syntheticShellSpec: ToolSpec = {
+        const syntheticShellSpec = {
           id: canonicalTool.id,
           name: "shell_command",
           description: canonicalTool.description,
@@ -1768,6 +1853,33 @@ export class FrameworkRuntimeEngine {
         });
       }
 
+      if (builtinName === "handoff") {
+        const handoff = this.executeHandoffTool({
+          args,
+          canonicalTool,
+          envelope
+        });
+        sideEffects.push({
+          sideEffectId: newId("sfx"),
+          runId: envelope.runId,
+          threadId: envelope.threadId,
+          nodeId: envelope.nodeId,
+          agentId: envelope.agentId,
+          type: "tool_exec",
+          target: `handoff:${String(args.targetAgentId ?? "")}`,
+          summary: handoff.ok ? "handoff 已接受" : "handoff 被拒绝",
+          details: summarize((handoff.output ?? handoff.error?.details) as JsonValue | undefined) ?? null,
+          timestamp: nowIso()
+        });
+        return buildResult({
+          ok: handoff.ok,
+          output: handoff.output,
+          error: handoff.error,
+          toolId: canonicalTool.id,
+          toolName: canonicalTool.name
+        });
+      }
+
       if (builtinName === "view_image") {
         const output = await executeBuiltinViewImage(args, envelope.workspaceRoot);
         sideEffects.push({
@@ -1792,28 +1904,20 @@ export class FrameworkRuntimeEngine {
       }
     }
 
-    if (routeKind === "user_defined") {
-      const spec = this.deps.toolRegistry.get(canonicalTool.routeTarget.toolId);
-      if (!spec) {
-        return buildResult({
-          ok: false,
-          error: { code: "TOOL_NOT_FOUND", message: `工具不存在：${canonicalTool.routeTarget.toolId}` },
+    if (routeKind === "mcp") {
+      const executed = await this.mcpToolExecutor.executeCanonicalTool({
+        tool: canonicalTool,
+        args,
+        ctx: {
+          runId: envelope.runId,
+          threadId: envelope.threadId,
+          nodeId: envelope.nodeId,
+          agentId: envelope.agentId,
+          toolCallId: intent.toolCallId,
           toolId: canonicalTool.id,
-          toolName: canonicalTool.name
-        });
-      }
-      const { result, trace } = await this.deps.toolRuntime.execute(spec, args, envelope.agentId);
-      sideEffects.push({
-        sideEffectId: newId("sfx"),
-        runId: envelope.runId,
-        threadId: envelope.threadId,
-        nodeId: envelope.nodeId,
-        agentId: envelope.agentId,
-        type: "tool_exec",
-        target: canonicalTool.name,
-        summary: `执行自定义工具 ${canonicalTool.name}`,
-        details: { ok: result.ok, durationMs: result.durationMs } as unknown as JsonValue,
-        timestamp: nowIso()
+          toolName: canonicalTool.name,
+          workspaceRoot: envelope.workspaceRoot
+        }
       });
       return {
         intent,
@@ -1823,9 +1927,38 @@ export class FrameworkRuntimeEngine {
           kind: canonicalTool.kind,
           routeTarget: canonicalTool.routeTarget
         },
-        toolResult: result,
-        toolTrace: trace,
-        sideEffects
+        toolResult: executed.toolResult,
+        toolTrace: executed.toolTrace,
+        sideEffects: executed.sideEffects
+      };
+    }
+
+    if (routeKind === "skill_tool") {
+      const executed = await this.skillToolExecutor.executeCanonicalTool({
+        tool: canonicalTool,
+        args,
+        ctx: {
+          runId: envelope.runId,
+          threadId: envelope.threadId,
+          nodeId: envelope.nodeId,
+          agentId: envelope.agentId,
+          toolCallId: intent.toolCallId,
+          toolId: canonicalTool.id,
+          toolName: canonicalTool.name,
+          workspaceRoot: envelope.workspaceRoot
+        }
+      });
+      return {
+        intent,
+        canonicalTool: {
+          id: canonicalTool.id,
+          name: canonicalTool.name,
+          kind: canonicalTool.kind,
+          routeTarget: canonicalTool.routeTarget
+        },
+        toolResult: executed.toolResult,
+        toolTrace: executed.toolTrace,
+        sideEffects: executed.sideEffects
       };
     }
 
@@ -1845,18 +1978,13 @@ export class FrameworkRuntimeEngine {
     let nextNodeId: string | undefined;
     let reason = "no_edges";
 
-    // 编排器动态路由（首版约定：若输出 JSON 且包含 nextAgentId，则尝试映射）。
-    if (node.type === "agent" && node.agentId === "agent.orchestrator") {
-      const parsed = state.conversationState.latestAssistantText
-        ? safeJsonParseObject(state.conversationState.latestAssistantText)
-        : null;
-      const nextAgentId = typeof parsed?.nextAgentId === "string" ? parsed.nextAgentId : undefined;
-      if (nextAgentId) {
-        const candidateNode = workflow.nodes.find((n) => n.agentId === nextAgentId)?.id;
-        if (candidateNode && outgoing.some((e) => e.to === candidateNode)) {
-          nextNodeId = candidateNode;
-          reason = "orchestrator_json_nextAgentId";
-        }
+    if (state.routingState.pendingHandoff) {
+      const pending = state.routingState.pendingHandoff;
+      const candidateNode =
+        pending.targetNodeId ?? workflow.nodes.find((item) => item.agentId === pending.targetAgentId)?.id;
+      if (candidateNode && outgoing.some((edge) => edge.to === candidateNode)) {
+        nextNodeId = candidateNode;
+        reason = "handoff_pending";
       }
     }
 
@@ -1893,6 +2021,7 @@ export class FrameworkRuntimeEngine {
       routingState: {
         ...state.routingState,
         nextNodeId,
+        pendingHandoff: reason === "handoff_pending" ? undefined : state.routingState.pendingHandoff,
         reason
       }
     };
@@ -1907,6 +2036,129 @@ export class FrameworkRuntimeEngine {
       payload: { reason, nextNodeId: nextNodeId ?? null }
     });
     return nextState;
+  }
+
+  private executeHandoffTool(input: {
+    args: JsonObject;
+    canonicalTool: CanonicalToolSpec;
+    envelope: {
+      runId: string;
+      threadId: string;
+      nodeId: string;
+      agentId: string;
+      workspaceRoot: string;
+      workflow?: WorkflowSpec;
+      state?: RunState;
+      agentSnapshot?: AgentSpec;
+      provider: { vendor: string; apiMode: string; model: string };
+    };
+  }): {
+    ok: boolean;
+    output?: JsonValue;
+    error?: { code: string; message: string; details?: JsonValue };
+  } {
+    const targetAgentId = typeof input.args.targetAgentId === "string" ? input.args.targetAgentId.trim() : "";
+    const taskSummary = typeof input.args.taskSummary === "string" ? input.args.taskSummary.trim() : "";
+    if (!targetAgentId || !taskSummary) {
+      return {
+        ok: false,
+        error: {
+          code: "HANDOFF_INPUT_INVALID",
+          message: "handoff 缺少 targetAgentId 或 taskSummary"
+        }
+      };
+    }
+
+    const workflow = input.envelope.workflow ?? input.envelope.state?.workflowSnapshot;
+    if (!workflow) {
+      return {
+        ok: false,
+        error: {
+          code: "HANDOFF_WORKFLOW_MISSING",
+          message: "运行时缺少 workflow snapshot，无法执行 handoff"
+        }
+      };
+    }
+
+    const agent = input.envelope.agentSnapshot;
+    if (!agent?.handoffPolicy?.allowDynamicHandoff) {
+      return {
+        ok: false,
+        error: {
+          code: "HANDOFF_DISABLED",
+          message: `agent ${String(input.envelope.agentId ?? "")} 未开启动态 handoff`
+        }
+      };
+    }
+    if (!(agent.handoffPolicy.allowedTargets ?? []).includes(targetAgentId)) {
+      return {
+        ok: false,
+        error: {
+          code: "HANDOFF_TARGET_NOT_ALLOWED",
+          message: `目标 agent 不在 handoff 白名单中：${targetAgentId}`
+        }
+      };
+    }
+
+    const outgoing = workflow.edges.filter((edge) => edge.from === input.envelope.nodeId);
+    const targetNode = workflow.nodes.find((item) => item.agentId === targetAgentId);
+    if (!targetNode) {
+      return {
+        ok: false,
+        error: {
+          code: "HANDOFF_TARGET_AGENT_NOT_FOUND",
+          message: `workflow 中找不到目标 agent 对应节点：${targetAgentId}`
+        }
+      };
+    }
+    if (!outgoing.some((edge) => edge.to === targetNode.id)) {
+      return {
+        ok: false,
+        error: {
+          code: "HANDOFF_TARGET_NOT_REACHABLE",
+          message: `当前节点 ${input.envelope.nodeId} 不能 handoff 到 ${targetNode.id}`
+        }
+      };
+    }
+
+    return {
+      ok: true,
+      output: {
+        accepted: true,
+        targetAgentId,
+        targetNodeId: targetNode.id,
+        packetId: newId("handoff")
+      } as JsonValue
+    };
+  }
+
+  private buildAcceptedHandoffPacket(input: {
+    output: JsonValue | undefined;
+    args: JsonObject;
+    issuedByAgentId?: string;
+  }): HandoffPacket | null {
+    if (!input.output || typeof input.output !== "object" || Array.isArray(input.output)) return null;
+    const payload = input.output as Record<string, unknown>;
+    if (payload.accepted !== true) return null;
+    const targetAgentId = typeof payload.targetAgentId === "string" ? payload.targetAgentId : "";
+    const targetNodeId = typeof payload.targetNodeId === "string" ? payload.targetNodeId : undefined;
+    const packetId = typeof payload.packetId === "string" ? payload.packetId : newId("handoff");
+    const taskSummary = typeof input.args.taskSummary === "string" ? input.args.taskSummary : "";
+    if (!targetAgentId || !taskSummary) return null;
+    return {
+      packetId,
+      targetAgentId,
+      targetNodeId,
+      taskSummary,
+      payload:
+        input.args.payload && typeof input.args.payload === "object" && !Array.isArray(input.args.payload)
+          ? (input.args.payload as JsonObject)
+          : undefined,
+      reason: typeof input.args.reason === "string" ? input.args.reason : undefined,
+      artifactRefs: Array.isArray(input.args.artifactRefs) ? input.args.artifactRefs.map((item) => String(item)) : undefined,
+      issuedByAgentId: input.issuedByAgentId,
+      issuedAt: nowIso()
+    };
   }
 
   private getStateFieldValue(state: RunState, pathExpr: string): unknown {
@@ -1968,6 +2220,9 @@ export class FrameworkRuntimeEngine {
 
   private loadPromptUnitsFromSnapshot(state: RunState): PromptBlock[] {
     const refs = this.getSnapshotRefs(state);
+    if (Array.isArray(refs.resolvedPromptUnits)) {
+      return refs.resolvedPromptUnits.filter((item): item is PromptBlock => Boolean(item && typeof item === "object" && !Array.isArray(item))) as PromptBlock[];
+    }
     const map = ((refs.promptUnits ?? refs.promptBlocks ?? {}) as Record<string, number>) ?? {};
     const list: PromptBlock[] = [];
     for (const [id, version] of Object.entries(map)) {
@@ -1977,15 +2232,12 @@ export class FrameworkRuntimeEngine {
     return list;
   }
 
-  private loadToolsFromSnapshot(state: RunState): ToolSpec[] {
+  private loadCanonicalToolsFromSnapshot(state: RunState): CanonicalToolSpec[] {
     const refs = this.getSnapshotRefs(state);
-    const map = (refs.tools ?? {}) as Record<string, number>;
-    const list: ToolSpec[] = [];
-    for (const [id, version] of Object.entries(map)) {
-      const item = this.deps.db.getTool(id, version);
-      if (item) list.push(item);
+    if (Array.isArray(refs.resolvedCanonicalTools)) {
+      return refs.resolvedCanonicalTools.filter((item): item is CanonicalToolSpec => Boolean(item && typeof item === "object" && !Array.isArray(item))) as CanonicalToolSpec[];
     }
-    return list;
+    return this.deps.toolRegistry.listCanonicalTools();
   }
 
   private getSnapshotRefs(state: RunState): JsonObject {
@@ -1998,7 +2250,6 @@ export class FrameworkRuntimeEngine {
 
   private buildSnapshotVersionRefs(workflow: WorkflowSpec): JsonObject {
     const agents: Record<string, number> = {};
-    const tools: Record<string, number> = {};
     const promptUnits: Record<string, number> = {};
 
     for (const node of workflow.nodes) {
@@ -2007,8 +2258,7 @@ export class FrameworkRuntimeEngine {
         if (agent) agents[agent.id] = agent.version;
       }
       if (node.toolId) {
-        const tool = this.deps.toolRegistry.get(node.toolId);
-        if (tool) tools[tool.id] = tool.version;
+        // 工具快照改为直接冻结 resolved canonical payload，不再依赖旧 tool_versions。
       }
     }
 
@@ -2020,8 +2270,9 @@ export class FrameworkRuntimeEngine {
     return {
       workflow: { id: workflow.id, version: workflow.version },
       agents,
-      tools,
       promptUnits,
+      resolvedPromptUnits: this.deps.db.listPromptUnits(this.deps.projectId),
+      resolvedCanonicalTools: this.deps.toolRegistry.listCanonicalTools(),
       // 兼容旧字段，便于旧 run 回放。
       promptBlocks: promptUnits
     };

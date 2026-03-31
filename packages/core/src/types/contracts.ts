@@ -70,7 +70,7 @@ export type BuiltinToolName =
 /**
  * 三层工具架构里的“外层来源分类”。
  */
-export type CanonicalToolKind = "builtin" | "mcp" | "skill_tool" | "plugin" | "user_defined";
+export type CanonicalToolKind = "builtin" | "mcp" | "skill_tool";
 
 /**
  * 工具对模型的暴露层级（用于渐进式披露）。
@@ -402,6 +402,13 @@ export interface UnifiedMessage {
 export interface AgentSpec {
   id: ID;
   name: string;
+  /**
+   * role 只作为显示层/语义标签保留。
+   * 说明：
+   * - 它不再驱动 PromptCompiler 装配；
+   * - 也不参与工具路由或 handoff 决策；
+   * - 真正生效的是 promptBindings / toolAllowList / handoffPolicy。
+   */
   role?: string;
   description: string;
   /**

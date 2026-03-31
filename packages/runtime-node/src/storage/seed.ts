@@ -6,7 +6,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { AgentSpec, CatalogNode, CatalogNodeFacet, JsonObject, PromptBlock, ToolSpec, WorkflowSpec } from "../types/index.js";
+import type { AgentSpec, CatalogNode, CatalogNodeFacet, JsonObject, PromptBlock, WorkflowSpec } from "../types/index.js";
 import { AppDatabase } from "./db.js";
 import { BUILTIN_TOOL_DEFINITIONS, buildBuiltinCatalogFacet, buildBuiltinCatalogNode } from "../core/tools/index.js";
 
@@ -258,7 +258,6 @@ export function seedPresetConfigsFromDir(
     return { tools: 0, promptBlocks: 0, agents: 0, workflows: 0 };
   }
 
-  const tools = readPresetArray<ToolSpec>(presetDir, "tools.json");
   const promptBlocks = readPresetArray<PromptBlock>(presetDir, "prompt_blocks.json");
   const agents = readPresetArray<AgentSpec>(presetDir, "agents.json");
   const workflows = readPresetArray<WorkflowSpec>(presetDir, "workflows.json");
@@ -267,14 +266,6 @@ export function seedPresetConfigsFromDir(
   let blocksSaved = 0;
   let agentsSaved = 0;
   let workflowsSaved = 0;
-
-  for (const tool of tools) {
-    if (!db.getTool(tool.id)) {
-      db.saveVersionedConfig("tool", tool);
-      upsertCatalogToolNode(db, tool, projectId);
-      toolsSaved += 1;
-    }
-  }
 
   for (const block of promptBlocks) {
     if (!db.getPromptBlock(block.id)) {

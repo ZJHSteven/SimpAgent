@@ -4,5 +4,6 @@ export * from "./router.js";
 export * from "./exposurePlanner.js";
 export * from "./builtinSpecs.js";
 export * from "./canonical/index.js";
+export * from "./canonical/executors.js";
 export * from "./applyPatch/index.js";
 export * from "./builtinExecutors/index.js";

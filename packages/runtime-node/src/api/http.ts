@@ -20,7 +20,6 @@ import type {
   PromptOverridePatchRequest,
   PromptUnitOverridePatchRequest,
   StatePatchRequest,
-  ToolSpec,
   WorkflowSpec
 } from "../types/index.js";
 import type { RuntimeDeps } from "../runtime/index.js";
@@ -615,7 +614,14 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
       ok: true,
       data: defs.map((def) => ({
         ...def,
-        runtimeConfig: cfgMap.get(def.name) ?? def.defaultConfig
+        runtimeConfig:
+          cfgMap.get(def.name) ?? {
+            name: def.name,
+            enabled: true,
+            description: def.description,
+            exposurePolicy: def.exposurePolicy,
+            permissionPolicy: def.permissionPolicy
+          }
       }))
     });
   });
@@ -629,7 +635,13 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
         return;
       }
       const body = asObject(req.body);
-      const current = deps.toolRegistry.getBuiltinConfig(name) ?? def.defaultConfig;
+      const current = deps.toolRegistry.getBuiltinConfig(name) ?? {
+        name: def.name,
+        enabled: true,
+        description: def.description,
+        exposurePolicy: def.exposurePolicy,
+        permissionPolicy: def.permissionPolicy
+      };
       const next: BuiltinToolConfig = {
         ...current,
         ...(body as Partial<BuiltinToolConfig>),
@@ -686,9 +698,9 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
         adapters: Object.keys(exposureAdapters),
         builtinDefaults: BUILTIN_TOOL_DEFINITIONS.map((item) => ({
           name: item.name,
-          preferredAdapter: item.defaultConfig.exposurePolicy.preferredAdapter,
-          fallbackAdapters: item.defaultConfig.exposurePolicy.fallbackAdapters,
-          exposureLevel: item.defaultConfig.exposurePolicy.exposureLevel
+          preferredAdapter: item.exposurePolicy.preferredAdapter,
+          fallbackAdapters: item.exposurePolicy.fallbackAdapters,
+          exposureLevel: item.exposurePolicy.exposureLevel
         }))
       }
     });
@@ -752,44 +764,6 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
       });
     } catch (error) {
       sendError(res, 500, error instanceof Error ? error.message : "应用模板失败");
-    }
-  });
-
-  app.put("/api/tools/:toolId", (req, res) => {
-    try {
-      const body = { ...(req.body as ToolSpec), id: req.params.toolId } as ToolSpec;
-      const saved = deps.toolRegistry.save(body);
-      res.json({ ok: true, data: saved });
-    } catch (error) {
-      sendError(res, 500, error instanceof Error ? error.message : "更新 tool 失败");
-    }
-  });
-
-  /**
-   * v0.2：更新普通 ToolSpec 的暴露策略（先写入 executorConfig.exposure，保持兼容）。
-   * 说明：
-   * - 后续如果拆出独立 tool exposure 配置表，可以平滑迁移；
-   * - 当前阶段先让前端调试器有可操作入口。
-   */
-  app.put("/api/tools/:toolId/exposure", (req, res) => {
-    try {
-      const tool = deps.toolRegistry.get(req.params.toolId);
-      if (!tool) {
-        sendError(res, 404, "tool 不存在");
-        return;
-      }
-      const body = asObject(req.body);
-      const updated: ToolSpec = {
-        ...tool,
-        executorConfig: {
-          ...(asObject(tool.executorConfig) as Record<string, unknown>),
-          exposure: body
-        } as unknown as JsonObject
-      };
-      const saved = deps.toolRegistry.save(updated);
-      res.json({ ok: true, data: saved });
-    } catch (error) {
-      sendError(res, 500, error instanceof Error ? error.message : "更新 tool 暴露策略失败");
     }
   });
 

@@ -31,6 +31,7 @@ import type {
   ToolTrace
 } from "../types/index.js";
 import type { AppDatabase } from "../storage/index.js";
+import { McpToolExecutor, SkillToolExecutor, type StructuredToolExecutionResult } from "../core/tools/index.js";
 
 type SupportedBridgeDomain = "mcp" | "skill";
 
@@ -354,7 +355,13 @@ interface McpClientHandle {
 }
 
 export class InternalShellBridge {
-  constructor(private readonly deps: InternalShellBridgeDeps) {}
+  private readonly mcpToolExecutor: McpToolExecutor;
+  private readonly skillToolExecutor: SkillToolExecutor;
+
+  constructor(private readonly deps: InternalShellBridgeDeps) {
+    this.mcpToolExecutor = new McpToolExecutor(deps);
+    this.skillToolExecutor = new SkillToolExecutor(deps);
+  }
 
   async tryExecute(command: string, ctx: BridgeExecutionContext): Promise<InternalShellBridgeExecutionResult | null> {
     let parsed: ParsedBridgeCommand | null;
@@ -431,9 +438,26 @@ export class InternalShellBridge {
           facetType: "tool",
           payload: {
             toolKind: "mcp",
+            route: {
+              kind: "mcp",
+              serverNodeId: serverNode.nodeId,
+              toolName: String(tool.name)
+            },
+            executorType: "mcp_proxy",
             inputSchema: (tool.inputSchema ?? undefined) as JsonObject | undefined,
             outputSchema: (tool.outputSchema ?? undefined) as JsonObject | undefined,
-            executeMode: "code_mode",
+            exposurePolicy: {
+              preferredAdapter: "chat_function",
+              fallbackAdapters: ["structured_output_tool_call", "prompt_protocol_fallback"],
+              exposureLevel: "description",
+              exposeByDefault: true,
+              catalogPath: ["catalog", "mcp"]
+            },
+            permissionPolicy: {
+              permissionProfileId: "perm.readonly",
+              shellPermissionLevel: "readonly",
+              timeoutMs: 15_000
+            },
             executionConfig: {
               serverNodeId: serverNode.nodeId,
               toolName: String(tool.name)
@@ -468,128 +492,14 @@ export class InternalShellBridge {
     ctx: BridgeExecutionContext,
     rawCommand: string
   ): Promise<InternalShellBridgeExecutionResult> {
-    const serverNode = this.resolveCatalogNode(command.serverRef, ["mcp"]);
-    const serverIntegrationFacet = asIntegrationFacet(this.deps.db.getCatalogFacet(serverNode.nodeId, "integration"));
-    if (!serverIntegrationFacet || serverIntegrationFacet.sourceType !== "mcp_server") {
-      return this.buildFailureResult(
-        ctx,
-        serverNode.nodeId,
-        "mcp_proxy",
-        rawCommand,
-        "MCP_SERVER_CONFIG_INVALID",
-        `节点 ${serverNode.nodeId} 缺少 mcp_server integration facet`
-      );
-    }
-
-    const toolNode = this.resolveMcpToolNode(serverNode.nodeId, command.toolName);
-    const toolFacet = asToolFacet(this.deps.db.getCatalogFacet(toolNode.nodeId, "tool"));
-    if (!toolFacet) {
-      return this.buildFailureResult(
-        ctx,
-        toolNode.nodeId,
-        "mcp_proxy",
-        rawCommand,
-        "MCP_TOOL_CONFIG_INVALID",
-        `节点 ${toolNode.nodeId} 缺少 tool facet`
-      );
-    }
-
-    const issues = validateArgsAgainstSchema(command.args, toolFacet.inputSchema);
-    if (issues.length > 0) {
-      return this.buildFailureResult(
-        ctx,
-        toolNode.nodeId,
-        "mcp_proxy",
-        rawCommand,
-        "MCP_INPUT_SCHEMA_INVALID",
-        "参数未通过 MCP tool inputSchema 校验",
-        formatSchemaIssues(issues)
-      );
-    }
-
-    const handle = await this.openMcpClient(serverNode, serverIntegrationFacet);
-    const startedAt = nowIso();
-    const startedMs = Date.now();
-    try {
-      const remoteToolName = this.resolveRemoteToolName(toolNode, toolFacet);
-      const response = await handle.client.callTool({
-        name: remoteToolName,
-        arguments: command.args
-      });
-      const finishedAt = nowIso();
-      const toolResult: ToolResult = {
-        toolCallId: ctx.toolCallId,
-        toolId: toolNode.nodeId,
-        ok: response.isError !== true,
-        output: {
-          transport: handle.transportLabel,
-          serverNodeId: serverNode.nodeId,
-          toolNodeId: toolNode.nodeId,
-          remoteToolName,
-          response: response as unknown as JsonValue
-        },
-        error:
-          response.isError === true
-            ? {
-                code: "MCP_TOOL_RETURNED_ERROR",
-                message: "远端 MCP tool 返回 isError=true",
-                details: response as unknown as JsonValue
-              }
-            : undefined,
-        startedAt,
-        finishedAt,
-        durationMs: Date.now() - startedMs
-      };
-      const sideEffects = this.buildBridgeSideEffects(ctx, [
-        {
-          type: handle.transportLabel === "stdio" ? "tool_exec" : "http_request",
-          target: handle.transportTarget,
-          summary: `连接 MCP server（${handle.transportLabel}）`,
-          details: {
-            serverNodeId: serverNode.nodeId,
-            command: rawCommand
-          }
-        },
-        {
-          type: "tool_exec",
-          target: `mcp:${serverNode.nodeId}/${remoteToolName}`,
-          summary: `执行 MCP 工具 ${remoteToolName}`,
-          details: {
-            args: command.args,
-            ok: toolResult.ok,
-            durationMs: toolResult.durationMs
-          }
-        }
-      ]);
-      return {
-        handled: true,
-        toolResult,
-        toolTrace: {
-          toolCallId: ctx.toolCallId,
-          toolId: toolNode.nodeId,
-          toolName: `mcp:${remoteToolName}`,
-          executorType: "mcp_proxy",
-          arguments: {
-            command: rawCommand,
-            ...command.args
-          },
-          result: toolResult,
-          workingDir: this.deps.workspaceRoot
-        },
-        sideEffects
-      };
-    } catch (error) {
-      return this.buildFailureResult(
-        ctx,
-        toolNode.nodeId,
-        "mcp_proxy",
-        rawCommand,
-        "MCP_TOOL_CALL_FAILED",
-        error instanceof Error ? error.message : "MCP 工具调用失败"
-      );
-    } finally {
-      await handle.close();
-    }
+    const executed = await this.mcpToolExecutor.executeBridgeCommand({
+      serverRef: command.serverRef,
+      toolName: command.toolName,
+      args: command.args,
+      rawCommand,
+      ctx
+    });
+    return this.asBridgeResult(executed);
   }
 
   private async executeSkillTool(
@@ -597,161 +507,22 @@ export class InternalShellBridge {
     ctx: BridgeExecutionContext,
     rawCommand: string
   ): Promise<InternalShellBridgeExecutionResult> {
-    const skillNode = this.resolveCatalogNode(command.skillRef, ["skill", "tool"]);
-    const toolFacet = asToolFacet(this.deps.db.getCatalogFacet(skillNode.nodeId, "tool"));
-    if (!toolFacet || toolFacet.toolKind !== "skill") {
-      return this.buildFailureResult(
-        ctx,
-        skillNode.nodeId,
-        "shell",
-        rawCommand,
-        "SKILL_CONFIG_INVALID",
-        `节点 ${skillNode.nodeId} 不是一个可执行 skill tool`
-      );
-    }
-    const issues = validateArgsAgainstSchema(command.args, toolFacet.inputSchema);
-    if (issues.length > 0) {
-      return this.buildFailureResult(
-        ctx,
-        skillNode.nodeId,
-        "shell",
-        rawCommand,
-        "SKILL_INPUT_SCHEMA_INVALID",
-        "参数未通过 skill inputSchema 校验",
-        formatSchemaIssues(issues)
-      );
-    }
+    const executed = await this.skillToolExecutor.executeBridgeCommand({
+      skillRef: command.skillRef,
+      args: command.args,
+      rawCommand,
+      ctx
+    });
+    return this.asBridgeResult(executed);
+  }
 
-    const executionConfig = toRecord(toolFacet.executionConfig);
-    const commandPath = typeof executionConfig.command === "string" ? executionConfig.command : "";
-    if (!commandPath) {
-      return this.buildFailureResult(
-        ctx,
-        skillNode.nodeId,
-        "shell",
-        rawCommand,
-        "SKILL_EXECUTION_MISSING",
-        `节点 ${skillNode.nodeId} 缺少 executionConfig.command`
-      );
-    }
-
-    const baseArgs = Array.isArray(executionConfig.args) ? executionConfig.args.map((item) => String(item)) : [];
-    const argMode = executionConfig.argMode === "flags" ? "flags" : "args_json";
-    const argsJsonFlag = typeof executionConfig.argsJsonFlag === "string" ? executionConfig.argsJsonFlag : "--args-json";
-    const envVarName =
-      typeof executionConfig.argsJsonEnvName === "string" ? executionConfig.argsJsonEnvName : "SIMPAGENT_SKILL_ARGS_JSON";
-    const envConfig = isJsonObject(executionConfig.env)
-      ? Object.fromEntries(Object.entries(executionConfig.env).map(([key, value]) => [key, String(value)]))
-      : {};
-    const finalEnv: Record<string, string> = {
-      ...Object.fromEntries(Object.entries(process.env).map(([key, value]) => [key, value ?? ""])),
-      ...envConfig
+  private asBridgeResult(executed: StructuredToolExecutionResult): InternalShellBridgeExecutionResult {
+    return {
+      handled: true,
+      toolResult: executed.toolResult,
+      toolTrace: executed.toolTrace,
+      sideEffects: executed.sideEffects
     };
-    const finalArgs = [...baseArgs];
-    const argsJsonText = JSON.stringify(command.args);
-    if (argMode === "flags") {
-      for (const [key, value] of Object.entries(command.args)) {
-        if (value === true) {
-          finalArgs.push(`--${key}`);
-          continue;
-        }
-        if (Array.isArray(value)) {
-          for (const item of value) {
-            finalArgs.push(`--${key}`, typeof item === "string" ? item : JSON.stringify(item));
-          }
-          continue;
-        }
-        finalArgs.push(`--${key}`, typeof value === "string" ? value : JSON.stringify(value));
-      }
-      finalEnv[envVarName] = argsJsonText;
-    } else {
-      finalArgs.push(argsJsonFlag, argsJsonText);
-      finalEnv[envVarName] = argsJsonText;
-    }
-
-    const spawnCwd = this.resolveCommandCwd(
-      typeof executionConfig.cwd === "string" ? executionConfig.cwd : undefined,
-      ctx.workspaceRoot
-    );
-
-    const startedAt = nowIso();
-    const startedMs = Date.now();
-    try {
-      const output = await this.spawnProcess({
-        command: commandPath,
-        args: finalArgs,
-        cwd: spawnCwd,
-        env: finalEnv,
-        timeoutMs: Number(toolFacet.timeoutMs ?? 15_000)
-      });
-      const finishedAt = nowIso();
-      const toolResult: ToolResult = {
-        toolCallId: ctx.toolCallId,
-        toolId: skillNode.nodeId,
-        ok: output.exitCode === 0,
-        output: {
-          stdout: output.stdout,
-          stderr: output.stderr,
-          exitCode: output.exitCode,
-          parsedStdout: output.parsedStdout,
-          cwd: spawnCwd
-        } as JsonValue,
-        error:
-          output.exitCode === 0
-            ? undefined
-            : {
-                code: "SKILL_COMMAND_FAILED",
-                message: `skill 命令退出码为 ${output.exitCode}`,
-                details: {
-                  stdout: truncateText(output.stdout),
-                  stderr: truncateText(output.stderr)
-                }
-              },
-        startedAt,
-        finishedAt,
-        durationMs: Date.now() - startedMs
-      };
-      return {
-        handled: true,
-        toolResult,
-        toolTrace: {
-          toolCallId: ctx.toolCallId,
-          toolId: skillNode.nodeId,
-          toolName: `skill:${skillNode.name}`,
-          executorType: "shell",
-          arguments: {
-            command: rawCommand,
-            ...command.args
-          },
-          result: toolResult,
-          workingDir: spawnCwd,
-          stdoutPreview: truncateText(output.stdout, 400),
-          stderrPreview: truncateText(output.stderr, 400)
-        },
-        sideEffects: this.buildBridgeSideEffects(ctx, [
-          {
-            type: "tool_exec",
-            target: `skill:${skillNode.nodeId}`,
-            summary: `执行 Skill ${skillNode.name}`,
-            details: {
-              command: commandPath,
-              args: finalArgs,
-              cwd: spawnCwd,
-              exitCode: output.exitCode
-            }
-          }
-        ])
-      };
-    } catch (error) {
-      return this.buildFailureResult(
-        ctx,
-        skillNode.nodeId,
-        "shell",
-        rawCommand,
-        "SKILL_EXECUTION_FAILED",
-        error instanceof Error ? error.message : "skill 执行失败"
-      );
-    }
   }
 
   private resolveCatalogNode(nodeRef: string, expectedKinds: Array<CatalogNode["primaryKind"]>): CatalogNode {

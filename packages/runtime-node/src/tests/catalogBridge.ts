@@ -215,8 +215,12 @@ function saveSkillNode(db: AppDatabase, projectId: string, nodeId: string, execu
         nodeId,
         facetType: "tool",
         payload: {
-          toolKind: "skill",
-          executeMode: "code_mode",
+          toolKind: "skill_tool",
+          route: {
+            kind: "skill_tool",
+            skillId: nodeId
+          },
+          executorType: "shell",
           inputSchema: {
             type: "object",
             properties: {
@@ -225,6 +229,18 @@ function saveSkillNode(db: AppDatabase, projectId: string, nodeId: string, execu
               fail: { type: "boolean" }
             },
             required: ["message", "count"]
+          },
+          exposurePolicy: {
+            preferredAdapter: "chat_function",
+            fallbackAdapters: ["structured_output_tool_call", "prompt_protocol_fallback"],
+            exposureLevel: "description",
+            exposeByDefault: true,
+            catalogPath: ["catalog", "skill"]
+          },
+          permissionPolicy: {
+            permissionProfileId: "perm.readonly",
+            shellPermissionLevel: "readonly",
+            timeoutMs: 15_000
           },
           executionConfig
         },
