@@ -139,17 +139,29 @@
     - `test:smoke`
     - `test:catalog-bridge`
     - `test:handoff-workflow`
-    - `test:permissions-catalog`
+  - `test:permissions-catalog`
   - `npm run build:workspaces` 通过。
   - `npm run test:workspaces` 通过。
+- 新增结构治理结论（2026-03-31）：
+  - 已确认当前仓库真正的问题不是“framework 和 app 放在同一个 monorepo”本身，而是“根目录遗留入口、兼容壳、副本源码、应用级运行包装”四类内容的边界命名不清。
+  - 已冻结后续目录治理基线：
+    - 根目录只保留 workspace 编排层。
+    - `packages/*` 只保留框架真源。
+    - `apps/*` 只保留具体软件，并在 app 内部统一为 `web / desktop / runtime`。
+    - `backend/` 只保留兼容壳，不再保留第二份后端源码副本。
+  - 已确认后续迁移顺序应为：先删根级假入口，再删 `backend/src` 假主线，再把 `apps/*/backend` 正名为 `runtime`，最后统一清理产物与文档。
 - 下一步：
   1. 继续细化更高维度权限：network / fs / 额外权限申请，而不只限于 command/path。
   2. 把更多 skill bundle / MCP server 导入逻辑做成正式适配层，而不只是运行时桥接。
-  3. 把 catalog 中的 MCP/skill/tool 节点正式并入 `ToolRegistry -> CanonicalToolSpec` 主链，消除“Prompt 投影链”和“canonical tool 链”双轨并存的问题。
-  3. 把 catalog 项目隔离继续往更多旧 API/旧表兼容路径上收紧，避免默认 `projectId=default` 泄漏。
-  4. 继续补 runtime-node API / WS / trace 的全量测试矩阵。
-  5. 继续完善 handoff 周边能力：例如 packet 消费可视化、失败重试策略、以及更丰富的 handoff payload/审计视图。
-  6. 后续任何 package/framework 层改动，优先对照 `docs/SimpleAgent框架总览与代码导览.md` 检查是否已有现成实现，避免重复造轮子。
+  3. 按结构治理方案执行目录收口：
+    - 去掉根 `src/*` 与根 Vite 遗留入口。
+    - 将 `backend` 收口为纯兼容壳。
+    - 将 `apps/*/backend` 重命名为 `apps/*/runtime`。
+  4. 把 catalog 中的 MCP/skill/tool 节点正式并入 `ToolRegistry -> CanonicalToolSpec` 主链，消除“Prompt 投影链”和“canonical tool 链”双轨并存的问题。
+  5. 把 catalog 项目隔离继续往更多旧 API/旧表兼容路径上收紧，避免默认 `projectId=default` 泄漏。
+  6. 继续补 runtime-node API / WS / trace 的全量测试矩阵。
+  7. 继续完善 handoff 周边能力：例如 packet 消费可视化、失败重试策略、以及更丰富的 handoff payload/审计视图。
+  8. 后续任何 package/framework 层改动，优先对照 `docs/SimpleAgent框架总览与代码导览.md` 检查是否已有现成实现，避免重复造轮子。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：执行内核采用 LangGraph.js（原因：直接获得 checkpoint / interrupt / replay / history / updateState，避免自研运行时黑洞）。

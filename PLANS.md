@@ -428,3 +428,251 @@
 - `engine.executeCanonicalToolIntent()` 能直接执行 `builtin / mcp / skill_tool`。
 - `handoff` 能写出 packet，并让 `decideNextNode()` 优先消费 `pendingHandoff`。
 - 默认 deterministic 测试可覆盖 handoff 三节点通路；旧 `smoke / catalog-bridge / permissions-catalog` 继续通过。
+
+---
+
+## 任务名称（2026-03-31，结构治理规划）
+- 仓库目录结构收口：明确“框架真源 / 产品应用 / 应用运行配置 / 历史兼容层”的四层边界
+
+## 执行目标（本轮规划）
+- 先基于当前真实仓库状态，冻结一版目录治理方案，避免后续继续边开发边堆历史包袱。
+- 不在本轮直接做大规模搬迁，而是先明确哪些目录继续演进、哪些目录降级为兼容层、哪些目录属于遗留噪音。
+- 给出一条低风险、可回退、可分阶段实施的迁移顺序。
+
+## 当前问题归纳（已确认）
+1. 根目录仍保留早期单体前端遗留：
+- `src/*`
+- `index.html`
+- `vite.config.ts`
+- 根 `dist/*`
+- 根 `package.json` 中的 React/Vite 依赖与脚本
+- 但当前真实主线已经转到 `packages/*` 与 `apps/*`，这套根前端基本只会制造“假入口”。
+2. `backend/src/*` 与 `packages/runtime-node/src/*` 并存：
+- 文档已明确 `packages/runtime-node` 才是真源；
+- `backend` 已退化为兼容壳；
+- 但目录形态仍像“双主线”，会误导后续修改位置。
+3. `apps/*/backend` 命名误导：
+- 这些目录当前不是独立后端源码；
+- 本质是针对同一份 `runtime-node` 的项目级启动包装；
+- 主要承载 `projectId / dataDir / presetDir / port` 等运行配置；
+- 用 `backend` 命名会让人误以为每个 app 都有自己的后端实现。
+4. 仓库混入大量运行产物与依赖目录：
+- 根 `dist/`
+- `apps/*/dist/`
+- `apps/*/node_modules/`
+- SQLite 数据文件
+- 这些内容会显著放大“目录很乱”的观感，也会干扰真正该读的源码路径。
+
+## 推荐目标结构（冻结为后续实施基线）
+1. 根目录只保留“仓库编排层”：
+- workspace 配置
+- 顶层脚本
+- 文档
+- 通用脚本
+- 不再保留实际业务前端源码
+2. `packages/` 只保留框架真源：
+- `core`
+- `runtime-node`
+- `runtime-worker`
+- `runtime-tauri-bridge`
+3. `apps/` 只保留具体软件本身：
+- 每个 app 内部按需要拆成 `web / desktop / runtime`
+- 若某 app 目前只有运行配置，没有前端，也应显式命名为 `runtime`，而不是继续叫 `backend`
+4. `backend/` 只保留精简兼容壳：
+- 保留旧命令转发能力
+- 不再保留第二份 `src/*` 真正实现副本
+5. `legacy/` 或 `archive/` 用于临时承接根级遗留：
+- 例如根 Vite 壳
+- 确认无价值后再彻底删除，不再放在根目录伪装主线
+
+## 建议迁移顺序（后续实施按此序列）
+1. 第一阶段：消除“假主线”
+- 删除或迁移根 `src/*`
+- 删除或迁移根 `index.html`
+- 删除或迁移根 `vite.config.ts`
+- 删除根 `dist/*`
+- 将根 `package.json` 收口为纯 workspace 编排器
+2. 第二阶段：消除“假 backend”
+- 将 `backend` 收口为纯兼容壳
+- 删除 `backend/src/*` 旧副本
+- 以后框架后端只在 `packages/runtime-node` 演进
+3. 第三阶段：把 app 级 `backend` 正名
+- 将 `apps/*/backend` 重命名为 `apps/*/runtime`（优先推荐）
+- 其中只保留启动脚本、预设、项目数据目录与环境说明
+- 不再暗示“这里有第二套后端源码”
+4. 第四阶段：统一 app 模板
+- 推荐统一为：
+- `apps/<name>/web`
+- `apps/<name>/desktop`
+- `apps/<name>/runtime`
+- 缺哪个层就不建哪个目录
+5. 第五阶段：清理产物并对齐文档
+- 完善 `.gitignore`
+- 移出构建产物、SQLite、本地数据、嵌套 `node_modules`
+- 更新 `README.md` 与 `docs/SimpleAgent框架总览与代码导览.md`
+
+## 本轮完成判据
+- 已给出明确的目标结构、命名规范与迁移顺序。
+- 本轮先完成方案冻结与项目记忆更新，不做大规模物理搬迁。
+
+---
+
+## 任务名称（2026-03-31，仓库结构治理方案）
+- 收口仓库目录结构，明确“框架真源 / 应用代码 / 应用运行配置 / 兼容层 / 遗留层”边界
+
+## 执行目标（本轮）
+- 先冻结结构治理方案，不直接做高风险大搬家。
+- 基于当前真实仓库状态，明确哪些目录继续演进、哪些目录改名、哪些目录降级为兼容层、哪些目录应删除。
+- 给出低风险迁移顺序，避免一口气改动过大导致脚本、文档、路径、数据目录全部失效。
+
+## 当前问题归纳（已确认）
+1. 根目录仍保留早期 Vite 前端遗留：
+- `src/*`
+- `index.html`
+- `vite.config.ts`
+- 根 `dist/*`
+- 根 `package.json` 仍带 React/Vite 依赖与脚本
+- 但当前项目主线已转到 `packages/*` 与 `apps/*`，这套根前端实际不再承载真实业务。
+2. `backend/src/*` 与 `packages/runtime-node/src/*` 并存：
+- 文档已明确 `packages/runtime-node` 才是框架真源；
+- `backend` 当前只是兼容壳；
+- 但目录形态仍像“双主线”，会误导后续修改入口。
+3. `apps/*/backend` 命名误导：
+- 当前这些目录本质不是独立后端源码；
+- 它们只是给同一个 `runtime-node` 提供 `projectId / dataDir / presetDir / port` 的应用级启动包装；
+- 继续命名为 `backend` 会让人误以为每个 app 都维护一套自己的后端实现。
+4. 仓库混入大量运行产物与依赖目录：
+- `dist/`
+- `apps/*/dist/`
+- `apps/*/node_modules/`
+- `backend/data/*.sqlite*`
+- `apps/dev-console/backend/data/*.sqlite*`
+- 这些内容会放大“目录混乱”的观感，也会污染真正应阅读的源码层。
+
+## 推荐目标结构（建议基线）
+1. 根目录只保留“仓库编排层”
+- workspace 配置
+- 顶层脚本
+- 文档
+- 通用脚本
+- 不再保留实际业务前端源码
+2. `packages/` 只放框架真源
+- `core`
+- `runtime-node`
+- `runtime-worker`
+- `runtime-tauri-bridge`
+3. `apps/` 只放具体软件
+- 每个 app 内部按需要拆成 `web / desktop / runtime`
+- 若某 app 暂时只有运行配置，没有前端，也应明确写成 `runtime`，不再继续叫 `backend`
+4. `backend/` 收口为兼容壳
+- 只保留旧命令转发所需最小文件
+- 不再保留第二份 `src/*` 框架实现副本
+5. `legacy/` 或 `archive/`
+- 暂存根 Vite 遗留壳
+- 评估确认无用后再彻底删除
+
+## 建议迁移顺序（后续实施时按此顺序）
+1. 第一阶段：消除“假主线”
+- 删除或迁移根 `src/*`、根 `index.html`、根 `vite.config.ts`、根 `dist/*`
+- 将根 `package.json` 收口为纯 workspace 编排器，去掉根 React/Vite 依赖与前端脚本
+2. 第二阶段：消除“假 backend”
+- 将 `backend` 收口为纯兼容壳
+- 删除 `backend/src/*` 旧副本，避免与 `packages/runtime-node/src/*` 双份维护
+3. 第三阶段：把 app 级 `backend` 正名
+- 将 `apps/*/backend` 重命名为 `apps/*/runtime`（优先推荐）或 `apps/*/server-profile`
+- 其中只保留启动脚本、预设、项目数据目录与环境说明，不再暗示“这里有第二套后端源码”
+4. 第四阶段：统一 app 内部目录模板
+- 推荐统一为：
+- `apps/<name>/web`
+- `apps/<name>/desktop`
+- `apps/<name>/runtime`
+- 缺哪个子层就不建立哪个目录
+5. 第五阶段：清理产物并同步文档
+- 完善 `.gitignore`
+- 把构建产物、SQLite、本地数据、嵌套 `node_modules` 移出仓库
+- 更新 `README.md` 与 `docs/SimpleAgent框架总览与代码导览.md`
+
+## 本轮完成判据
+- 给出明确的推荐目标结构、命名规范与分阶段迁移顺序。
+- 本轮只冻结方案与项目记忆，不做大规模物理搬迁。
+
+---
+
+## 任务名称（2026-03-31，结构治理设计）
+- 仓库目录结构收口：明确“框架真源 / 应用代码 / 应用运行配置 / 历史兼容层”四层边界
+
+## 执行目标（本轮设计）
+- 不直接做大规模搬迁，先基于当前真实仓库状态冻结一版结构治理方案，避免后续继续边开发边加历史包袱。
+- 明确哪些目录应该继续保留并演进，哪些目录应改名、迁移、降级为兼容层，哪些目录应彻底移除。
+- 给出一个“低风险、可分阶段落地”的目标结构，而不是一次性激进改仓导致脚本、路径、文档、数据目录全部失效。
+
+## 当前问题归纳（已确认）
+1. 根目录仍保留早期 Vite 前端壳：
+- `src/*`
+- `index.html`
+- `vite.config.ts`
+- 根 `dist/*`
+- 根 `package.json` 仍带 React/Vite 依赖与脚本
+- 但项目主线已经转到 `packages/*` 与 `apps/*`，这套根前端实际属于遗留噪音。
+2. `backend/src/*` 与 `packages/runtime-node/src/*` 并存：
+- 文档已明确 `packages/runtime-node` 才是真源；
+- `backend` 现在只是兼容壳；
+- 但目录层面仍像是“双主线”，会误导后续修改位置。
+3. `apps/*/backend` 命名误导：
+- 当前这些目录本质上不是独立后端实现；
+- 它们只是给同一个 `runtime-node` 提供 `projectId / dataDir / presetDir / port` 的项目级启动包装；
+- 用 `backend` 命名会让人误以为每个 app 都有一套自己的后端源码。
+4. 仓库中混入大量运行产物与依赖目录：
+- `dist/`
+- `apps/*/dist/`
+- `apps/*/node_modules/`
+- `backend/data/*.sqlite*`
+- `apps/dev-console/backend/data/*.sqlite*`
+- 这些内容会放大“目录很乱”的体感，也会污染真正该看的源码层。
+
+## 目标结构（建议基线）
+1. 根目录只保留“仓库编排层”：
+- workspace 配置
+- 顶层脚本
+- 文档
+- 通用脚本
+- 不再保留实际业务前端源码
+2. `packages/` 只放框架真源：
+- `core`
+- `runtime-node`
+- `runtime-worker`
+- `runtime-tauri-bridge`
+3. `apps/` 只放“具体软件”：
+- 每个 app 内部按需要拆成 `web / desktop / runtime` 等子目录；
+- 若某 app 暂时只有运行配置，没有前端，也应明确写成 `runtime`，而不是继续叫 `backend`。
+4. `compat/` 或保留精简后的 `backend/`：
+- 只保留旧命令转发壳；
+- 不再保留第二份 `src/*` 实现副本。
+5. `legacy/` 或 `archive/`：
+- 用于临时安置根 Vite 遗留壳；
+- 确认无价值后再彻底删除，而不是继续放在根目录伪装主线。
+
+## 建议迁移序列（后续真正实施时按此顺序）
+1. 第一阶段：消除“假主线”
+- 删除或迁移根 `src/*`、根 `index.html`、根 `vite.config.ts`、根 `dist/*`。
+- 将根 `package.json` 收口为“纯 workspace 编排器”，去掉根 React/Vite 依赖与前端脚本。
+2. 第二阶段：消除“假 backend”
+- 将 `backend` 收口为纯兼容壳；
+- 删除 `backend/src/*` 旧副本，避免与 `packages/runtime-node/src/*` 双份维护。
+3. 第三阶段：把 app 级 `backend` 正名
+- `apps/*/backend` 重命名为 `apps/*/runtime`（优先推荐）或 `apps/*/server-profile`；
+- 其中只保留启动脚本、预设、项目数据目录与环境说明，不再暗示“这里有第二套后端源码”。
+4. 第四阶段：统一 app 内部结构模板
+- 推荐统一为：
+- `apps/<name>/web`
+- `apps/<name>/desktop`
+- `apps/<name>/runtime`
+- 缺哪个子层就不建哪个目录。
+5. 第五阶段：清理产物与文档对齐
+- 完善 `.gitignore`；
+- 把构建产物、SQLite、本地数据、嵌套 `node_modules` 移出仓库；
+- 更新 `README.md` 与 `docs/SimpleAgent框架总览与代码导览.md` 的目录说明。
+
+## 本轮产出要求
+- 给出明确的“推荐目标结构 + 分阶段迁移顺序 + 命名规范”。
+- 本轮先完成方案冻结与项目记忆更新，不做大规模物理搬迁。
