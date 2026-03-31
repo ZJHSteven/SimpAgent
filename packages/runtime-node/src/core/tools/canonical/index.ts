@@ -9,85 +9,173 @@
  */
 
 import type {
-  BuiltinToolConfig,
+  CatalogNode,
+  CatalogNodeFacet,
+  CatalogToolFacetPayload,
+  CatalogIntegrationFacetPayload,
   CanonicalToolCallIntent,
   CanonicalToolExecutionEnvelope,
   CanonicalToolSpec,
-  JsonObject,
-  ToolSpec
+  JsonObject
 } from "../../../types/index.js";
+import { getBuiltinToolDefinition } from "../builtinSpecs.js";
 
 /**
- * 将普通 ToolSpec 转换为 CanonicalToolSpec。
- * 说明：
- * - 这是从外层“通用函数/壳工具”来源进入中间统一层的入口之一；
- * - 后续 MCP / skills 也会走类似转换函数。
+ * 从 facet 中取出 tool payload。
  */
-export function canonicalFromToolSpec(spec: ToolSpec): CanonicalToolSpec {
-  return {
-    id: spec.id,
-    name: spec.name,
-    kind: "user_defined",
-    displayName: spec.name,
-    description: spec.description,
-    summary: spec.description,
-    routeTarget: { kind: "user_defined", toolId: spec.id },
-    executorType: spec.executorType,
-    inputSchema: spec.inputSchema,
-    outputSchema: spec.outputSchema,
-    enabled: spec.enabled,
-    exposure: {
-      exposureLevel: "full_schema",
-      exposeByDefault: spec.enabled,
-      preferredAdapter: "chat_function",
-      fallbackAdapters: ["structured_output_tool_call", "prompt_protocol_fallback"],
-      providerHints: {}
-    },
-    permissionPolicy: {
-      permissionProfileId: spec.permissionProfileId,
-      timeoutMs: spec.timeoutMs,
-      workingDirPolicy: spec.workingDirPolicy
-    },
-    sourceMeta: {
-      sourceType: "tool_spec",
-      version: spec.version
-    },
-    version: spec.version
-  };
+function asToolFacet(facets: CatalogNodeFacet[]): CatalogToolFacetPayload | null {
+  const facet = facets.find((item) => item.facetType === "tool");
+  if (!facet) return null;
+  return facet.payload as CatalogToolFacetPayload;
 }
 
 /**
- * 将内置工具配置转换为 CanonicalToolSpec。
- * 说明：
- * - builtin tool 也是“外层来源层”的一种；
- * - 只是 routeTarget 会指向 builtin，而不是 user_defined。
+ * 从 facet 中取出 integration payload。
  */
-export function canonicalFromBuiltinConfig(input: {
-  toolId: string;
-  config: BuiltinToolConfig;
-  inputSchema: JsonObject;
-  outputSchema?: JsonObject;
-  executorType: CanonicalToolSpec["executorType"];
-  tags?: string[];
-}): CanonicalToolSpec {
-  const { config } = input;
+function asIntegrationFacet(facets: CatalogNodeFacet[]): CatalogIntegrationFacetPayload | null {
+  const facet = facets.find((item) => item.facetType === "integration");
+  if (!facet) return null;
+  return facet.payload as CatalogIntegrationFacetPayload;
+}
+
+function emptySchema(): JsonObject {
+  return { type: "object", properties: {}, additionalProperties: true };
+}
+
+/**
+ * 从 catalog node + facet 构造 canonical tool。
+ * 说明：
+ * - 这是“catalog 成为唯一工具真源”后的核心映射函数；
+ * - 允许兼容少量旧 facet 结构，避免 bridge / 测试在同一轮改造时完全断裂。
+ */
+export function canonicalFromCatalogToolNode(node: CatalogNode, facets: CatalogNodeFacet[]): CanonicalToolSpec | null {
+  const toolFacet = asToolFacet(facets);
+  if (!toolFacet || node.enabled === false) return null;
+
+  const route =
+    toolFacet.route ??
+    (toolFacet.toolKind === "builtin"
+      ? { kind: "builtin" as const, builtin: String((toolFacet.executionConfig as Record<string, unknown> | undefined)?.builtinName ?? node.name) as any }
+      : toolFacet.toolKind === "mcp"
+        ? {
+            kind: "mcp" as const,
+            serverNodeId: String((toolFacet.executionConfig as Record<string, unknown> | undefined)?.serverNodeId ?? ""),
+            toolName: String((toolFacet.executionConfig as Record<string, unknown> | undefined)?.toolName ?? node.name)
+          }
+        : {
+            kind: "skill_tool" as const,
+            skillId: String((toolFacet.executionConfig as Record<string, unknown> | undefined)?.skillId ?? node.nodeId)
+          });
+  const integrationFacet = asIntegrationFacet(facets);
+  const description = node.contentText?.trim() || node.summaryText?.trim() || node.title?.trim() || node.name;
+
+  if (route.kind === "builtin") {
+    const builtin = getBuiltinToolDefinition(route.builtin);
+    if (!builtin) return null;
+    return {
+      id: node.nodeId,
+      name: node.name,
+      kind: "builtin",
+      displayName: node.title || node.name,
+      description,
+      summary: node.summaryText || description,
+      tags: node.tags,
+      routeTarget: {
+        kind: "builtin",
+        builtin: builtin.name
+      },
+      executorType: toolFacet.executorType ?? builtin.executorType,
+      inputSchema: toolFacet.inputSchema ?? builtin.inputSchema,
+      outputSchema: toolFacet.outputSchema ?? builtin.outputSchema,
+      enabled: node.enabled,
+      exposure: toolFacet.exposurePolicy ?? builtin.exposurePolicy,
+      permissionPolicy: toolFacet.permissionPolicy ?? builtin.permissionPolicy,
+      sourceMeta: {
+        sourceType: "catalog_node",
+        nodeId: node.nodeId,
+        primaryKind: node.primaryKind ?? "tool"
+      },
+      version: 1
+    };
+  }
+
+  if (route.kind === "mcp") {
+    return {
+      id: node.nodeId,
+      name: node.name,
+      kind: "mcp",
+      displayName: node.title || node.name,
+      description,
+      summary: node.summaryText || description,
+      tags: node.tags,
+      routeTarget: {
+        kind: "mcp",
+        server: route.serverNodeId,
+        tool: route.toolName
+      },
+      executorType: toolFacet.executorType ?? "mcp_proxy",
+      inputSchema: toolFacet.inputSchema ?? integrationFacet?.originalSchema ?? emptySchema(),
+      outputSchema: toolFacet.outputSchema,
+      enabled: node.enabled,
+      exposure:
+        toolFacet.exposurePolicy ?? {
+          preferredAdapter: "chat_function",
+          fallbackAdapters: ["structured_output_tool_call", "prompt_protocol_fallback"],
+          exposureLevel: "description",
+          exposeByDefault: true,
+          catalogPath: ["catalog", "mcp"]
+        },
+      permissionPolicy:
+        toolFacet.permissionPolicy ?? {
+          permissionProfileId: "perm.readonly",
+          shellPermissionLevel: "readonly",
+          timeoutMs: 15_000
+        },
+      sourceMeta: {
+        sourceType: "catalog_node",
+        nodeId: node.nodeId,
+        serverNodeId: route.serverNodeId,
+        remoteToolName: route.toolName
+      },
+      version: 1
+    };
+  }
+
   return {
-    id: input.toolId,
-    name: config.name,
-    kind: "builtin",
-    displayName: config.name,
-    description: config.description ?? config.name,
-    summary: config.description ?? config.name,
-    tags: input.tags,
-    routeTarget: { kind: "builtin", builtin: config.name },
-    executorType: input.executorType,
-    inputSchema: input.inputSchema,
-    outputSchema: input.outputSchema,
-    enabled: config.enabled,
-    exposure: config.exposurePolicy,
-    permissionPolicy: config.permissionPolicy,
+    id: node.nodeId,
+    name: node.name,
+    kind: "skill_tool",
+    displayName: node.title || node.name,
+    description,
+    summary: node.summaryText || description,
+    tags: node.tags,
+    routeTarget: {
+      kind: "skill_tool",
+      skillId: route.skillId,
+      tool: node.name
+    },
+    executorType: toolFacet.executorType ?? "shell",
+    inputSchema: toolFacet.inputSchema ?? emptySchema(),
+    outputSchema: toolFacet.outputSchema,
+    enabled: node.enabled,
+    exposure:
+      toolFacet.exposurePolicy ?? {
+        preferredAdapter: "chat_function",
+        fallbackAdapters: ["structured_output_tool_call", "prompt_protocol_fallback"],
+        exposureLevel: "description",
+        exposeByDefault: true,
+        catalogPath: ["catalog", "skill"]
+      },
+    permissionPolicy:
+      toolFacet.permissionPolicy ?? {
+        permissionProfileId: "perm.readonly",
+        shellPermissionLevel: "readonly",
+        timeoutMs: 15_000
+      },
     sourceMeta: {
-      sourceType: "builtin_config"
+      sourceType: "catalog_node",
+      nodeId: node.nodeId,
+      skillId: route.skillId
     },
     version: 1
   };
@@ -118,4 +206,3 @@ export function createCanonicalToolExecutionEnvelope(input: Partial<CanonicalToo
 export function getCanonicalIntentArgs(intent: CanonicalToolCallIntent): JsonObject {
   return (intent.args ?? {}) as JsonObject;
 }
-

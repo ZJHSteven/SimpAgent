@@ -120,6 +120,11 @@
     - catalog tool facet 已扩展为可直接表达 route / exposure / permission；
     - `RunState.routingState` 已补 `pendingHandoff`；
     - 工具循环已补“工具执行后提前结束本轮”的钩子，供 handoff 使用。
+  - 第二批工具主链已开始切换：
+    - builtin 定义已具备 catalog node/facet 投影能力；
+    - `ToolRegistry` 已改为从 catalog 构造 canonical tool，而不是从旧 `tools/tool_versions` 读取；
+    - tool 的 catalog prompt 投影已去掉 shell 命令模板，改为纯结构化执行说明；
+    - 默认 seed 已开始把 builtin 直接写入 catalog，并把 `handoff` 纳入默认 agent 白名单。
 - 下一步：
   1. 继续细化更高维度权限：network / fs / 额外权限申请，而不只限于 command/path。
   2. 把更多 skill bundle / MCP server 导入逻辑做成正式适配层，而不只是运行时桥接。

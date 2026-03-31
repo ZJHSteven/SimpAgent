@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { AgentSpec, CatalogNode, CatalogNodeFacet, JsonObject, PromptBlock, ToolSpec, WorkflowSpec } from "../types/index.js";
 import { AppDatabase } from "./db.js";
+import { BUILTIN_TOOL_DEFINITIONS, buildBuiltinCatalogFacet, buildBuiltinCatalogNode } from "../core/tools/index.js";
 
 function upsertCatalogPromptUnit(db: AppDatabase, block: PromptBlock, projectId: string): void {
   const node: CatalogNode = {
@@ -48,44 +49,6 @@ function upsertCatalogPromptUnit(db: AppDatabase, block: PromptBlock, projectId:
   db.saveCatalogFacet(promptFacet);
 }
 
-function upsertCatalogToolNode(db: AppDatabase, tool: ToolSpec, projectId: string): void {
-  const node: CatalogNode = {
-    nodeId: tool.id,
-    projectId,
-    nodeClass: "item",
-    name: tool.name,
-    title: tool.name,
-    summaryText: tool.description,
-    contentText: tool.description,
-    contentFormat: "markdown",
-    primaryKind: "tool",
-    visibility: "visible",
-    exposeMode: "summary_first",
-    enabled: tool.enabled,
-    sortOrder: 0,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-  const toolFacet: CatalogNodeFacet = {
-    facetId: `facet.tool.${tool.id}`,
-    nodeId: tool.id,
-    facetType: "tool",
-    payload: {
-      toolKind: "user_defined",
-      inputSchema: tool.inputSchema,
-      outputSchema: tool.outputSchema,
-      executeMode: tool.executorType === "function" ? "function_call" : "code_mode",
-      timeoutMs: tool.timeoutMs,
-      permissionProfileId: tool.permissionProfileId,
-      workingDirPolicy: tool.workingDirPolicy,
-      executionConfig: tool.executorConfig
-    },
-    updatedAt: new Date().toISOString()
-  };
-  db.saveCatalogNode(node);
-  db.saveCatalogFacet(toolFacet);
-}
-
 /**
  * 幂等种子函数：
  * - 若已有配置则不重复写入（通过查询数量判断）。
@@ -94,60 +57,6 @@ export function seedDefaultConfigs(db: AppDatabase, projectId = "default"): void
   if (db.listAgents().length > 0) {
     return;
   }
-
-  const tools: ToolSpec[] = [
-    {
-      id: "tool.echo",
-      name: "echo",
-      description: "回显输入内容，便于验证工具链路。",
-      executorType: "function",
-      inputSchema: {
-        type: "object",
-        properties: {
-          text: { type: "string" }
-        },
-        required: ["text"]
-      },
-      outputSchema: {
-        type: "object",
-        properties: {
-          echoed: { type: "string" }
-        }
-      },
-      permissionProfileId: "perm.readonly",
-      timeoutMs: 10_000,
-      enabled: true,
-      version: 1
-    },
-    {
-      id: "tool.shell.exec",
-      name: "shell_exec",
-      description: "执行受控 shell 命令（必须通过白名单策略）。",
-      executorType: "shell",
-      inputSchema: {
-        type: "object",
-        properties: {
-          command: { type: "string" }
-        },
-        required: ["command"]
-      },
-      outputSchema: {
-        type: "object",
-        properties: {
-          stdout: { type: "string" },
-          stderr: { type: "string" },
-          exitCode: { type: "number" }
-        }
-      },
-      permissionProfileId: "perm.readonly",
-      timeoutMs: 15_000,
-      workingDirPolicy: {
-        mode: "workspace"
-      },
-      enabled: true,
-      version: 1
-    }
-  ];
 
   const blocks: PromptBlock[] = [
     {
@@ -229,24 +138,14 @@ export function seedDefaultConfigs(db: AppDatabase, projectId = "default"): void
         { bindingId: "bind.orchestrator.task", unitId: "block.task.input", enabled: true, order: 30 },
         { bindingId: "bind.orchestrator.tool", unitId: "block.tool.hint", enabled: true, order: 40 }
       ],
-      toolAllowList: ["shell_command", "read_file", "web_search", "update_plan", "request_user_input"],
+      toolAllowList: ["shell_command", "read_file", "web_search", "update_plan", "request_user_input", "handoff"],
       toolRoutePolicy: { mode: "auto", reason: "默认按 provider 能力自动选择" },
-      modelPolicyId: "model.default",
-      promptAssemblyPolicyId: "prompt.default",
-      contextPolicyId: "context.default",
-      toolPolicyId: "toolpolicy.orchestrator",
       memoryPolicies: [],
       handoffPolicy: {
         allowedTargets: ["agent.worker", "agent.reviewer"],
         allowDynamicHandoff: true,
         strategy: "hybrid"
       },
-      outputContract: {
-        type: "json",
-        instruction:
-          "输出 JSON：{ action: 'delegate'|'answer'|'finish', nextAgentId?: string, taskSummary?: string, finalText?: string }"
-      },
-      postChecks: [],
       enabled: true,
       version: 1,
       tags: ["default"]
@@ -262,20 +161,14 @@ export function seedDefaultConfigs(db: AppDatabase, projectId = "default"): void
         { bindingId: "bind.worker.task", unitId: "block.task.input", enabled: true, order: 30 },
         { bindingId: "bind.worker.tool", unitId: "block.tool.hint", enabled: true, order: 40 }
       ],
-      toolAllowList: ["shell_command", "read_file", "web_search", "apply_patch", "view_image"],
+      toolAllowList: ["shell_command", "read_file", "web_search", "apply_patch", "view_image", "handoff"],
       toolRoutePolicy: { mode: "native_function_first", reason: "优先用原生函数调用" },
-      modelPolicyId: "model.default",
-      promptAssemblyPolicyId: "prompt.default",
-      contextPolicyId: "context.default",
-      toolPolicyId: "toolpolicy.worker",
       memoryPolicies: [],
       handoffPolicy: {
         allowedTargets: ["agent.reviewer"],
         allowDynamicHandoff: true,
         strategy: "hybrid"
       },
-      outputContract: { type: "text" },
-      postChecks: [],
       enabled: true,
       version: 1
     },
@@ -290,12 +183,7 @@ export function seedDefaultConfigs(db: AppDatabase, projectId = "default"): void
       ],
       toolAllowList: ["read_file", "update_plan"],
       toolRoutePolicy: { mode: "prompt_protocol_only", reason: "示例：强制走提示词协议回退" },
-      modelPolicyId: "model.default",
-      promptAssemblyPolicyId: "prompt.default",
-      contextPolicyId: "context.default",
-      toolPolicyId: "toolpolicy.reviewer",
       memoryPolicies: [],
-      postChecks: [],
       enabled: true,
       version: 1
     }
@@ -314,10 +202,6 @@ export function seedDefaultConfigs(db: AppDatabase, projectId = "default"): void
       { id: "edge.start_to_worker", from: "node.orchestrator", to: "node.worker", condition: { type: "always" } },
       { id: "edge.worker_to_review", from: "node.worker", to: "node.review", condition: { type: "always" } }
     ],
-    routingPolicies: [
-      { id: "route.orchestrator", nodeId: "node.orchestrator", mode: "hybrid" },
-      { id: "route.worker", nodeId: "node.worker", mode: "fixed" }
-    ],
     interruptPolicy: {
       defaultInterruptBefore: false,
       defaultInterruptAfter: false
@@ -326,9 +210,9 @@ export function seedDefaultConfigs(db: AppDatabase, projectId = "default"): void
     version: 1
   };
 
-  for (const tool of tools) {
-    db.saveVersionedConfig("tool", tool);
-    upsertCatalogToolNode(db, tool, projectId);
+  for (const builtin of BUILTIN_TOOL_DEFINITIONS) {
+    db.saveCatalogNode(buildBuiltinCatalogNode({ projectId, definition: builtin }));
+    db.saveCatalogFacet(buildBuiltinCatalogFacet(builtin));
   }
   for (const block of blocks) {
     db.saveVersionedConfig("prompt_block", block);
@@ -339,7 +223,7 @@ export function seedDefaultConfigs(db: AppDatabase, projectId = "default"): void
   db.writeAudit("seed_default_configs", "system", "bootstrap", {
     agents: agents.length,
     blocks: blocks.length,
-    tools: tools.length
+    tools: BUILTIN_TOOL_DEFINITIONS.length
   });
 }
 

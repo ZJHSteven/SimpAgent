@@ -59,29 +59,25 @@ function buildToolBridgeInstruction(node: CatalogNode, toolFacet: CatalogToolFac
   const detail = node.contentText?.trim() || "暂无更多详细说明。";
   if (toolFacet.toolKind === "mcp") {
     const serverRef =
-      typeof toolFacet.executionConfig?.serverNodeId === "string"
-        ? String(toolFacet.executionConfig.serverNodeId)
-        : integrationFacet?.serverName || "mcp-server";
+      toolFacet.route?.kind === "mcp" ? toolFacet.route.serverNodeId : integrationFacet?.serverName || "mcp-server";
     const toolName =
-      typeof toolFacet.executionConfig?.toolName === "string"
-        ? String(toolFacet.executionConfig.toolName)
-        : integrationFacet?.originalName || node.name;
+      toolFacet.route?.kind === "mcp" ? toolFacet.route.toolName : integrationFacet?.originalName || node.name;
     return [
       `MCP 工具：${summary}`,
       detail,
-      `执行方式：使用 shell_command 调用内部桥接命令。`,
-      `标准命令：simpagent mcp call --server ${serverRef} --tool ${toolName} --args-json '<JSON>'`,
-      `说明：参数内部标准形态固定为 args-json；如需 flags，可在桥接层兼容输入后再归一化。`
+      `执行方式：由 runtime 直接按结构化工具调用执行。`,
+      `远端映射：server=${serverRef}，tool=${toolName}。`,
+      `说明：模型不需要拼接 shell 命令，直接按工具 schema 提交参数即可。`
     ].join("\n");
   }
-  if (toolFacet.toolKind === "skill") {
-    const skillId =
-      typeof toolFacet.executionConfig?.skillId === "string" ? String(toolFacet.executionConfig.skillId) : node.nodeId;
+  if (toolFacet.toolKind === "skill_tool") {
+    const skillId = toolFacet.route?.kind === "skill_tool" ? toolFacet.route.skillId : node.nodeId;
     return [
       `技能工具：${summary}`,
       detail,
-      `执行方式：使用 shell_command 调用内部桥接命令。`,
-      `标准命令：simpagent skill call --skill ${skillId} --args-json '<JSON>'`
+      `执行方式：由 runtime 直接按结构化工具调用执行。`,
+      `技能节点：${skillId}。`,
+      `说明：模型不需要拼接 shell 命令，直接按工具 schema 提交参数即可。`
     ].join("\n");
   }
   return [

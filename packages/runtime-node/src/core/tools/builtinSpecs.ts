@@ -9,7 +9,8 @@
  */
 
 import type {
-  BuiltinToolConfig,
+  CatalogNode,
+  CatalogNodeFacet,
   BuiltinToolName,
   CanonicalToolExposurePolicy,
   CanonicalToolPermissionPolicy,
@@ -24,7 +25,8 @@ export interface BuiltinToolDefinition {
   inputSchema: JsonObject;
   outputSchema?: JsonObject;
   tags?: string[];
-  defaultConfig: BuiltinToolConfig;
+  exposurePolicy: CanonicalToolExposurePolicy;
+  permissionPolicy: CanonicalToolPermissionPolicy;
 }
 
 function defaultExposure(
@@ -83,15 +85,10 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       additionalProperties: true
     } as unknown as JsonObject,
     tags: ["builtin", "shell"],
-    defaultConfig: {
-      name: "shell_command",
-      enabled: true,
-      description: "执行受控 shell 命令",
-      exposurePolicy: defaultExposure("chat_function", "description"),
-      permissionPolicy: {
-        ...defaultPermission("perm.readonly"),
-        allowCommandPrefixes: ["git ", "npm ", "pnpm ", "node ", "python ", "rg ", "ls ", "dir ", "type "]
-      }
+    exposurePolicy: defaultExposure("chat_function", "description"),
+    permissionPolicy: {
+      ...defaultPermission("perm.readonly"),
+      allowCommandPrefixes: ["git ", "npm ", "pnpm ", "node ", "python ", "rg ", "ls ", "dir ", "type "]
     }
   },
   {
@@ -109,15 +106,10 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       additionalProperties: false
     },
     tags: ["builtin", "edit", "patch"],
-    defaultConfig: {
-      name: "apply_patch",
-      enabled: true,
-      description: "局部文件编辑工具（patch DSL）",
-      exposurePolicy: defaultExposure("chat_custom", "description"),
-      permissionPolicy: {
-        ...defaultPermission("perm.workspace_write"),
-        shellPermissionLevel: "workspace_write"
-      }
+    exposurePolicy: defaultExposure("chat_custom", "description"),
+    permissionPolicy: {
+      ...defaultPermission("perm.workspace_write"),
+      shellPermissionLevel: "workspace_write"
     }
   },
   {
@@ -137,13 +129,8 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       additionalProperties: false
     },
     tags: ["builtin", "read"],
-    defaultConfig: {
-      name: "read_file",
-      enabled: true,
-      description: "读取文本文件片段",
-      exposurePolicy: defaultExposure("chat_function", "full_schema"),
-      permissionPolicy: defaultPermission("perm.readonly")
-    }
+    exposurePolicy: defaultExposure("chat_function", "full_schema"),
+    permissionPolicy: defaultPermission("perm.readonly")
   },
   {
     toolId: "builtin.web_search",
@@ -162,13 +149,8 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       additionalProperties: false
     },
     tags: ["builtin", "web"],
-    defaultConfig: {
-      name: "web_search",
-      enabled: true,
-      description: "网络搜索工具",
-      exposurePolicy: defaultExposure("responses_native", "summary"),
-      permissionPolicy: defaultPermission("perm.readonly")
-    }
+    exposurePolicy: defaultExposure("responses_native", "summary"),
+    permissionPolicy: defaultPermission("perm.readonly")
   },
   {
     toolId: "builtin.update_plan",
@@ -196,13 +178,8 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       additionalProperties: false
     },
     tags: ["builtin", "plan"],
-    defaultConfig: {
-      name: "update_plan",
-      enabled: true,
-      description: "更新运行计划",
-      exposurePolicy: defaultExposure("chat_function", "description"),
-      permissionPolicy: defaultPermission("perm.readonly")
-    }
+    exposurePolicy: defaultExposure("chat_function", "description"),
+    permissionPolicy: defaultPermission("perm.readonly")
   },
   {
     toolId: "builtin.request_user_input",
@@ -242,15 +219,10 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       additionalProperties: false
     },
     tags: ["builtin", "hitl"],
-    defaultConfig: {
-      name: "request_user_input",
-      enabled: true,
-      description: "人工提问/等待回复工具",
-      exposurePolicy: defaultExposure("responses_native", "summary"),
-      permissionPolicy: {
-        ...defaultPermission("perm.readonly"),
-        requiresHumanApproval: true
-      }
+    exposurePolicy: defaultExposure("responses_native", "summary"),
+    permissionPolicy: {
+      ...defaultPermission("perm.readonly"),
+      requiresHumanApproval: true
     }
   },
   {
@@ -268,13 +240,45 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       additionalProperties: false
     },
     tags: ["builtin", "image"],
-    defaultConfig: {
-      name: "view_image",
-      enabled: true,
-      description: "查看图片元数据",
-      exposurePolicy: defaultExposure("chat_function", "summary"),
-      permissionPolicy: defaultPermission("perm.readonly")
-    }
+    exposurePolicy: defaultExposure("chat_function", "summary"),
+    permissionPolicy: defaultPermission("perm.readonly")
+  },
+  {
+    toolId: "builtin.handoff",
+    name: "handoff",
+    description: "将当前任务显式交接给下一个 agent，由 runtime 校验并切换节点。",
+    executorType: "function",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetAgentId: { type: "string", description: "目标 agentId，而不是 workflow nodeId" },
+        taskSummary: { type: "string", description: "交接给下一个 agent 的任务摘要" },
+        payload: { type: "object", description: "可选结构化补充载荷" },
+        reason: { type: "string", description: "发起 handoff 的原因" },
+        artifactRefs: {
+          type: "array",
+          items: { type: "string" },
+          description: "可选的 artifact 引用列表"
+        }
+      },
+      required: ["targetAgentId", "taskSummary"],
+      additionalProperties: false
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        accepted: { type: "boolean" },
+        targetAgentId: { type: "string" },
+        targetNodeId: { type: "string" },
+        packetId: { type: "string" },
+        errorCode: { type: "string" }
+      },
+      required: ["accepted", "targetAgentId"],
+      additionalProperties: false
+    },
+    tags: ["builtin", "routing", "handoff"],
+    exposurePolicy: defaultExposure("chat_function", "description"),
+    permissionPolicy: defaultPermission("perm.readonly")
   }
 ];
 
@@ -282,3 +286,63 @@ export function getBuiltinToolDefinition(name: BuiltinToolName): BuiltinToolDefi
   return BUILTIN_TOOL_DEFINITIONS.find((item) => item.name === name) ?? null;
 }
 
+/**
+ * 将 builtin 定义投影为 catalog node。
+ * 说明：
+ * - 这样 builtin 和 MCP / skill / 其他工具一样，都统一进入 catalog；
+ * - 后续 ToolRegistry 不再需要单独拼 builtin config。
+ */
+export function buildBuiltinCatalogNode(input: { projectId: string; definition: BuiltinToolDefinition }): CatalogNode {
+  const now = new Date().toISOString();
+  return {
+    nodeId: input.definition.toolId,
+    projectId: input.projectId,
+    nodeClass: "item",
+    name: input.definition.name,
+    title: input.definition.name,
+    summaryText: input.definition.description,
+    contentText: input.definition.description,
+    contentFormat: "markdown",
+    primaryKind: "tool",
+    visibility: "visible",
+    exposeMode: "summary_first",
+    enabled: true,
+    sortOrder: 0,
+    tags: input.definition.tags,
+    metadata: {
+      builtinName: input.definition.name
+    },
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+/**
+ * 将 builtin 定义投影为 catalog tool facet。
+ * 说明：
+ * - route / exposure / permission 都直接落在 facet 里；
+ * - runtime 后续只需要从 catalog 读取，不再额外依赖 builtin config 表。
+ */
+export function buildBuiltinCatalogFacet(definition: BuiltinToolDefinition): CatalogNodeFacet {
+  return {
+    facetId: `facet.tool.${definition.toolId}`,
+    nodeId: definition.toolId,
+    facetType: "tool",
+    payload: {
+      toolKind: "builtin",
+      route: {
+        kind: "builtin",
+        builtin: definition.name
+      },
+      executorType: definition.executorType,
+      inputSchema: definition.inputSchema,
+      outputSchema: definition.outputSchema,
+      exposurePolicy: definition.exposurePolicy,
+      permissionPolicy: definition.permissionPolicy,
+      executionConfig: {
+        builtinName: definition.name
+      }
+    },
+    updatedAt: new Date().toISOString()
+  };
+}

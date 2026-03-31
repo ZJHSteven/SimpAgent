@@ -3,58 +3,49 @@
  * - Tool 配置注册表（v0.2 起同时承担“外层来源层 -> 中间统一层”的桥接入口）。
  */
 
-import type { BuiltinToolConfig, CanonicalToolSpec, ToolSpec } from "../../types/index.js";
+import type { BuiltinToolConfig, CanonicalToolSpec, CatalogNodeFacet } from "../../types/index.js";
 import type { AppDatabase } from "../../storage/index.js";
 import { BUILTIN_TOOL_DEFINITIONS, type BuiltinToolDefinition } from "./builtinSpecs.js";
-import { canonicalFromBuiltinConfig, canonicalFromToolSpec } from "./canonical/index.js";
+import { canonicalFromCatalogToolNode } from "./canonical/index.js";
 
 export class ToolRegistry {
-  private cache = new Map<string, ToolSpec>();
-  private readonly builtinConfigCache = new Map<string, BuiltinToolConfig>();
+  private cache = new Map<string, CanonicalToolSpec>();
 
-  constructor(
-    private readonly db: AppDatabase,
-    private readonly projectId = "default"
-  ) {
-    // 初始化内置工具默认配置（首版先使用内存默认值，后续再接 SQLite 版本化配置）。
-    for (const def of BUILTIN_TOOL_DEFINITIONS) {
-      this.builtinConfigCache.set(def.name, def.defaultConfig);
-    }
-    // v0.3：覆盖数据库中的项目级配置，解决重启丢失问题。
-    for (const persisted of this.db.listBuiltinToolConfigs(this.projectId)) {
-      this.builtinConfigCache.set(persisted.name, persisted);
-    }
-  }
+  constructor(private readonly db: AppDatabase, private readonly projectId = "default") {}
 
   refresh(): void {
     this.cache.clear();
-    for (const item of this.db.listTools()) {
-      this.cache.set(item.id, item);
+    const nodes = this.db.listCatalogNodes(this.projectId);
+    const facets = this.db.listCatalogNodeFacets(this.projectId);
+    const facetsByNode = new Map<string, CatalogNodeFacet[]>();
+    for (const facet of facets) {
+      const list = facetsByNode.get(facet.nodeId) ?? [];
+      list.push(facet);
+      facetsByNode.set(facet.nodeId, list);
+    }
+    for (const node of nodes) {
+      const canonical = canonicalFromCatalogToolNode(node, facetsByNode.get(node.nodeId) ?? []);
+      if (canonical) {
+        this.cache.set(canonical.id, canonical);
+      }
     }
   }
 
-  list(): ToolSpec[] {
+  list(): CanonicalToolSpec[] {
     if (this.cache.size === 0) this.refresh();
     return [...this.cache.values()];
   }
 
-  get(id: string): ToolSpec | null {
+  get(id: string): CanonicalToolSpec | null {
     if (this.cache.size === 0) this.refresh();
     return this.cache.get(id) ?? null;
   }
 
-  save(spec: ToolSpec): ToolSpec {
-    const version = this.db.saveVersionedConfig("tool", spec);
-    const saved = { ...spec, version };
-    this.cache.set(saved.id, saved);
-    return saved;
-  }
-
   /**
-   * 返回首批内置工具定义（外层来源层）。
+   * 返回内置工具定义元数据。
    * 说明：
-   * - 这些定义与普通 ToolSpec 并列存在；
-   * - 后续会统一转换成 CanonicalToolSpec。
+   * - 这里保留静态定义，主要给 seed / 调试面展示使用；
+   * - 真正运行时启停和权限来自 catalog。
    */
   listBuiltinDefinitions(): BuiltinToolDefinition[] {
     return BUILTIN_TOOL_DEFINITIONS.map((item) => ({ ...item }));
@@ -65,40 +56,59 @@ export class ToolRegistry {
   }
 
   listBuiltinConfigs(): BuiltinToolConfig[] {
-    return [...this.builtinConfigCache.values()].map((cfg) => ({ ...cfg }));
+    return this.listCanonicalTools()
+      .filter((tool) => tool.kind === "builtin")
+      .map((tool) => ({
+        name: tool.routeTarget.kind === "builtin" ? tool.routeTarget.builtin : tool.name,
+        enabled: tool.enabled,
+        description: tool.description,
+        exposurePolicy: tool.exposure,
+        permissionPolicy: tool.permissionPolicy
+      }));
   }
 
   getBuiltinConfig(name: string): BuiltinToolConfig | null {
-    return this.builtinConfigCache.get(name) ?? null;
+    return this.listBuiltinConfigs().find((item) => item.name === name) ?? null;
   }
 
   saveBuiltinConfig(config: BuiltinToolConfig): BuiltinToolConfig {
-    const saved = this.db.saveBuiltinToolConfig(config, this.projectId);
-    this.builtinConfigCache.set(saved.name, saved);
-    return saved;
+    const builtinNode = this.db
+      .listCatalogNodes(this.projectId)
+      .find((node) => node.nodeId === `builtin.${config.name}` || node.name === config.name);
+    if (!builtinNode) {
+      throw new Error(`找不到 builtin tool catalog 节点：${config.name}`);
+    }
+    const currentFacet = this.db.getCatalogFacet(builtinNode.nodeId, "tool");
+    if (!currentFacet) {
+      throw new Error(`builtin tool 节点缺少 tool facet：${builtinNode.nodeId}`);
+    }
+    this.db.saveCatalogNode({
+      ...builtinNode,
+      enabled: config.enabled,
+      summaryText: config.description ?? builtinNode.summaryText,
+      contentText: config.description ?? builtinNode.contentText
+    });
+    this.db.saveCatalogFacet({
+      ...currentFacet,
+      payload: {
+        ...(currentFacet.payload as Record<string, unknown>),
+        exposurePolicy: config.exposurePolicy,
+        permissionPolicy: config.permissionPolicy
+      }
+    });
+    this.refresh();
+    return config;
   }
 
   /**
-   * v0.2：输出中间统一抽象层（Canonical Tool Layer）视图。
+   * 输出中间统一抽象层（Canonical Tool Layer）视图。
    * 说明：
-   * - builtin tools 与数据库中的 ToolSpec 在此汇合；
-   * - 暴露适配层 / runtime 工具循环应该优先消费这个接口，而非直接消费 ToolSpec。
+   * - 现在唯一来源是 catalog；
+   * - registry 不再从旧 tools/tool_versions 表拼接工具。
    */
   listCanonicalTools(): CanonicalToolSpec[] {
-    const builtins = BUILTIN_TOOL_DEFINITIONS.map((def) => {
-      const cfg = this.builtinConfigCache.get(def.name) ?? def.defaultConfig;
-      return canonicalFromBuiltinConfig({
-        toolId: def.toolId,
-        config: cfg,
-        inputSchema: def.inputSchema,
-        outputSchema: def.outputSchema,
-        executorType: def.executorType,
-        tags: def.tags
-      });
-    });
-
-    const customTools = this.list().map((spec) => canonicalFromToolSpec(spec));
-    return [...builtins, ...customTools];
+    if (this.cache.size === 0) this.refresh();
+    return [...this.cache.values()];
   }
 
   findCanonicalToolByName(name: string): CanonicalToolSpec | null {
