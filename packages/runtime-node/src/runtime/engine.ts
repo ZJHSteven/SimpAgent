@@ -1242,7 +1242,10 @@ export class FrameworkRuntimeEngine {
       artifacts: pendingHandoffPacket
         ? {
             ...state.artifacts,
-            outputs: [...state.artifacts.outputs, { id: newId("artifact"), type: "handoff_packet", content: pendingHandoffPacket }]
+            outputs: [
+              ...state.artifacts.outputs,
+              { id: newId("artifact"), type: "handoff_packet", content: pendingHandoffPacket as unknown as JsonValue }
+            ]
           }
         : state.artifacts,
       conversationState: {
@@ -1305,7 +1308,12 @@ export class FrameworkRuntimeEngine {
       agentId: node.agentId ?? "workflow_tool",
       workspaceRoot: this.deps.workspaceRoot,
       workflow: state.workflowSnapshot,
-      state
+      state,
+      provider: {
+        vendor: "mock",
+        apiMode: "responses",
+        model: "workflow-tool"
+      }
     });
     const result = executed.toolResult;
     let nextState: RunState = {
@@ -1625,7 +1633,7 @@ export class FrameworkRuntimeEngine {
           id: canonicalTool.id,
           name: "shell_command",
           description: canonicalTool.description,
-          executorType: "shell",
+          executorType: "shell" as const,
           inputSchema: canonicalTool.inputSchema,
           outputSchema: canonicalTool.outputSchema,
           permissionProfileId: String(canonicalTool.permissionPolicy?.permissionProfileId ?? "perm.readonly"),
@@ -2221,7 +2229,9 @@ export class FrameworkRuntimeEngine {
   private loadPromptUnitsFromSnapshot(state: RunState): PromptBlock[] {
     const refs = this.getSnapshotRefs(state);
     if (Array.isArray(refs.resolvedPromptUnits)) {
-      return refs.resolvedPromptUnits.filter((item): item is PromptBlock => Boolean(item && typeof item === "object" && !Array.isArray(item))) as PromptBlock[];
+      return refs.resolvedPromptUnits
+        .filter((item) => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+        .map((item) => item as unknown as PromptBlock);
     }
     const map = ((refs.promptUnits ?? refs.promptBlocks ?? {}) as Record<string, number>) ?? {};
     const list: PromptBlock[] = [];
@@ -2235,7 +2245,9 @@ export class FrameworkRuntimeEngine {
   private loadCanonicalToolsFromSnapshot(state: RunState): CanonicalToolSpec[] {
     const refs = this.getSnapshotRefs(state);
     if (Array.isArray(refs.resolvedCanonicalTools)) {
-      return refs.resolvedCanonicalTools.filter((item): item is CanonicalToolSpec => Boolean(item && typeof item === "object" && !Array.isArray(item))) as CanonicalToolSpec[];
+      return refs.resolvedCanonicalTools
+        .filter((item) => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+        .map((item) => item as unknown as CanonicalToolSpec);
     }
     return this.deps.toolRegistry.listCanonicalTools();
   }
@@ -2271,8 +2283,8 @@ export class FrameworkRuntimeEngine {
       workflow: { id: workflow.id, version: workflow.version },
       agents,
       promptUnits,
-      resolvedPromptUnits: this.deps.db.listPromptUnits(this.deps.projectId),
-      resolvedCanonicalTools: this.deps.toolRegistry.listCanonicalTools(),
+      resolvedPromptUnits: this.deps.db.listPromptUnits(this.deps.projectId) as unknown as JsonValue,
+      resolvedCanonicalTools: this.deps.toolRegistry.listCanonicalTools() as unknown as JsonValue,
       // 兼容旧字段，便于旧 run 回放。
       promptBlocks: promptUnits
     };

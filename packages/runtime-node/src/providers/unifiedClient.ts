@@ -118,20 +118,72 @@ function getToolName(tool: UnifiedModelTool): string {
   return tool.custom.name;
 }
 
+interface MockRule {
+  match: string;
+  text?: string;
+  toolCalls?: Array<{
+    toolCallId?: string;
+    toolName: string;
+    argumentsJson?: JsonObject;
+  }>;
+}
+
+function resolveMockRule(req: UnifiedModelRequest): MockRule | null {
+  const extra = (req.vendorExtra ?? {}) as JsonObject;
+  const rules = Array.isArray(extra.mockRules) ? extra.mockRules : [];
+  const joinedMessages = (req.messages ?? []).map((msg) => msg.content).join("\n");
+  for (const rawRule of rules) {
+    if (!rawRule || typeof rawRule !== "object" || Array.isArray(rawRule)) continue;
+    const rule = rawRule as Record<string, unknown>;
+    const match = typeof rule.match === "string" ? rule.match : "";
+    if (!match || !joinedMessages.includes(match)) continue;
+    const toolCalls = Array.isArray(rule.toolCalls)
+      ? rule.toolCalls
+          .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+          .map((item) => {
+            const typed = item as Record<string, unknown>;
+            return {
+              toolCallId: typeof typed.toolCallId === "string" ? typed.toolCallId : undefined,
+              toolName: typeof typed.toolName === "string" ? typed.toolName : "unknown_function",
+              argumentsJson:
+                typed.argumentsJson && typeof typed.argumentsJson === "object" && !Array.isArray(typed.argumentsJson)
+                  ? (typed.argumentsJson as JsonObject)
+                  : {}
+            };
+          })
+      : undefined;
+    return {
+      match,
+      text: typeof rule.text === "string" ? rule.text : undefined,
+      toolCalls
+    };
+  }
+  return null;
+}
+
 function buildMockResult(req: UnifiedModelRequest): UnifiedModelFinalResult {
+  const matchedRule = resolveMockRule(req);
   const text = [
+    matchedRule?.text ?? "",
     `【Mock ${req.apiMode} 响应】`,
     `model=${req.model}`,
     `messages=${req.messages?.length ?? 0}`,
     req.tools?.length ? `tools=${req.tools.map((t) => getToolName(t)).join(", ")}` : "tools=none",
     "这是用于调试框架链路的模拟输出。"
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
   return {
     provider: "mock",
     apiMode: req.apiMode,
     model: req.model,
     text,
-    toolCalls: [],
+    toolCalls:
+      matchedRule?.toolCalls?.map((item) => ({
+        toolCallId: item.toolCallId ?? `toolcall_${randomUUID().replace(/-/g, "")}`,
+        toolName: item.toolName,
+        argumentsJson: item.argumentsJson ?? {}
+      })) ?? [],
     reasoningSummary: req.reasoningConfig?.effort ? `mock reasoning effort=${req.reasoningConfig.effort}` : undefined,
     thoughts: req.reasoningConfig?.includeThoughts ? ["这是 mock 的 thought 示例。"] : undefined,
     usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
@@ -176,19 +228,31 @@ export class UnifiedProviderClient {
     }
 
     if (req.vendor === "mock") {
+      const mock = buildMockResult(req);
       yield {
         type: "response_started",
         provider: "mock",
         requestId: `mock_${randomUUID().replace(/-/g, "")}`,
         model: req.model
       };
-      const mock = buildMockResult(req);
-      yield {
-        type: "text_delta",
-        delta: mock.text,
-        provider: "mock",
-        apiMode: req.apiMode
-      };
+      if (mock.text) {
+        yield {
+          type: "text_delta",
+          delta: mock.text,
+          provider: "mock",
+          apiMode: req.apiMode
+        };
+      }
+      for (const toolCall of mock.toolCalls) {
+        yield {
+          type: "tool_call_request",
+          provider: "mock",
+          apiMode: req.apiMode,
+          toolCallId: toolCall.toolCallId,
+          toolName: toolCall.toolName,
+          argumentsDelta: JSON.stringify(toolCall.argumentsJson ?? {})
+        };
+      }
       if (mock.thoughts?.length) {
         yield {
           type: "reasoning",

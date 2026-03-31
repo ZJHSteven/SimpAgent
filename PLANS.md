@@ -418,10 +418,10 @@
 
 ## 分阶段计划（本轮）
 1. `contracts / registry / canonical` 收口到 catalog 单一工具真源（已完成）
-2. 抽出结构化 `McpToolExecutor / SkillToolExecutor`，让 runtime 直连 canonical route（进行中）
-3. 落地 `handoff` builtin tool、`pendingHandoff` 路由优先级与 workflow 后继校验（待执行）
-4. 清理旧 `/api/tools` 更新入口、模板旧字段、旧 route 分支与测试夹带物（待执行）
-5. 回归执行 `core/runtime-node build` 与 package 级专项测试，更新 `PROGRESS.md` 并提交版本（待执行）
+2. 抽出结构化 `McpToolExecutor / SkillToolExecutor`，让 runtime 直连 canonical route（已完成）
+3. 落地 `handoff` builtin tool、`pendingHandoff` 路由优先级与 workflow 后继校验（已完成）
+4. 清理旧 `/api/tools` 更新入口、模板旧字段、旧 route 分支与测试夹带物（已完成）
+5. 回归执行 `core/runtime-node build` 与 package 级专项测试，更新 `PROGRESS.md` 并提交版本（进行中）
 
 ## 本轮完成判据
 - `ToolRegistry` 运行时只从 catalog 产出 canonical tools。

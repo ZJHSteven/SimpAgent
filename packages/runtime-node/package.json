@@ -9,9 +9,10 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "test": "npm run test:smoke && npm run test:catalog-bridge && npm run test:permissions-catalog",
+    "test": "npm run test:smoke && npm run test:catalog-bridge && npm run test:handoff-workflow && npm run test:permissions-catalog",
     "test:smoke": "tsx src/tests/smoke.ts",
     "test:catalog-bridge": "tsx src/tests/catalogBridge.ts",
+    "test:handoff-workflow": "tsx src/tests/handoffWorkflow.ts",
     "test:permissions-catalog": "tsx src/tests/permissionsCatalog.ts"
   },
   "dependencies": {

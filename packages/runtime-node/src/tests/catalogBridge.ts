@@ -333,7 +333,8 @@ async function main() {
       assert.equal(synced.createdToolNodeIds.length, 1, `${serverId} 应映射出一个 mcp tool 节点`);
       const projected = db.listCatalogContextPromptUnits(projectId).find((item) => item.id === `catalog.projected.tool.${synced.createdToolNodeIds[0]}`);
       assert.ok(projected, `${serverId} 的工具节点应能投影成 PromptUnit`);
-      assert.match(projected!.template, /simpagent mcp call/, "投影内容里应包含标准 bridge 命令");
+      assert.match(projected!.template, /runtime 直接按结构化工具调用执行/, "投影内容应说明已切到结构化执行");
+      assert.match(projected!.template, /远端映射：server=/, "投影内容里应包含 server/tool 映射信息");
     }
 
     const stdioCall = await bridge.tryExecute(

@@ -130,14 +130,25 @@
     - `InternalShellBridge` 已开始退化为“命令解析 + 转调结构化执行器”；
     - `engine.runAgentNode()` 已开始消费 snapshot 中冻结的 resolved canonical tools，并在 handoff 成功后写入 `pendingHandoff` 候选包；
     - `engine.decideNextNode()` 已开始优先读取 `pendingHandoff`，逐步移除旧的 `agent.orchestrator + nextAgentId` 硬编码路由思路；
-    - `/api/tools` 的旧更新入口、模板旧字段、preset 旧字段与 handoff 专项测试仍在继续清理中。
+    - `/api/tools` 的旧更新入口已删除，builtin 配置更新已改成写回 catalog tool facet；
+    - `runtime-node` 已新增 `test:handoff-workflow`，用 deterministic mock provider 验证 `research -> summary -> review` 三节点 handoff 通路。
+- 新增本轮最终验证（2026-03-31）：
+  - `npm run --workspace @simpagent/core build` 通过。
+  - `npm run --workspace @simpagent/runtime-node build` 通过。
+  - `npm run --workspace @simpagent/runtime-node test` 通过：
+    - `test:smoke`
+    - `test:catalog-bridge`
+    - `test:handoff-workflow`
+    - `test:permissions-catalog`
+  - `npm run build:workspaces` 通过。
+  - `npm run test:workspaces` 通过。
 - 下一步：
   1. 继续细化更高维度权限：network / fs / 额外权限申请，而不只限于 command/path。
   2. 把更多 skill bundle / MCP server 导入逻辑做成正式适配层，而不只是运行时桥接。
   3. 把 catalog 中的 MCP/skill/tool 节点正式并入 `ToolRegistry -> CanonicalToolSpec` 主链，消除“Prompt 投影链”和“canonical tool 链”双轨并存的问题。
   3. 把 catalog 项目隔离继续往更多旧 API/旧表兼容路径上收紧，避免默认 `projectId=default` 泄漏。
   4. 继续补 runtime-node API / WS / trace 的全量测试矩阵。
-  5. 补齐真正的 handoff 机制：至少需要明确是“workflow 路由原语”还是“注册为工具的 handoff command”，并补测试，而不是只保留 `handoffPolicy` 类型。
+  5. 继续完善 handoff 周边能力：例如 packet 消费可视化、失败重试策略、以及更丰富的 handoff payload/审计视图。
   6. 后续任何 package/framework 层改动，优先对照 `docs/SimpleAgent框架总览与代码导览.md` 检查是否已有现成实现，避免重复造轮子。
 
 ## 关键决策与理由（防止“吃书”）

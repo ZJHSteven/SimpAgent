@@ -59,7 +59,7 @@ export class ToolRegistry {
     return this.listCanonicalTools()
       .filter((tool) => tool.kind === "builtin")
       .map((tool) => ({
-        name: tool.routeTarget.kind === "builtin" ? tool.routeTarget.builtin : tool.name,
+        name: tool.routeTarget.kind === "builtin" ? tool.routeTarget.builtin : (tool.name as BuiltinToolConfig["name"]),
         enabled: tool.enabled,
         description: tool.description,
         exposurePolicy: tool.exposure,
@@ -92,6 +92,10 @@ export class ToolRegistry {
       ...currentFacet,
       payload: {
         ...(currentFacet.payload as Record<string, unknown>),
+        toolKind: (currentFacet.payload as CatalogNodeFacet["payload"] & { toolKind: "builtin" | "mcp" | "skill_tool" }).toolKind,
+        route: (currentFacet.payload as CatalogNodeFacet["payload"] & {
+          route: { kind: "builtin"; builtin: BuiltinToolConfig["name"] } | { kind: "mcp"; serverNodeId: string; toolName: string } | { kind: "skill_tool"; skillId: string };
+        }).route,
         exposurePolicy: config.exposurePolicy,
         permissionPolicy: config.permissionPolicy
       }
