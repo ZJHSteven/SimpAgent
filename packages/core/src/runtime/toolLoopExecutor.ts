@@ -50,6 +50,16 @@ export interface ToolLoopExecuteParams {
     toolRoleMessages: UnifiedMessage[];
     toolResults: ToolResult[];
   }>;
+  /**
+   * 当某些工具本身就代表“当前 agent 本轮应结束”时，
+   * 允许 runtime 在工具执行后提前终止后续模型轮次。
+   * 典型场景：handoff 工具已经明确把控制权交给下一个 agent。
+   */
+  shouldStopAfterToolCalls?: (args: {
+    roundIndex: number;
+    calls: DetectedToolCall[];
+    toolResults: ToolResult[];
+  }) => boolean;
 }
 
 export interface ToolLoopExecuteResult {
@@ -101,6 +111,15 @@ export class ToolLoopExecutor {
       allToolResults.push(...toolOutput.toolResults);
       currentMessages = [...currentMessages, ...toolOutput.toolRoleMessages];
       currentReq = { ...currentReq, messages: currentMessages };
+      if (
+        params.shouldStopAfterToolCalls?.({
+          roundIndex,
+          calls: detectedCalls,
+          toolResults: toolOutput.toolResults
+        })
+      ) {
+        break;
+      }
     }
 
     if (!lastRound) {

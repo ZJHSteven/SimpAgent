@@ -113,6 +113,13 @@
   - `runtime-node test:permissions-catalog` 通过，证明 shell 审批与 catalog API 有真实落地。
   - `runtime-node build` 通过，当前 Node 主运行时编译层面正常。
 - 正在做：将这次核查结论固化为后续收口基线，避免再把“分段已通”误判成“整链已通”。
+- 正在做（2026-03-31，本轮实现）：
+  - 已开始落实“catalog 单一工具真源 + handoff 工具化编排”重构。
+  - 第一批底层契约已调整：
+    - `BuiltinToolName` 已纳入 `handoff`；
+    - catalog tool facet 已扩展为可直接表达 route / exposure / permission；
+    - `RunState.routingState` 已补 `pendingHandoff`；
+    - 工具循环已补“工具执行后提前结束本轮”的钩子，供 handoff 使用。
 - 下一步：
   1. 继续细化更高维度权限：network / fs / 额外权限申请，而不只限于 command/path。
   2. 把更多 skill bundle / MCP server 导入逻辑做成正式适配层，而不只是运行时桥接。

@@ -64,7 +64,8 @@ export type BuiltinToolName =
   | "web_search"
   | "update_plan"
   | "request_user_input"
-  | "view_image";
+  | "view_image"
+  | "handoff";
 
 /**
  * 三层工具架构里的“外层来源分类”。
@@ -241,14 +242,35 @@ export interface CatalogMemoryFacetPayload {
  * Tool facet 载荷。
  */
 export interface CatalogToolFacetPayload {
-  toolKind: "builtin" | "shell" | "exec" | "mcp" | "skill" | "http" | "plugin" | "user_defined";
+  /**
+   * 当前统一后的工具类型：
+   * - builtin：框架内置工具，由代码提供执行器，但定义仍来自 catalog；
+   * - mcp：远端 MCP 工具；
+   * - skill_tool：本地 skill 脚本工具。
+   */
+  toolKind: "builtin" | "mcp" | "skill_tool";
+  /**
+   * route 是“真正执行去哪里”的统一声明。
+   * 注意：
+   * - 这里不再让 registry 从多套旧配置拼装路由；
+   * - catalog 自己就是工具真源，因此 route 必须可直接产出 CanonicalToolRouteTarget。
+   */
+  route:
+    | { kind: "builtin"; builtin: BuiltinToolName }
+    | { kind: "mcp"; serverNodeId: ID; toolName: string }
+    | { kind: "skill_tool"; skillId: ID };
+  /**
+   * executorType 仍保留，是为了让 trace / ToolTrace / 调试器显示正确执行器类型。
+   */
+  executorType?: ToolExecutorType;
   inputSchema?: JsonObject;
   outputSchema?: JsonObject;
-  executeMode?: "function_call" | "code_mode" | "direct_client";
-  backendRef?: string;
-  timeoutMs?: number;
-  permissionProfileId?: string;
-  workingDirPolicy?: JsonObject;
+  /**
+   * 暴露策略与权限策略都直接落在 catalog tool facet，
+   * 不再额外依赖 builtin config 或旧 ToolSpec 表。
+   */
+  exposurePolicy?: CanonicalToolExposurePolicy;
+  permissionPolicy?: CanonicalToolPermissionPolicy;
   executionConfig?: JsonObject;
 }
 
@@ -394,25 +416,12 @@ export interface AgentSpec {
    * Agent 工具路由偏好：最终由 runtime + provider 能力共同决策。
    */
   toolRoutePolicy?: AgentToolRoutePolicy;
-  /**
-   * 以下字段为兼容旧版本配置保留（新模型可逐步废弃）。
-   */
-  modelPolicyId?: ID;
-  promptAssemblyPolicyId?: ID;
-  contextPolicyId?: ID;
-  toolPolicyId?: ID;
   memoryPolicies?: ID[];
   handoffPolicy?: {
     allowedTargets: ID[];
     allowDynamicHandoff: boolean;
     strategy?: "fixed" | "dynamic" | "hybrid";
   };
-  outputContract?: {
-    type: "json" | "markdown" | "text";
-    jsonSchema?: JsonObject;
-      instruction?: string;
-  };
-  postChecks?: ID[];
   enabled: boolean;
   version: number;
   tags?: string[];
@@ -508,12 +517,6 @@ export interface WorkflowSpec {
   entryNode: ID;
   nodes: WorkflowNodeSpec[];
   edges: WorkflowEdgeSpec[];
-  routingPolicies: Array<{
-    id: ID;
-    nodeId: ID;
-    mode: "fixed" | "dynamic" | "hybrid";
-    config?: JsonObject;
-  }>;
   interruptPolicy?: {
     defaultInterruptBefore: boolean;
     defaultInterruptAfter: boolean;
@@ -580,9 +583,18 @@ export interface CanonicalToolSpec {
 export type CanonicalToolRouteTarget =
   | { kind: "builtin"; builtin: BuiltinToolName }
   | { kind: "mcp"; server: string; tool: string }
-  | { kind: "plugin"; pluginId: string; tool: string }
-  | { kind: "skill_tool"; skillId: string; tool: string }
-  | { kind: "user_defined"; toolId: string };
+  | { kind: "skill_tool"; skillId: string; tool: string };
+
+/**
+ * 工作目录策略：
+ * - 原先挂在 ToolSpec 上；
+ * - 现在抽出来，供 catalog tool facet / canonical permission policy / shell 权限评估共同复用。
+ */
+export interface WorkingDirPolicy {
+  mode: "fixed" | "workspace" | "allowlist";
+  fixedPath?: string;
+  allowlist?: string[];
+}
 
 /**
  * Canonical 层权限策略（统一于 shell/function/http 等执行器之前）。
@@ -591,7 +603,7 @@ export interface CanonicalToolPermissionPolicy {
   permissionProfileId: ID;
   shellPermissionLevel?: ShellPermissionLevel;
   requiresHumanApproval?: boolean;
-  workingDirPolicy?: ToolSpec["workingDirPolicy"];
+  workingDirPolicy?: WorkingDirPolicy;
   allowCommandPrefixes?: string[];
   extraRules?: PermissionRule[];
   timeoutMs?: number;
@@ -1189,6 +1201,7 @@ export interface RunState {
   routingState: {
     currentNodeId: ID;
     nextNodeId?: ID;
+    pendingHandoff?: HandoffPacket;
     history: Array<{ nodeId: ID; at: TimestampISO }>;
     reason?: string;
   };
@@ -1222,6 +1235,23 @@ export interface RunState {
   };
   planState?: PlanState;
   userInputState?: UserInputRequestState;
+}
+
+/**
+ * Handoff 包：
+ * - 这是 handoff builtin tool 的统一运行时载荷；
+ * - 当前 agent 通过工具显式提交该包，runtime 校验后再切换到目标节点。
+ */
+export interface HandoffPacket {
+  packetId: ID;
+  targetAgentId: ID;
+  targetNodeId?: ID;
+  taskSummary: string;
+  payload?: JsonObject;
+  reason?: string;
+  artifactRefs?: ID[];
+  issuedByAgentId?: ID;
+  issuedAt: TimestampISO;
 }
 
 /**
