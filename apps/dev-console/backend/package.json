@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node ../../../scripts/run-runtime-node-app.mjs dev dev-console 3002 ./data",
-    "start": "node ../../../scripts/run-runtime-node-app.mjs start dev-console 3002 ./data",
-    "build": "node ../../../scripts/run-runtime-node-app.mjs build dev-console 3002 ./data"
+    "dev": "node ../../../scripts/run-runtime-node-app.mjs dev dev-console 3002 ./data ./presets/medical-training-bench-v1",
+    "start": "node ../../../scripts/run-runtime-node-app.mjs start dev-console 3002 ./data ./presets/medical-training-bench-v1",
+    "build": "node ../../../scripts/run-runtime-node-app.mjs build dev-console 3002 ./data ./presets/medical-training-bench-v1"
   }
 }

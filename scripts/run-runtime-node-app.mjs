@@ -22,23 +22,38 @@ const repoRoot = path.resolve(__dirname, "..");
 const [, , runtimeCommand = "dev", projectId = "dev-console", port = "3002", dataDir = "./data", presetDir = ""] =
   process.argv;
 
-// backend 包装脚本的工作目录。
-// 说明：
-// - 这个目录才是 `./data`、`./presets` 等相对路径真正应该参照的位置；
-// - 所以这里显式把它塞回 `INIT_CWD`，让 `runtime-node` 内部解析路径时保持一致。
-const appBackendCwd = process.cwd();
+/**
+ * backend 包装脚本的真实目录。
+ * 说明：
+ * - 在 npm workspace 脚本里，`process.cwd()` 与 `INIT_CWD` 往往都会指向仓库根目录；
+ * - 但 `./data`、`./presets` 这种相对路径，语义上应该参照“当前 backend 包自己的目录”；
+ * - npm 已经把当前 workspace 包的 `package.json` 路径放在 `npm_package_json` 环境变量里，
+ *   因此这里优先用它反推 backend 目录。
+ */
+const packageJsonPath = process.env.npm_package_json;
+const appBackendCwd =
+  typeof packageJsonPath === "string" && packageJsonPath.trim()
+    ? path.dirname(packageJsonPath)
+    : process.cwd();
+const resolvedDataDir = path.isAbsolute(dataDir) ? dataDir : path.resolve(appBackendCwd, dataDir);
+const resolvedPresetDir =
+  typeof presetDir === "string" && presetDir.trim()
+    ? path.isAbsolute(presetDir)
+      ? presetDir
+      : path.resolve(appBackendCwd, presetDir)
+    : "";
 
 // 合并运行时环境变量。
 const childEnv = {
   ...process.env,
   SIMPAGENT_PROJECT_ID: projectId,
-  SIMPAGENT_DATA_DIR: dataDir,
+  SIMPAGENT_DATA_DIR: resolvedDataDir,
   PORT: port,
   INIT_CWD: appBackendCwd
 };
 
-if (presetDir.trim()) {
-  childEnv.SIMPAGENT_PRESET_DIR = presetDir.trim();
+if (resolvedPresetDir) {
+  childEnv.SIMPAGENT_PRESET_DIR = resolvedPresetDir;
 }
 
 const child = spawn(`npm run --workspace @simpagent/runtime-node ${runtimeCommand}`, {

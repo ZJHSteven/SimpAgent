@@ -25,13 +25,13 @@
 - 不恢复用户已经明确删除的旧 `apps/dev-console/backend/presets/mededu-default-v1/*`。
 - 不把 `apps/dev-console` 做成业务产品，而是做成“框架测试与演示项目”。
 
-## 执行目标（当前进行中）
-1. 修正项目级后端落盘与隔离
+## 执行目标（当前状态）
+1. 修正项目级后端落盘与隔离（已完成）
 - 确保 `apps/dev-console` 的 SQLite、日志、可观测数据、后续 preset 都落在 `apps/dev-console/backend/` 自己目录下；
 - 修正当前实际落盘到仓库根 `data/` 的问题；
 - 明确 dev-console backend 的真实目录职责，不再让人误以为“没有后端”。
 
-2. 为 dev-console 建立专属测试 preset
+2. 为 dev-console 建立专属测试 preset（已完成）
 - 不再只依赖 `runtime-node` 的默认 `seed.ts`；
 - 在 `apps/dev-console/backend/presets/` 下创建新的测试 preset；
 - 预设至少覆盖：
@@ -42,7 +42,7 @@
   - 至少一个 MCP/skill 测试入口（若不依赖外部 API，则优先走本地可用方案）
 - 预设主题按用户要求设计为“医学诊疗训练 + 评判 + 科研辅助 + 编排器”。
 
-3. 让测试 preset 真正体现框架能力
+3. 让测试 preset 真正体现框架能力（第一版已完成，后续继续补强）
 - 角色至少包括：
   - 患者 agent：低配合度、容易跑题的老太太
   - 医学生身份上下文 / user 身份牌
@@ -62,7 +62,7 @@
   - trace / side effect / state diff
   - 审批 / 中断 / fork 的后续观察面
 
-4. 调试台前端升级为真正可读、可操作的 UI
+4. 调试台前端升级为真正可读、可操作的 UI（下一阶段主任务）
 - 不再以大块黑底 JSON 作为主要展示方式；
 - JSON 仍保留，但退到“原始数据”抽屉或详情视图，不再占主界面主体；
 - 主要面板改为结构化 UI 展示：
@@ -74,7 +74,7 @@
 - 不丢字段：
   - UI 展示必须尽量覆盖原始数据，不允许“解析后只剩两项，其他八项全没了”。
 
-5. 加入调试台特有的编辑交互
+5. 加入调试台特有的编辑交互（下一阶段主任务）
 - 支持在 agent 定义里查看 prompt unit 绑定顺序；
 - 支持通过拖拽或等价的顺序控制方式调整 prompt unit 顺序；
 - 支持开关某个 prompt unit 是否启用；
@@ -84,7 +84,7 @@
   - 启用/禁用
   - 插入位置与 trigger 的可视化展示
 
-6. 提升调试台默认可用性
+6. 提升调试台默认可用性（部分完成）
 - 把当前实测可用的 DeepSeek 配置作为 dev-console 默认测试配置写入前端默认值；
 - 目标是减少每次打开都重新填写 `baseURL / model / vendor / apiMode` 的重复操作；
 - `apiKey` 默认值是否写入仓库需要谨慎：
@@ -109,6 +109,20 @@
 - 把库存、workflow、trace、history、catalog 拆成结构化面板；
 - 增加“原始 JSON”折叠区，作为完整字段兜底；
 - 清理当前不利于阅读的黑框展示。
+
+## 已完成进展（2026-04-01，最新）
+- 已完成：`scripts/run-runtime-node-app.mjs` 现在会基于 backend 包自身目录解析 `dataDir / presetDir`，不再把 `./data` 错落到仓库根目录。
+- 已完成：`apps/dev-console/backend/package.json` 默认加载 `./presets/medical-training-bench-v1`。
+- 已完成：`apps/dev-console/backend/presets/medical-training-bench-v1/` 第一版预设已经建立，包含：
+  - 5 个 app 专属 agent
+  - 9 个 app 专属 prompt units
+  - 1 个 app 专属 workflow
+- 已完成：`apps/dev-console/src/App.tsx` 默认 provider 已切到 DeepSeek 兼容配置，并优先选择 `workflow.devconsole.medical_training_bench`。
+- 已验证：
+  - `npm run --workspace @simpagent/dev-console-backend build`
+  - `npm run test`
+  - 独立端口启动 `dev-console` backend 后，`/api/agents`、`/api/workflows`、`/api/prompt-blocks` 能读出 app 专属定义
+  - `apps/dev-console/backend/data-*/framework.sqlite` 会真实生成
 
 4. PromptUnit / Agent 配置交互
 - 在前端展示 agent -> promptBindings；

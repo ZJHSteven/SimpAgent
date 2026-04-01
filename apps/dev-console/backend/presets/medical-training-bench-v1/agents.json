@@ -1,0 +1,120 @@
+[
+  {
+    "id": "agent.devconsole.orchestrator",
+    "name": "Medical Bench Orchestrator",
+    "role": "orchestrator",
+    "description": "负责规划训练流程，并把任务在患者、导师、科研助手、评判者之间流转。",
+    "promptBindings": [
+      { "bindingId": "bind.devconsole.orchestrator.system", "unitId": "block.devconsole.med.system", "enabled": true, "order": 10 },
+      { "bindingId": "bind.devconsole.orchestrator.card", "unitId": "block.devconsole.med.student_card", "enabled": true, "order": 20 },
+      { "bindingId": "bind.devconsole.orchestrator.persona", "unitId": "block.devconsole.med.orchestrator", "enabled": true, "order": 30 },
+      { "bindingId": "bind.devconsole.orchestrator.task", "unitId": "block.devconsole.med.task", "enabled": true, "order": 40 },
+      { "bindingId": "bind.devconsole.orchestrator.tools", "unitId": "block.devconsole.med.tools", "enabled": true, "order": 50 }
+    ],
+    "toolAllowList": ["update_plan", "handoff", "request_user_input", "read_file", "web_search", "shell_command"],
+    "toolRoutePolicy": { "mode": "auto", "reason": "调试台编排器优先按 provider 能力自动选择原生函数或回退协议" },
+    "memoryPolicies": [],
+    "handoffPolicy": {
+      "allowedTargets": [
+        "agent.devconsole.patient",
+        "agent.devconsole.mentor",
+        "agent.devconsole.researcher",
+        "agent.devconsole.evaluator"
+      ],
+      "allowDynamicHandoff": true,
+      "strategy": "hybrid"
+    },
+    "enabled": true,
+    "version": 1,
+    "tags": ["dev-console", "medical-training", "orchestrator"]
+  },
+  {
+    "id": "agent.devconsole.patient",
+    "name": "Low-Cooperation Patient",
+    "role": "patient-simulator",
+    "description": "扮演低配合度、容易跑题的老太太患者。",
+    "promptBindings": [
+      { "bindingId": "bind.devconsole.patient.system", "unitId": "block.devconsole.med.system", "enabled": true, "order": 10 },
+      { "bindingId": "bind.devconsole.patient.card", "unitId": "block.devconsole.med.student_card", "enabled": true, "order": 20 },
+      { "bindingId": "bind.devconsole.patient.persona", "unitId": "block.devconsole.med.patient", "enabled": true, "order": 30 },
+      { "bindingId": "bind.devconsole.patient.task", "unitId": "block.devconsole.med.task", "enabled": true, "order": 40 }
+    ],
+    "toolAllowList": ["handoff"],
+    "toolRoutePolicy": { "mode": "native_function_first", "reason": "患者模拟主要使用 handoff 结束当前轮次" },
+    "memoryPolicies": [],
+    "handoffPolicy": {
+      "allowedTargets": ["agent.devconsole.mentor"],
+      "allowDynamicHandoff": true,
+      "strategy": "hybrid"
+    },
+    "enabled": true,
+    "version": 1,
+    "tags": ["dev-console", "medical-training", "patient"]
+  },
+  {
+    "id": "agent.devconsole.mentor",
+    "name": "Clinical Mentor",
+    "role": "mentor",
+    "description": "点评医学生问诊质量，并提出诊疗思路和下一步建议。",
+    "promptBindings": [
+      { "bindingId": "bind.devconsole.mentor.system", "unitId": "block.devconsole.med.system", "enabled": true, "order": 10 },
+      { "bindingId": "bind.devconsole.mentor.card", "unitId": "block.devconsole.med.student_card", "enabled": true, "order": 20 },
+      { "bindingId": "bind.devconsole.mentor.persona", "unitId": "block.devconsole.med.mentor", "enabled": true, "order": 30 },
+      { "bindingId": "bind.devconsole.mentor.task", "unitId": "block.devconsole.med.task", "enabled": true, "order": 40 },
+      { "bindingId": "bind.devconsole.mentor.tools", "unitId": "block.devconsole.med.tools", "enabled": true, "order": 50 }
+    ],
+    "toolAllowList": ["read_file", "handoff", "update_plan"],
+    "toolRoutePolicy": { "mode": "native_function_first", "reason": "导师点评优先使用原生工具调用" },
+    "memoryPolicies": [],
+    "handoffPolicy": {
+      "allowedTargets": ["agent.devconsole.researcher", "agent.devconsole.evaluator"],
+      "allowDynamicHandoff": true,
+      "strategy": "hybrid"
+    },
+    "enabled": true,
+    "version": 1,
+    "tags": ["dev-console", "medical-training", "mentor"]
+  },
+  {
+    "id": "agent.devconsole.researcher",
+    "name": "Research Assistant",
+    "role": "researcher",
+    "description": "提供指南、综述和证据支撑。",
+    "promptBindings": [
+      { "bindingId": "bind.devconsole.researcher.system", "unitId": "block.devconsole.med.system", "enabled": true, "order": 10 },
+      { "bindingId": "bind.devconsole.researcher.card", "unitId": "block.devconsole.med.student_card", "enabled": true, "order": 20 },
+      { "bindingId": "bind.devconsole.researcher.persona", "unitId": "block.devconsole.med.researcher", "enabled": true, "order": 30 },
+      { "bindingId": "bind.devconsole.researcher.task", "unitId": "block.devconsole.med.task", "enabled": true, "order": 40 },
+      { "bindingId": "bind.devconsole.researcher.tools", "unitId": "block.devconsole.med.tools", "enabled": true, "order": 50 }
+    ],
+    "toolAllowList": ["web_search", "read_file", "handoff", "update_plan"],
+    "toolRoutePolicy": { "mode": "native_function_first", "reason": "科研助手需要优先测试搜索与读取能力" },
+    "memoryPolicies": [],
+    "handoffPolicy": {
+      "allowedTargets": ["agent.devconsole.evaluator"],
+      "allowDynamicHandoff": true,
+      "strategy": "hybrid"
+    },
+    "enabled": true,
+    "version": 1,
+    "tags": ["dev-console", "medical-training", "researcher"]
+  },
+  {
+    "id": "agent.devconsole.evaluator",
+    "name": "Score Evaluator",
+    "role": "evaluator",
+    "description": "对本轮训练进行结构化评分和总结。",
+    "promptBindings": [
+      { "bindingId": "bind.devconsole.evaluator.system", "unitId": "block.devconsole.med.system", "enabled": true, "order": 10 },
+      { "bindingId": "bind.devconsole.evaluator.card", "unitId": "block.devconsole.med.student_card", "enabled": true, "order": 20 },
+      { "bindingId": "bind.devconsole.evaluator.persona", "unitId": "block.devconsole.med.evaluator", "enabled": true, "order": 30 },
+      { "bindingId": "bind.devconsole.evaluator.task", "unitId": "block.devconsole.med.task", "enabled": true, "order": 40 }
+    ],
+    "toolAllowList": ["read_file", "update_plan"],
+    "toolRoutePolicy": { "mode": "prompt_protocol_only", "reason": "评判者节点保留回退协议路径，便于测试协议多样性" },
+    "memoryPolicies": [],
+    "enabled": true,
+    "version": 1,
+    "tags": ["dev-console", "medical-training", "evaluator"]
+  }
+]

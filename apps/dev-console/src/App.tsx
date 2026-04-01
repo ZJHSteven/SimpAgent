@@ -42,13 +42,18 @@ const STORAGE_KEYS = {
 } as const;
 
 const DEFAULT_PROVIDER_FORM: ProviderFormState = {
-  vendor: "openai",
+  vendor: "generic_openai_compat",
   apiMode: "chat_completions",
-  baseURL: "",
+  baseURL: "https://api.deepseek.com",
   apiKey: "",
-  model: "",
+  model: "deepseek-chat",
   temperature: "0.2"
 };
+
+const PREFERRED_WORKFLOW_IDS = [
+  "workflow.devconsole.medical_training_bench",
+  "workflow.default"
+] as const;
 
 function readStoredString(key: string, fallback: string): string {
   const value = window.localStorage.getItem(key);
@@ -183,7 +188,12 @@ function App() {
       setTemplates(nextTemplates);
       setSystemConfig(nextSystemConfig);
       setToolExposureMeta(nextExposureMeta);
-      if (!selectedWorkflowId && nextWorkflows[0]) setSelectedWorkflowId(nextWorkflows[0].id);
+      if (!selectedWorkflowId && nextWorkflows[0]) {
+        const preferredWorkflow =
+          PREFERRED_WORKFLOW_IDS.map((id) => nextWorkflows.find((workflow) => workflow.id === id)).find(Boolean) ??
+          nextWorkflows[0];
+        setSelectedWorkflowId(preferredWorkflow.id);
+      }
       if (!selectedTemplateId && nextTemplates[0]) setSelectedTemplateId(nextTemplates[0].id);
       setStatusText(`已加载框架库存：${nextAgents.length} 个 agent / ${nextWorkflows.length} 个 workflow / ${nextCatalogNodes.length} 个 catalog 节点`);
       setErrorText("");

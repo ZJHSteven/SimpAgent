@@ -1,0 +1,26 @@
+[
+  {
+    "id": "workflow.devconsole.medical_training_bench",
+    "name": "医学训练多 Agent 测试流程",
+    "entryNode": "node.devconsole.orchestrator",
+    "nodes": [
+      { "id": "node.devconsole.orchestrator", "type": "agent", "label": "编排器", "agentId": "agent.devconsole.orchestrator" },
+      { "id": "node.devconsole.patient", "type": "agent", "label": "患者模拟", "agentId": "agent.devconsole.patient" },
+      { "id": "node.devconsole.mentor", "type": "agent", "label": "临床导师", "agentId": "agent.devconsole.mentor" },
+      { "id": "node.devconsole.researcher", "type": "agent", "label": "科研助手", "agentId": "agent.devconsole.researcher" },
+      { "id": "node.devconsole.evaluator", "type": "agent", "label": "评分评判者", "agentId": "agent.devconsole.evaluator" }
+    ],
+    "edges": [
+      { "from": "node.devconsole.orchestrator", "to": "node.devconsole.patient", "priority": 10 },
+      { "from": "node.devconsole.patient", "to": "node.devconsole.mentor", "priority": 10 },
+      { "from": "node.devconsole.mentor", "to": "node.devconsole.researcher", "priority": 10 },
+      { "from": "node.devconsole.researcher", "to": "node.devconsole.evaluator", "priority": 10 }
+    ],
+    "interruptPolicy": {
+      "defaultInterruptBefore": false,
+      "defaultInterruptAfter": false
+    },
+    "enabled": true,
+    "version": 1
+  }
+]

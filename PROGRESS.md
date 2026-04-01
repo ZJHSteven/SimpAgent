@@ -4,6 +4,7 @@
 - 现状：`packages/runtime-node` 仍是当前框架真源，`packages/core` 提供跨运行时抽象；现有 package 级构建、workspace 聚合构建、runtime-node 测试都已通过，说明 Node 主链可运行。
 - 现状：`PLANS.md` 与 `PROGRESS.md` 已完成第一轮职责收口；`PLANS.md` 只保留当前计划，`PROGRESS.md` 负责最新状态快照。
 - 现状：`apps/dev-console` 已恢复为最小框架调试台，并且已经能构建前端、构建后端包装、动态启动后端并打通基础库存接口。
+- 现状：dev-console 的项目级数据库落盘问题已修正；SQLite 现在可以明确落到 `apps/dev-console/backend/data/`，不再依赖仓库根 `data/`。
 - 已完成：
   - Monorepo/workspaces 已建立，主线目录为 `packages/*`、`apps/*`、`backend` 兼容壳。
   - `@simpagent/core` 已提供核心契约、PromptCompiler、ToolLoop、WorkflowRegistry、Ports 与统一运行时抽象。
@@ -65,6 +66,18 @@
       - 流式 tool-call 分片缺失 `id/name` 时，需要按槽位稳定累计，不能每片都生成新 callId。
       - 下一轮继续调用模型时，必须把上一轮 assistant 的 `tool_calls` 与对应 `role=tool` 消息一起回填。
     - 已新增回归测试 `test:chat-function-loop`，专门防止这条 chat/function 兼容链回退。
+  - dev-console 项目级后端隔离第一步已完成（2026-04-01）：
+    - `scripts/run-runtime-node-app.mjs` 已改为把 `dataDir / presetDir` 解析成 app backend 目录下的绝对路径，而不再依赖不稳定的 `INIT_CWD`。
+    - `apps/dev-console/backend` 已默认加载 `presets/medical-training-bench-v1`。
+    - 已新增医学训练测试预设：
+      - 5 个 app 专属 agent
+      - 9 个 app 专属 prompt units
+      - 1 个 app 专属 workflow
+    - 已验证：
+      - `apps/dev-console/backend/data/framework.sqlite` 会真实生成
+      - 以独立端口启动时，API 能读出 app 专属的 agent / workflow / prompt-unit
+      - `npm run --workspace @simpagent/dev-console-backend build` 通过
+      - `npm run test` 通过
 - 正在做：
   - 已根据用户最新要求重写下一阶段 `PLANS.md`：
     - dev-console 要从“最小壳”继续升级成“项目级测试台”；
