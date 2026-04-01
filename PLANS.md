@@ -518,6 +518,29 @@
 ---
 
 ## 任务名称（2026-04-01）
+- `packages/core` 与 `packages/runtime-node` 框架注释补齐 + review 路线整理
+
+## 执行目标（本轮）
+- 只聚焦 `packages/core` 与 `packages/runtime-node`，不触碰 `apps/*`、根前端与其他占位包。
+- 针对“只有文件头、函数体和关键控制流缺少教学向中文注释”的问题，优先补齐 review 最痛的主链文件。
+- 输出一条适合人工 review 的阅读顺序，帮助后续排查“Vibe coding 越写越乱”的结构问题。
+
+## 分阶段计划（本轮）
+1. 盘点 `core/runtime-node` 中最影响 review 的缺注释文件，收敛修改范围（已完成）
+2. 先补 core 主链：`ports`、`prompt compiler`、`agentRoundExecutor`、`toolLoopExecutor`、`toolCallAssembler`（进行中）
+3. 再补 runtime-node 主链：`providers/capabilities`、`api/http`、必要的入口/转发文件（待执行）
+4. 回归执行 `core/runtime-node build` 与 `runtime-node test`，确认注释改动未引入语法问题（待执行）
+5. 更新 `PROGRESS.md` 并提交版本，同时整理 review 路线（待执行）
+
+## 本轮完成判据
+- 关键主链文件不再只有文件头注释，函数头与关键分支具备可 review 的中文说明。
+- 至少覆盖 `Prompt / runtime loop / HTTP API / provider capabilities` 这几条理解成本最高的主线。
+- `npm run --workspace @simpagent/core build`、`npm run --workspace @simpagent/runtime-node build`、`npm run --workspace @simpagent/runtime-node test` 通过。
+- `PROGRESS.md` 已记录本轮补注释范围、验证结果与后续 review 使用方式。
+
+---
+
+## 任务名称（2026-04-01）
 - `packages/core` + `packages/runtime-node` 注释治理与 review 路线收口
 
 ## 执行目标（本轮）
