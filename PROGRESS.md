@@ -1,210 +1,54 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：已完成一次性工程分层重构，项目从“单 backend + 单前端”升级为 `monorepo + 多运行时适配` 结构；当前主线目标已从单纯的 `PromptUnit + Agent 绑定装配 + 三层工具路由` 对齐，扩展为“框架主干收口”：统一图谱存储、Prompt/Memory/Tool/Skill/MCP 统一建模、CodeMode 风格工具体系、Shell/Exec 权限内核、`runtime-node` 主后端补齐与全量测试体系建设。
+- 现状：`packages/runtime-node` 仍是当前框架真源，`packages/core` 提供跨运行时抽象；现有 package 级构建与测试已通过，说明 Node 主链可运行。
+- 现状：项目记忆文件此前混入大量历史流水，`PLANS.md` 与 `PROGRESS.md` 的职责边界不清；本轮已开始收口。
+- 现状：`apps/dev-console` 在 git 中存在被删除状态，但根 `README.md`、运行时代码默认 `projectId`、部分注释仍把它当成现成调试台，说明“调试台定位仍存在，但工程未恢复”，属于当前最明显的文档/目录漂移。
 - 已完成：
--  - Monorepo/workspaces 建立完成：`packages/*` + `apps/*` + `backend` 兼容壳。
--  - 新增 `@simpagent/core`：
--    - 抽离公共类型契约（`types/contracts`）。
--    - 抽离 PromptCompiler、ToolCallAssembler、AgentRoundExecutor、ToolLoopExecutor。
--    - 新增 Ports 抽象：`StoragePort / CheckpointPort / ModelPort / ToolExecutionPort / EventStreamPort / ConfigResolverPort`。
--    - 新增 `createRuntimeEngine(deps)` 统一入口。
--    - 新增三层配置合并器：`Runtime Patch > User Override > Preset`。
--  - 新增 `@simpagent/runtime-node`：
--    - 复制并承接原 backend 主实现。
--    - 通过 `engineNodeBindings` 接入 core 统一入口。
--    - 冒烟测试通过（`test:smoke`）。
--  - 新增 `@simpagent/runtime-worker`：
--    - 提供 Workers + D1 最小链路（health/run/trace/config resolve）。
--  - 新增 `@simpagent/runtime-tauri-bridge`：
--    - 定义 Tauri invoke 契约与 mock bridge。
--  - 新增 `apps/trpg-desktop`、`apps/learning-desktop`、`apps/dev-console` 工程位。
--  - `apps/mededu-cockpit` 已新增独立 Vite+React 前端工程：
--    - 四区布局（左会话 / 中画布 / 右监控 / 底日志）已落地。
--    - 中央画布支持拖拽平移、点阵背景、非线性多节点连线动画。
--    - 页面文案为全中文，支持稳定截图用于标书材料。
--    - 根脚本新增：`dev:mededu`、`build:mededu`、`preview:mededu`。
--    - 子目录脚本别名已补齐：可在 `apps/mededu-cockpit` 目录直接运行 `dev:mededu` / `build:mededu` / `preview:mededu`。
--  - `backend` 改为兼容壳，旧命令转发到 `@simpagent/runtime-node`。
-  - v0.1 主链路保留可用（LangGraph.js 运行时、HTTP API、WS 调试通道、SQLite 配置/Trace、checkpoint/history/patch/fork）。
-  - v0.2 类型契约扩展（Canonical Tool Layer / PromptUnit / ToolExposurePlan / SideEffect / StateDiff / BuiltinToolConfig / PlanState / UserInputRequestState）。
-  - SQLite schema + `AppDatabase` 新增表与方法：`state_diffs`、`side_effects`、`tool_exposure_plans`、`run_plans`、`user_input_requests`。
-  - 三层工具架构从骨架推进到执行面：
-    - `exposurePlanner` 不再只产计划，新增 `buildModelRequest + parseModelToolSignal`；
-    - 五类适配器已接入运行时：`responses_native/chat_function/chat_custom/structured_output/prompt_protocol`；
-    - `fallbackChain` 已在 runtime 生效：当首选适配器与模型能力不匹配时自动降级。
-    - 模型路由 `toolProtocolProfile` 可直接驱动内层适配选择。
-  - builtin tools 默认定义：`shell_command`、`apply_patch`、`read_file`、`web_search`、`update_plan`、`request_user_input`、`view_image`。
-  - `apply_patch` 模块最小可用实现：parser / validator / applier + dry-run 执行器。
-  - `engine.ts` 的 `runAgentNode()` 已接入“适配器驱动”链路：
-    - 先由适配器构建模型请求；
-    - 再由 `ToolLoopExecutor` 进行多轮循环；
-    - 当 provider 原生 tool_call 缺失时，自动走适配器文本协议解析（structured/prompt/custom fallback）。
-  - PromptCompiler 已升级到 `PromptUnit + PromptAssemblyPlan`：
-    - block/history/memory/task/tool catalog 全部统一成 PromptUnit；
-    - 支持 `promptUnitOverrides`（enable/disable/改内容/改角色/改位置/改排序）；
-    - `promptTrace.promptAssemblyPlan` 已落库可查。
-  - 节点级最小 `state diff` 摘要落库与 trace。
-  - HTTP 新接口：builtin tools、`apply_patch dry-run`、`state-diffs`、`side-effects`、`run plan`、`tool exposure policies`、`prompt-unit-overrides patch`。
-  - `runtime-node` v0.3（框架层）补齐完成：
-    - 新增 `GET /api/runs/:runId/tool-exposure-plans` 与 `GET /api/runs/:runId/user-input-requests`。
-    - 新增 `GET/PUT /api/config/system`（系统级默认模型路由/窗口/日志上限）。
-    - 新增 `GET /api/templates` 与 `POST /api/templates/:templateId/apply`。
-    - 内置工具配置由“内存态”迁移到 SQLite 表 `builtin_tool_configs`（重启不丢失）。
-    - 新增 `system_configs` 表与默认系统配置回退逻辑。
-    - 内置医学模板 `mededu-default-v1` 已内置，可一键应用生成多 Agent 预设。
-  - `runtime-node` 启动新增 `SIMPAGENT_PROJECT_ID` 项目隔离目录（默认 `dev-console`）。
-  - WS 增强：`run_snapshot.latestTraceSeq`、`REPLAY_WINDOW_MISS` warning。
-  - 前端测试工作台（Vite/React）：白皮书风单页，多面板覆盖 run/trace/history/fork/builtin/apply_patch/WS 日志。
-  - 新增统一图谱与统一 schema 设计文档，并在 2026-03-25 完成第一轮简化收敛：
-    - 文档：`docs/统一图谱与统一Schema设计-v0.1.md`
-    - 明确统一图谱只统一“定义层”，不合并 `runs / trace_events / tool_calls / side_effects / user_input_requests` 等运行态表。
-    - 明确统一图谱收敛为“统一节点主表 + 树父子字段 + 图关系表 + facet 表”。
-    - 明确所有节点共用一套外形，差异优先通过 `prompt / memory / tool / integration` facet 表达。
-    - 明确 `summary_text / content_text` 作为统一的“短描述 / 正文”承载字段。
-    - 明确 Tool 仍保留 `inputSchema / outputSchema` 与执行定义，function-call 只是一种暴露策略。
-  - Prompt 与 Agent 契约完成新一轮升级（2026-03-04）：
-    - 持久化层统一为 `PromptUnit`（兼容旧 `PromptBlock` 命名与路由）。
-    - Agent 新增 `promptBindings`（启停/顺序/覆盖下沉到 Agent 层）。
-    - Agent 新增 `toolAllowList` 与 `toolRoutePolicy`（内层工具路由可按 Agent 控制）。
-    - runtime 新增 `/api/prompt-units`，旧 `/api/prompt-blocks` 保留兼容。
-    - workflow `tool` 节点支持 `inputMapping/outputMapping` 与 `expression` 条件边。
-    - `shell_only` 路由语义修正为“仅暴露 shell bridge + 优先原生工具协议”，而非直接走提示词回退。
-  - 统一图谱第一批代码实现已落地（2026-03-25）：
-    - `@simpagent/core` 新增 catalog 契约：`CatalogNode / CatalogRelation / CatalogNodeFacet` 及对应 facet payload 类型。
-    - `PromptUnitSpec` 新增 `sourceRef`，`PromptUnitSource` 新增 `catalog_node` 来源标记。
-    - `runtime-node` SQLite 新增 `catalog_nodes / catalog_relations / catalog_node_facets` 三张表。
-    - `AppDatabase` 新增 catalog CRUD、catalog PromptUnit 映射、catalog 上下文 PromptUnit 投影读取。
-    - `seedDefaultConfigs` 与 JSON preset 导入会把旧 PromptBlock / Tool 同步写入 catalog。
-    - `runAgentNode()` 已在 compile 前把 catalog 上下文投影块并入现有 PromptCompiler 主链。
-  - 统一图谱第二批 CodeMode bridge 已落地（2026-03-25）：
-    - 新增 `InternalShellBridge`，在 `shell_command` 内部拦截 `simpagent mcp call ...` 与 `simpagent skill call ...`。
-    - MCP bridge 已接入官方 MCP TypeScript SDK，并支持 `stdio / streamable-http / sse` 三种 transport。
-    - bridge 内部参数标准固定为 `--args-json`，同时兼容 flags 输入并在执行前归一化。
-    - `syncMcpServer()` 会把 `tools/list` 结果映射成 catalog 子节点，并写入 `tool + integration` facet。
-    - skill bridge 已支持本地脚本执行、`args_json / flags` 两种参数模式、超时、stdout/stderr 捕获与结构化输出。
-    - `AppDatabase.getPromptUnit/listPromptUnits` 与 runtime snapshot 读取已补上 `projectId` 作用域，避免 catalog 兼容读取串项目。
-    - 新增 `test:catalog-bridge`，覆盖 catalog PromptUnit 兼容读取、relation CRUD、三类 MCP transport、两种参数输入、skill 成功/缺参/失败路径，以及 catalog 上下文 PromptUnit 投影检查。
-  - 统一图谱收口补齐（2026-03-25）：
-  - `@simpagent/runtime-node` 已新增统一 `test` 聚合脚本，根级 `npm run test:workspaces` 不再空转。
-  - 根测试入口现在会真实执行 `test:smoke + test:catalog-bridge` 两套 package 级回归。
-  - 本轮收口已完成提交，计划状态与仓库当前行为已重新对齐。
-  - 统一图谱剩余 package 层收口已完成（2026-03-25）：
-    - core 契约新增统一权限规则与审批请求类型。
-    - `runtime-node` 新增 `security/permissions.ts`，落地 `deny / ask / allow` Shell 权限内核。
-    - `shell_command` 已接入 `approval_requests` 审批记录、人工恢复与 trace/side effect 审计。
-    - `system_config` 已支持持久化 `permissionPolicy`。
-    - HTTP 已补齐 `catalog` 的 node / facet / relation CRUD，以及 run 级审批请求查询/回复接口。
-    - 新增 `test:permissions-catalog`，覆盖权限允许/审批/拒绝、审批请求落库、catalog HTTP CRUD。
-- 验证：`npm run build:workspaces` 通过、`npm run test:workspaces` 通过、`npm run --workspace @simpagent/runtime-node test:smoke` 通过、`npm run --workspace @simpagent/runtime-node test:catalog-bridge` 通过、根前端 `npm run build` 通过（2026-03-25）。
-- 新增框架导览文档（2026-03-29）：
-  - 文档：`docs/SimpleAgent框架总览与代码导览.md`
-  - 已明确当前框架梳理边界只看 `packages/core`、`packages/runtime-node`、`packages/runtime-worker`、`packages/runtime-tauri-bridge` 与 `backend` 兼容壳。
-  - 已明确 `packages/runtime-node` 是当前 SimpleAgent 框架真源，`backend` 仅是兼容壳，`apps/*` 与根 `src/*` 不属于本次框架导览范围。
-  - 已把 PromptUnit、统一图谱、三层工具架构、LangGraph 运行时、权限审批、MCP/skill bridge、HTTP/WS、测试入口等主线能力与关键文件位置写成可复用索引，供后续 AI/人工协作先查后改。
-- 新增架构核查结论（2026-03-29，进行中）：
-  - `catalog -> PromptUnit 投影` 与 `shell_command -> InternalShellBridge -> MCP/skill` 两段链路已经真实接通，并且已有专项测试覆盖。
-  - 但 `catalog` 中的 MCP/skill/tool 节点目前主要用于“Prompt 投影 + shell bridge 执行提示”，还没有并入 `ToolRegistry.listCanonicalTools()` 这条 canonical tool 主链；也就是说，“统一图谱里的工具”和“runtime 暴露给模型的 canonical tools”目前仍是并行关系，不是单一真源。
-  - `Agent.toolRoutePolicy` 真实生效，作用是“模型工具暴露协议路由策略”，不是“业务角色策略”；它会影响 `responses/chat_function/prompt_protocol` 等适配器选择。
-  - `Agent.role`、`handoffPolicy`、`Workflow.routingPolicies`、`outputContract`、`modelPolicyId/contextPolicyId/toolPolicyId/postChecks` 当前主要还是配置/类型层占位，尚未形成完整运行时闭环；其中动态路由现在只对硬编码的 `agent.orchestrator + latestAssistantText.nextAgentId` 做了首版特判。
-- 新增核查测试结果（2026-03-29）：
-  - `runtime-node test:smoke` 通过，证明默认 3 节点工作流最小链路能跑通到 `node.review`，但使用的是 `mock provider`，不能视为真实工具闭环证明。
-  - `runtime-node test:catalog-bridge` 通过，证明 MCP/skill bridge 与 catalog 上下文 Prompt 投影有效，但它走的是 `InternalShellBridge` 直连测试，不是 canonical mcp/skill tool 路由。
-  - `runtime-node test:permissions-catalog` 通过，证明 shell 审批与 catalog API 有真实落地。
-  - `runtime-node build` 通过，当前 Node 主运行时编译层面正常。
-- 已完成（2026-04-01，本轮 package/framework 注释治理）：首批高优先级文件注释补齐与测试回归：
-  - `packages/core/src/ports/index.ts`：补齐了各 Port 方法职责、抽象边界与 review 关注点；
-  - `packages/core/src/runtime/toolLoopExecutor.ts`：补齐了工具循环输入/输出、停止条件与 rounds 统计说明；
-  - `packages/runtime-node/src/providers/capabilities.ts`：补齐了 vendor 能力矩阵与前置校验设计意图；
-  - `packages/runtime-node/src/api/http.ts`：补齐了路由分区、输入收窄、provider 默认值合并、审批恢复与 PromptUnit 兼容入口说明；
-  - `packages/core/src/runtime/agentRoundExecutor.ts`：补齐了单轮流式执行的职责边界、事件分支含义与 trace 写入意图；
-  - `packages/core/src/runtime/toolCallAssembler.ts`：补齐了流式 tool_call 参数组装、兜底解析与调试快照用途；
-  - `packages/core/src/prompt/compiler.ts`：补齐了编译阶段的中间结构、排序/覆盖规则、上下文裁剪与装配主流程说明；
-  - `packages/runtime-node/src/api/index.ts`：补齐了 API 统一出口文件存在的原因，避免 review 时误判成“空转发冗余文件”；
-  - 已完成验证：`npm run --workspace @simpagent/core build`、`npm run --workspace @simpagent/runtime-node build`、`npm run --workspace @simpagent/runtime-node test`、`npm run test:workspaces` 全部通过。
-  - 已识别的下一批高价值注释目标：
-    - `packages/runtime-node/src/runtime/engine.ts`
-    - `packages/runtime-node/src/providers/unifiedClient.ts`
-    - `packages/runtime-node/src/core/tools/exposurePlanner.ts`
-    - `packages/runtime-node/src/storage/db.ts`
-    - `packages/runtime-node/src/catalog/mappers.ts`
-- 正在做（2026-03-31，本轮实现）：
-  - 已开始落实“catalog 单一工具真源 + handoff 工具化编排”重构。
-  - 第一批底层契约已调整：
-    - `BuiltinToolName` 已纳入 `handoff`；
-    - catalog tool facet 已扩展为可直接表达 route / exposure / permission；
-    - `RunState.routingState` 已补 `pendingHandoff`；
-    - 工具循环已补“工具执行后提前结束本轮”的钩子，供 handoff 使用。
-  - 第二批工具主链已开始切换：
-    - builtin 定义已具备 catalog node/facet 投影能力；
-    - `ToolRegistry` 已改为从 catalog 构造 canonical tool，而不是从旧 `tools/tool_versions` 读取；
-    - tool 的 catalog prompt 投影已去掉 shell 命令模板，改为纯结构化执行说明；
-    - 默认 seed 已开始把 builtin 直接写入 catalog，并把 `handoff` 纳入默认 agent 白名单。
-  - 第三批运行时主链已进入收口：
-    - 新增 `McpToolExecutor / SkillToolExecutor`，开始承接 canonical `mcp / skill_tool` 直连执行；
-    - `InternalShellBridge` 已开始退化为“命令解析 + 转调结构化执行器”；
-    - `engine.runAgentNode()` 已开始消费 snapshot 中冻结的 resolved canonical tools，并在 handoff 成功后写入 `pendingHandoff` 候选包；
-    - `engine.decideNextNode()` 已开始优先读取 `pendingHandoff`，逐步移除旧的 `agent.orchestrator + nextAgentId` 硬编码路由思路；
-    - `/api/tools` 的旧更新入口已删除，builtin 配置更新已改成写回 catalog tool facet；
-    - `runtime-node` 已新增 `test:handoff-workflow`，用 deterministic mock provider 验证 `research -> summary -> review` 三节点 handoff 通路。
-- 新增本轮最终验证（2026-03-31）：
-  - `npm run --workspace @simpagent/core build` 通过。
-  - `npm run --workspace @simpagent/runtime-node build` 通过。
-  - `npm run --workspace @simpagent/runtime-node test` 通过：
-    - `test:smoke`
-    - `test:catalog-bridge`
-    - `test:handoff-workflow`
-  - `test:permissions-catalog`
-  - `npm run build:workspaces` 通过。
-  - `npm run test:workspaces` 通过。
-- 新增结构治理结论（2026-03-31）：
-  - 已确认当前仓库真正的问题不是“framework 和 app 放在同一个 monorepo”本身，而是“根目录遗留入口、兼容壳、副本源码、应用级运行包装”四类内容的边界命名不清。
-  - 已冻结后续目录治理基线：
-    - 根目录只保留 workspace 编排层。
-    - `packages/*` 只保留框架真源。
-    - `apps/*` 只保留具体软件，并在 app 内部统一为 `web / desktop / runtime`。
-    - `backend/` 只保留兼容壳，不再保留第二份后端源码副本。
-  - 已确认后续迁移顺序应为：先删根级假入口，再删 `backend/src` 假主线，再把 `apps/*/backend` 正名为 `runtime`，最后统一清理产物与文档。
+  - Monorepo/workspaces 已建立，主线目录为 `packages/*`、`apps/*`、`backend` 兼容壳。
+  - `@simpagent/core` 已提供核心契约、PromptCompiler、ToolLoop、WorkflowRegistry、Ports 与统一运行时抽象。
+  - `@simpagent/runtime-node` 已接通 SQLite、LangGraph、HTTP API、WebSocket、工具执行、PromptTrace、checkpoint/history/patch/fork、approval 等主链能力。
+  - 工具主链已具备：
+    - builtin tools（`shell_command`、`apply_patch`、`read_file`、`web_search`、`update_plan`、`request_user_input`、`view_image`、`handoff`）
+    - canonical tool 抽象
+    - provider 侧暴露适配
+    - MCP / skill 结构化执行器
+  - 统一图谱 `catalog` 已进入运行时主链，支持节点 / facet / relation CRUD，并能投影为 PromptUnit 与上下文块。
+  - human-in-the-loop 已具备：
+    - interrupt / resume
+    - approval request
+    - state patch
+    - prompt override
+    - fork
+  - 现有验证已通过（2026-04-01 再次确认）：
+    - `npm run --workspace @simpagent/runtime-node build`
+    - `npm run --workspace @simpagent/runtime-node test`
+- 正在做：
+  - 收缩 `PLANS.md` 与 `PROGRESS.md`，把“当前计划”和“历史沉淀”分开。
+  - 清理根 `README.md` 与调试台相关漂移描述。
+  - 准备新增“框架给 App 开发者用”的开发指南。
+  - 评估并恢复最小 `apps/dev-console` 调试台，用真实框架接口做烟雾测试。
 - 下一步：
-  1. 继续细化更高维度权限：network / fs / 额外权限申请，而不只限于 command/path。
-  2. 把更多 skill bundle / MCP server 导入逻辑做成正式适配层，而不只是运行时桥接。
-  3. 按结构治理方案执行目录收口：
-    - 去掉根 `src/*` 与根 Vite 遗留入口。
-    - 将 `backend` 收口为纯兼容壳。
-    - 将 `apps/*/backend` 重命名为 `apps/*/runtime`。
-  4. 把 catalog 中的 MCP/skill/tool 节点正式并入 `ToolRegistry -> CanonicalToolSpec` 主链，消除“Prompt 投影链”和“canonical tool 链”双轨并存的问题。
-  5. 把 catalog 项目隔离继续往更多旧 API/旧表兼容路径上收紧，避免默认 `projectId=default` 泄漏。
-  6. 继续补 runtime-node API / WS / trace 的全量测试矩阵。
-  7. 继续完善 handoff 周边能力：例如 packet 消费可视化、失败重试策略、以及更丰富的 handoff payload/审计视图。
-  8. 后续任何 package/framework 层改动，优先对照 `docs/SimpleAgent框架总览与代码导览.md` 检查是否已有现成实现，避免重复造轮子。
-  9. 继续为 `packages/core` 与 `packages/runtime-node` 做“教学向中文注释”治理，优先覆盖高复杂度控制流与接口边界文件，再逐步扩展到 registry / storage / exposurePlanner / runtime engine 等二线重文件。
+  1. 补 `README.md` 与新增框架开发指南文档，明确当前对外暴露能力与推荐接线方式。
+  2. 核查 `packages/core` 与 `packages/runtime-node` 是否还有“文档说已完成、但代码没接上”的缺口。
+  3. 恢复 `apps/dev-console`，并让它覆盖 run / trace / history / prompt / catalog / approval / fork 等关键观察面。
+  4. 跑完整构建与测试，确认调试台不是展示壳，而是能走真实最小链路。
 
 ## 关键决策与理由（防止“吃书”）
-- 决策A：执行内核采用 LangGraph.js（原因：直接获得 checkpoint / interrupt / replay / history / updateState，避免自研运行时黑洞）。
-- 决策B：配置与 Trace 基线使用 SQLite（原因：单机迭代快、结构清晰、便于调试与查询）。
-- 决策C：Provider 层不依赖 SDK，统一 `fetch + REST/SSE`（原因：兼容 OpenAI 与 Gemini/OpenAI-compatible，更可控）。
-- 决策D：工具系统采用统一抽象（function/shell/http/mcp_proxy），而非全量 shell 化（原因：兼容性和安全性更稳）。
-- 决策E：v0.2 工具体系采用“三层架构”（外层来源层 -> 中间 Canonical Tool Layer -> 内层模型暴露适配层），原因：换模型 API 时不重写工具定义，只切暴露策略。
-- 决策F：memory/history/worldbook 在提示词编译侧统一为 `PromptUnit`，原因：避免“记忆特殊化”导致能力不一致，便于可视化装配与人工编辑。
-- 决策G：runtime 先完成“真流式 + 多轮工具循环”主链路，再逐步细化 `chat_custom/structured/prompt` 的真实请求转换，原因：先把可观测性和循环时序跑通，避免同时改协议与运行时导致调试面过宽。
-- 决策H：内层暴露适配器的选择由“模型路由配置（API家族/工具协议画像）”决定，而不是由人按工具逐个指定，原因：工具定义应保持 API 无关，换模型只改路由画像配置即可。
-- 决策I：PromptCompiler 统一以 PromptUnit 为最小控制单元，保留 block trace 仅用于兼容，原因：实现“万物皆提示词块”的统一编排与可编辑性。
-- 决策J：工程形态升级为 monorepo（core + runtime-node + runtime-worker + runtime-tauri-bridge + apps），原因：避免“复制项目”导致分叉失控，支持多端复用与独立演进。
-- 决策K：`backend` 保留兼容壳而不是立即删除，原因：一次性重构期间降低迁移风险，兼容旧脚本和使用习惯。
-- 决策L：Prompt 全局定义与 Agent 运行态绑定分离（`PromptUnit` vs `promptBindings`），原因：同一提示词要被多 Agent 复用时，启停/顺序属于 Agent 上下文而非全局属性。
-- 决策M：`toolRoutePolicy` 放在 Agent（不是 Tool），原因：内层 API 路由取决于模型能力与场景策略，而非单个工具本体定义。
-- 决策N：后续框架主线采用“统一图谱 + PromptUnit 投影 + 可选 facet 执行载荷”模型，原因：既保留“万物可提示词化”的统一视角，又避免节点类型与 payload 表继续裂变。
-- 决策O：MCP/skills 后续默认优先走 CodeMode 风格的“prompt 暴露 + shell/exec 执行”路线，而不是全面 function-style，原因：便于统一纳入 PromptUnit 管控、层级化暴露与可审计权限链路。
-- 决策P：统一图谱优先统一定义层，不吞并运行态表，原因：`runs / trace / tool_calls / side_effects` 属于执行审计，不属于资源目录。
-- 决策Q：树结构优先通过 `parent_node_id` 建模，关系表只承载横向图关系，原因：目录树是主路径，若所有结构都强行走 edge，会让查询、迁移与心智模型同时变重。
-- 决策R：同一项目下不同 MCP server 的同名 tool 在 catalog 中必须使用“唯一节点名 + 原始工具名分离”策略，原因：`catalog_nodes(project_id, name)` 的唯一约束是真实存在的，显示名与内部稳定名不能混用。
+- 决策A：框架真源继续以 `packages/runtime-node` 为准，而不是回退到 `backend` 或某个 app 内部后端副本。
+  原因：运行时、HTTP、WS、SQLite、LangGraph、权限、测试都已集中在这里，继续分叉只会制造双主线。
+- 决策B：`PLANS.md` 只记录“当前未完成执行计划”，不再保留已完成历史任务。
+  原因：计划文件的作用是指导接下来怎么做，不是保存执行墓碑。
+- 决策C：`PROGRESS.md` 只保留最新结论、关键决策、当前风险与下一步。
+  原因：项目记忆需要短快，避免长上下文下继续失真。
+- 决策D：新增一份面向 App 开发的框架文档，而不是继续把所有信息堆在总览文档里。
+  原因：`docs/SimpleAgent框架总览与代码导览.md` 适合“找代码”，但不够直接回答“怎么基于框架造一个 app”。
+- 决策E：调试台继续复用 `@simpagent/runtime-node`，通过 `projectId/dataDir/presetDir/port` 做隔离，不另写一套后端。
+  原因：调试台的目标是验证框架，而不是复制框架。
 
 ## 常见坑 / 复现方法
-- 坑1：PowerShell 命令语法与 bash 花括号展开不同，批量创建目录时容易写错；需使用数组循环创建。
-- 坑2：首次并行执行 `git init` 与 `git status` 会有时序问题，可能出现“不是 git 仓库”的假错误；重新执行即可。
-- 坑3：`apply_patch` 单次补丁过大时在 Windows 可能报“文件名或扩展名太长”；需拆分为多次补丁提交。
-- 坑4：LangGraph `StateGraph` 在动态节点 ID 的 TypeScript 泛型约束比较严格，动态构图时容易报类型错误；首版可在构图处使用 `any` 包裹 builder，后续再做更强类型化封装。
-- 坑5：`JsonValue` 类型不允许 `undefined`，前端/执行器返回对象里如果带 `undefined` 字段会导致 TypeScript 报错；需在返回前删除字段或改用显式 `null`。
-- 坑6：PowerShell 会把 `rg` 正则中的 `|` 当成管道符；复杂正则查询时需改用更简单模式或额外转义。
-- 坑7：部分 npm 版本不支持 `workspace:*` 依赖声明；若安装报 `EUNSUPPORTEDPROTOCOL`，需改为明确版本号并依赖 workspaces 的本地链接机制。
-- 坑8：`createMcpExpressApp()` 已内置 `express.json()`；测试或适配代码若再额外 `app.use(express.json())`，会导致 MCP 请求体被重复读取，出现 `stream is not readable`。
+- 坑1：仓库里曾存在 `apps/dev-console`，但当前工作区该目录被删除；如果只看 README 会误以为它仍可直接运行。
+- 坑2：`apps/mededu-cockpit` 的 `App.tsx` 文件头仍提到 `apps/dev-console`，这属于历史注释漂移，不代表当前目录角色正确。
+- 坑3：根 `README.md` 仍引用旧的 dev-console 运行方式，和当前文件树不一致；文档判断前必须先对照实际目录与 `git status`。
+- 坑4：Windows 下大补丁改文档容易一次过大，必要时拆分提交；否则后续 review 很难定位真正的结构变化。
+- 坑5：当前测试已经能证明 package/framework 主链可运行，但还不能自动证明“调试台前端”这层也已经恢复并接通，因此本轮必须补一条 app 级验证链。
