@@ -66,11 +66,14 @@
       - 下一轮继续调用模型时，必须把上一轮 assistant 的 `tool_calls` 与对应 `role=tool` 消息一起回填。
     - 已新增回归测试 `test:chat-function-loop`，专门防止这条 chat/function 兼容链回退。
 - 正在做：
+  - 已根据用户最新要求重写下一阶段 `PLANS.md`：
+    - dev-console 要从“最小壳”继续升级成“项目级测试台”；
+    - 重点改项目级 `data/` 落盘、专属 preset、结构化前端 UI、prompt unit 顺序/开关可视化。
   - 评估调试台是否还需要更强的图形化视图，而不只是当前“观察 + 控制 + JSON 面板”。
 - 下一步：
-  1. 继续核查 `packages/core` 与 `packages/runtime-node` 是否还有“文档说已完成、但代码没接上”的缺口。
-  2. 视需要继续增强调试台的图形化视图，例如更直观的 workflow / catalog 图，而不只是当前结构化面板。
-  3. 把更多 OpenAI-compatible 厂商按 `generic_openai_compat` 做一次最小兼容回归，尽量把“只差协议细节”的问题提前暴露。
+  1. 先修正 dev-console 的 SQLite 与项目数据目录，确保落盘到 `apps/dev-console/backend/data/`。
+  2. 为 dev-console 新建专属 preset，覆盖医学诊疗训练、多 agent、prompt units、handoff、评判与科研辅助。
+  3. 重构调试台前端，减少纯 JSON 黑框，改成结构化展示，并加入 prompt unit 顺序/开关调节。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：框架真源继续以 `packages/runtime-node` 为准，而不是回退到 `backend` 或某个 app 内部后端副本。
