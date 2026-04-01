@@ -138,8 +138,30 @@ export class ToolLoopExecutor {
         calls: detectedCalls
       });
       allToolResults.push(...toolOutput.toolResults);
-      // 下一轮的上下文 = 原始 messages + 本轮工具结果消息。
-      currentMessages = [...currentMessages, ...toolOutput.toolRoleMessages];
+      /**
+       * 对 chat/function 这类原生工具协议，下一轮发回 provider 时必须同时带上：
+       * 1. assistant 的 `tool_calls`
+       * 2. 随后的 `role=tool` 结果消息
+       *
+       * 否则很多 OpenAI-compatible provider 会报：
+       * “tool 消息没有对应的前置 tool_calls”。
+       */
+      const assistantToolCallMessage: UnifiedMessage[] =
+        detectedCallsFromProvider.length > 0
+          ? [
+              {
+                role: "assistant",
+                content: round.text || "",
+                toolCalls: detectedCallsFromProvider.map((call) => ({
+                  toolCallId: call.toolCallId,
+                  toolName: call.toolName,
+                  argumentsJson: call.argumentsJson
+                }))
+              }
+            ]
+          : [];
+      // 下一轮的上下文 = 原始 messages + assistant tool_calls + 本轮工具结果消息。
+      currentMessages = [...currentMessages, ...assistantToolCallMessage, ...toolOutput.toolRoleMessages];
       currentReq = { ...currentReq, messages: currentMessages };
       // 某些工具本身意味着“当前 agent 应让出控制权”，这时不再继续追问模型。
       if (

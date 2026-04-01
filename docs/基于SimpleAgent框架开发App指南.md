@@ -281,9 +281,27 @@ POST /api/runs
 
 - 优先填 `apiMode = "chat_completions"`；
 - `baseURL` 指到兼容接口根路径；
-- `vendor` 可以继续走当前兼容层支持的厂商标识。
+- `vendor` 应优先使用 `generic_openai_compat`，除非你明确接的是 OpenAI 官方或已单独适配的厂商。
 - `apps/dev-console` 调试台默认就应该走这条“真实 LLM 配置口”，不要把 mock provider 当成调试台主方案。
 - mock provider 目前主要仍用于 package 级自动化测试，不代表新 App 的默认接入方式。
+
+一个已经实测跑通的 DeepSeek 配置示例：
+
+```json
+{
+  "vendor": "generic_openai_compat",
+  "apiMode": "chat_completions",
+  "model": "deepseek-chat",
+  "baseURL": "https://api.deepseek.com",
+  "temperature": 0.2
+}
+```
+
+说明：
+
+- `https://api.deepseek.com` 与 `https://api.deepseek.com/v1` 都可以作为兼容根路径；
+- 当前框架已经修过一轮 DeepSeek 风格的流式 tool-call 分片兼容，因此真实 function call 烟雾测试已能跑通；
+- 如果你只是要接其他 OpenAI-compatible 服务，也优先按这个模式接入，再根据厂商差异微调。
 
 ### 5.3 实时观察一次运行
 

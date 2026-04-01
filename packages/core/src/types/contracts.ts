@@ -385,12 +385,20 @@ export interface AgentToolRoutePolicy {
  * LLM 输入消息（统一抽象）。
  * 说明：
  * - 首版以文本为主，但保留 `metadata` 扩展位，方便后续挂图片、引用、来源标签等。
+ * - 当 assistant 需要把“上一轮实际发出的 tool_calls”回填给 OpenAI-compatible chat 接口时，
+ *   会通过 `toolCalls` 携带结构化函数调用记录；
+ * - 这样下一轮再发送 `role=tool` 消息时，provider 才能把它识别成“对上一个 assistant tool_calls 的回应”。
  */
 export interface UnifiedMessage {
   role: MessageRole;
   content: string;
   name?: string;
   toolCallId?: string;
+  toolCalls?: Array<{
+    toolCallId: ID;
+    toolName: string;
+    argumentsJson?: JsonObject;
+  }>;
   metadata?: JsonObject;
 }
 

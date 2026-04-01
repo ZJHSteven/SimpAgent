@@ -57,13 +57,20 @@
       - `GET /api/health`
       - `GET /api/workflows`
       - `GET /api/templates`
+  - DeepSeek 真实链路验证已完成（2026-04-01）：
+    - 以 `vendor=generic_openai_compat`、`apiMode=chat_completions`、`model=deepseek-chat`、`baseURL=https://api.deepseek.com` 发起真实 run。
+    - 已确认 run 最终 `completed`，并结束于 `node.review`。
+    - 已确认 DeepSeek 在当前框架里能走到真实工具调用，而不是只输出自然语言。
+    - 已修复两类兼容问题：
+      - 流式 tool-call 分片缺失 `id/name` 时，需要按槽位稳定累计，不能每片都生成新 callId。
+      - 下一轮继续调用模型时，必须把上一轮 assistant 的 `tool_calls` 与对应 `role=tool` 消息一起回填。
+    - 已新增回归测试 `test:chat-function-loop`，专门防止这条 chat/function 兼容链回退。
 - 正在做：
-  - 等待用户提供真实 `apiKey / baseURL`，再补一轮真实 LLM 端到端运行验证。
   - 评估调试台是否还需要更强的图形化视图，而不只是当前“观察 + 控制 + JSON 面板”。
 - 下一步：
-  1. 等用户提供真实 `apiKey / baseURL` 后，用 `apps/dev-console` 直接跑一次真实 LLM workflow，验证 createRun -> trace -> prompt compile -> human-in-the-loop 全链路。
-  2. 继续核查 `packages/core` 与 `packages/runtime-node` 是否还有“文档说已完成、但代码没接上”的缺口。
-  3. 视需要继续增强调试台的图形化视图，例如更直观的 workflow / catalog 图，而不只是当前结构化面板。
+  1. 继续核查 `packages/core` 与 `packages/runtime-node` 是否还有“文档说已完成、但代码没接上”的缺口。
+  2. 视需要继续增强调试台的图形化视图，例如更直观的 workflow / catalog 图，而不只是当前结构化面板。
+  3. 把更多 OpenAI-compatible 厂商按 `generic_openai_compat` 做一次最小兼容回归，尽量把“只差协议细节”的问题提前暴露。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：框架真源继续以 `packages/runtime-node` 为准，而不是回退到 `backend` 或某个 app 内部后端副本。
@@ -86,3 +93,5 @@
 - 坑6：前端 `tsconfig` 开启了 `erasableSyntaxOnly` 时，不能偷懒使用 TypeScript 参数属性这类语法糖；需要改回朴素写法。
 - 坑7：Windows 下 `spawn(npm.cmd, ...)` 在当前环境里可能直接报 `EINVAL`；统一运行包装脚本改为 `shell: true` 后才稳定。
 - 坑8：当前 `apps/dev-console` 已接好真实 LLM 参数入口，但没有用户凭据时不能伪造“真实模型已跑通”的结论；目前只验证到了框架后端运行、库存接口和前端构建层。
+- 坑9：OpenAI-compatible 厂商的流式 function call 经常不会在每个分片都重复返回 `id/name`；如果 parser 不按槽位累计，工具参数会被拆碎，最终导致错误 toolCallId 或空参数。
+- 坑10：对 `chat_completions` 来说，只把 `role=tool` 消息喂回去是不够的；前一条 assistant 必须显式带上 `tool_calls`，否则 provider 可能直接拒绝请求。

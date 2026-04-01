@@ -56,6 +56,21 @@ function toChatMessages(
     };
     if (msg.name) base.name = msg.name;
     if (msg.toolCallId) base.tool_call_id = msg.toolCallId;
+    if (msg.role === "assistant" && Array.isArray(msg.toolCalls) && msg.toolCalls.length > 0) {
+      /**
+       * OpenAI-compatible chat 接口要求：
+       * - 若后续要发送 `role=tool` 消息，则前一条 assistant 必须显式携带 `tool_calls`；
+       * - 否则 provider 会认为 tool 消息“没有对应的前置函数调用”。
+       */
+      base.tool_calls = msg.toolCalls.map((toolCall) => ({
+        id: toolCall.toolCallId,
+        type: "function",
+        function: {
+          name: toolCall.toolName,
+          arguments: JSON.stringify(toolCall.argumentsJson ?? {})
+        }
+      }));
+    }
     return base;
   });
 }
@@ -502,6 +517,16 @@ export class UnifiedProviderClient {
       model: req.model
     };
 
+    /**
+     * 某些 OpenAI-compatible 提供商在流式 tool_call 分片时：
+     * - 首片只给 `id + name`；
+     * - 后续片只给 `arguments`，不再重复 `id/name`；
+     * - 甚至只给 `index`。
+     *
+     * 因此这里必须按“槽位 index”维护稳定状态，不能在缺少 id/name 时每片都生成新的随机 toolCallId。
+     */
+    const toolCallSlots = new Map<number, { toolCallId: string; toolName: string }>();
+
     for await (const frame of parseSse(resp)) {
       if (frame.data === "[DONE]") {
         yield {
@@ -538,16 +563,31 @@ export class UnifiedProviderClient {
       }
 
       const toolCalls = Array.isArray(delta.tool_calls) ? delta.tool_calls : [];
-      for (const rawCall of toolCalls) {
+      for (let toolCallOffset = 0; toolCallOffset < toolCalls.length; toolCallOffset += 1) {
+        const rawCall = toolCalls[toolCallOffset];
         const tc = rawCall as Record<string, unknown>;
         const fn = ((tc.function as Record<string, unknown> | undefined) ?? {}) as Record<string, unknown>;
+        const slotIndex =
+          typeof tc.index === "number" && Number.isFinite(tc.index) ? tc.index : toolCallOffset;
+        const prevSlot = toolCallSlots.get(slotIndex);
+        const nextToolCallId =
+          typeof tc.id === "string"
+            ? tc.id
+            : prevSlot?.toolCallId ?? `toolcall_slot_${slotIndex}`;
+        const nextToolName =
+          typeof fn.name === "string"
+            ? fn.name
+            : prevSlot?.toolName ?? "unknown_function";
+        toolCallSlots.set(slotIndex, {
+          toolCallId: nextToolCallId,
+          toolName: nextToolName
+        });
         yield {
           type: "tool_call_request",
           provider: req.vendor,
           apiMode: "chat_completions",
-          toolCallId:
-            typeof tc.id === "string" ? tc.id : `toolcall_${randomUUID().replace(/-/g, "")}`,
-          toolName: typeof fn.name === "string" ? fn.name : "unknown_function",
+          toolCallId: nextToolCallId,
+          toolName: nextToolName,
           argumentsDelta: typeof fn.arguments === "string" ? fn.arguments : undefined
         };
       }
