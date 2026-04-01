@@ -47,23 +47,40 @@ export interface AgentModelPort {
 export class AgentRoundExecutor {
   constructor(private readonly modelPort: AgentModelPort, private readonly traceSink?: AgentRoundTraceSink) {}
 
+  /**
+   * 执行“一轮模型流式调用”。
+   *
+   * 输入：
+   * - `req`：本轮模型请求；
+   * - `ctx`：trace 归属上下文（run / thread / node / agent）。
+   *
+   * 输出：
+   * - 返回这一轮最终汇总出的文本、工具调用、推理摘要和 usage；
+   * - 不直接执行工具，工具循环由外层 `ToolLoopExecutor` 负责。
+   */
   async executeRound(
     req: UnifiedModelRequest,
     ctx: AgentRoundExecutorTraceContext
   ): Promise<AgentRoundExecuteResult> {
+    // 文本通常按 delta 分片到达，所以先收集片段，最后统一拼接。
     const textParts: string[] = [];
+    // thoughts 可能多次返回，因此累加；reasoningSummary 则只保留最近一次摘要。
     const thoughts: string[] = [];
     let reasoningSummary: string | undefined;
     let usage: JsonValue | undefined;
+    // 原始事件数能帮助我们判断 provider 是否真的在流式吐事件。
     let rawEventsCount = 0;
+    // 某些 provider 会在开始事件中回填“实际生效的 model / apiMode”。
     let provider = req.vendor;
     let apiMode = req.apiMode;
     let model = req.model;
+    // ToolCallAssembler 负责把分片 tool_call 参数重组成完整 JSON。
     const assembler = new ToolCallAssembler();
 
     for await (const event of this.modelPort.stream({ ...req, stream: true })) {
       rawEventsCount += 1;
       if (event.type === "response_started") {
+        // 以响应层实际值为准，避免请求参数和最终展示信息不一致。
         provider = event.provider;
         apiMode = (event.apiMode ?? apiMode) as typeof apiMode;
         model = event.model ?? model;
@@ -71,6 +88,7 @@ export class AgentRoundExecutor {
       }
 
       if (event.type === "text_delta") {
+        // 文本增量一边累计，一边写 trace，便于前端做近实时渲染。
         textParts.push(event.delta);
         this.traceSink?.onEvent({
           kind: "stream_event",
@@ -82,6 +100,7 @@ export class AgentRoundExecutor {
       }
 
       if (event.type === "tool_call_request") {
+        // 这里只做“检测 + 组装”，不在这里执行工具，避免单轮执行和多轮循环耦合。
         const pushed = assembler.push(event);
         this.traceSink?.onEvent({
           kind: "tool_call_detected",
@@ -98,6 +117,7 @@ export class AgentRoundExecutor {
       }
 
       if (event.type === "reasoning") {
+        // reasoningSummary 更适合展示；thoughts 更接近原始思考片段。
         if (event.reasoningSummary) reasoningSummary = event.reasoningSummary;
         if (event.thoughts?.length) thoughts.push(...event.thoughts);
         this.traceSink?.onEvent({
@@ -114,11 +134,12 @@ export class AgentRoundExecutor {
       }
 
       if (event.type === "response_completed") {
+        // usage 往往在最后一个事件里最完整。
         usage = event.usage;
         continue;
       }
 
-      // raw_event 也记录到 trace，但截断避免过大。
+      // 其他暂未结构化的事件也保留 trace，避免调试时只知道“有怪事发生”却不知道事件内容。
       this.traceSink?.onEvent({
         kind: "stream_event",
         ctx,
@@ -134,7 +155,9 @@ export class AgentRoundExecutor {
       provider,
       apiMode,
       model,
+      // 上层最终看到的是一整段 assistant 文本，因此在这里统一 join。
       text: textParts.join(""),
+      // finalize 会对尚未完全 ready 的参数再做一次兜底解析。
       toolCalls: assembler.finalize(),
       reasoningSummary,
       thoughts: thoughts.length > 0 ? thoughts : undefined,

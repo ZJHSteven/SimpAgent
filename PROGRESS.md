@@ -112,11 +112,15 @@
   - `runtime-node test:catalog-bridge` 通过，证明 MCP/skill bridge 与 catalog 上下文 Prompt 投影有效，但它走的是 `InternalShellBridge` 直连测试，不是 canonical mcp/skill tool 路由。
   - `runtime-node test:permissions-catalog` 通过，证明 shell 审批与 catalog API 有真实落地。
   - `runtime-node build` 通过，当前 Node 主运行时编译层面正常。
-- 正在做：下一批 package/framework 注释治理选点。2026-04-01 这一轮已完成首批高优先级文件注释补齐与测试回归：
+- 已完成（2026-04-01，本轮 package/framework 注释治理）：首批高优先级文件注释补齐与测试回归：
   - `packages/core/src/ports/index.ts`：补齐了各 Port 方法职责、抽象边界与 review 关注点；
   - `packages/core/src/runtime/toolLoopExecutor.ts`：补齐了工具循环输入/输出、停止条件与 rounds 统计说明；
   - `packages/runtime-node/src/providers/capabilities.ts`：补齐了 vendor 能力矩阵与前置校验设计意图；
   - `packages/runtime-node/src/api/http.ts`：补齐了路由分区、输入收窄、provider 默认值合并、审批恢复与 PromptUnit 兼容入口说明；
+  - `packages/core/src/runtime/agentRoundExecutor.ts`：补齐了单轮流式执行的职责边界、事件分支含义与 trace 写入意图；
+  - `packages/core/src/runtime/toolCallAssembler.ts`：补齐了流式 tool_call 参数组装、兜底解析与调试快照用途；
+  - `packages/core/src/prompt/compiler.ts`：补齐了编译阶段的中间结构、排序/覆盖规则、上下文裁剪与装配主流程说明；
+  - `packages/runtime-node/src/api/index.ts`：补齐了 API 统一出口文件存在的原因，避免 review 时误判成“空转发冗余文件”；
   - 已完成验证：`npm run --workspace @simpagent/core build`、`npm run --workspace @simpagent/runtime-node build`、`npm run --workspace @simpagent/runtime-node test`、`npm run test:workspaces` 全部通过。
   - 已识别的下一批高价值注释目标：
     - `packages/runtime-node/src/runtime/engine.ts`

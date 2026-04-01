@@ -28,12 +28,22 @@ import type {
   UnifiedMessage
 } from "../types/index.js";
 
+/**
+ * 生成一次 Prompt 编译的唯一 ID。
+ * 说明：
+ * - 优先用 `crypto.randomUUID()`，保证不同 run / thread 下更稳；
+ * - fallback 只是兼容缺少 Web Crypto 的环境。
+ */
 function newCompileId(): string {
   const cryptoApi = globalThis.crypto as Crypto | undefined;
   if (cryptoApi?.randomUUID) return `pc_${cryptoApi.randomUUID().replace(/-/g, "")}`;
   return `pc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/**
+ * slot 模式下的大区块基础顺序。
+ * 数值越小越靠前；这里只决定“大的区域先后”，同一区域内部还会再比较 sortWeight。
+ */
 const SLOT_ORDER: Record<PromptInsertionPoint, number> = {
   system_pre: 100,
   system_post: 120,
@@ -51,6 +61,12 @@ interface MessageRecord {
   metadata?: JsonObject;
 }
 
+/**
+ * Prompt 编译阶段的统一中间结构。
+ * 说明：
+ * - 显式 PromptUnit、history、memory、tool catalog、task envelope 最后都会先变成它；
+ * - 这样排序、插入、override 不需要分别为每种来源写一套逻辑。
+ */
 interface CompiledUnit {
   id: string;
   source: PromptUnit["source"];
@@ -68,10 +84,18 @@ interface OverrideApplyResult {
   disabledUnitIds: Set<string>;
 }
 
+/**
+ * 用最小模板语法渲染 `{{var}}`。
+ * 这里故意保持简单，避免 PromptCompiler 自己演化成复杂模板引擎。
+ */
 function renderTemplate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_m, key: string) => vars[key] ?? "");
 }
 
+/**
+ * 用字符数粗略估算 token。
+ * 目的不是精确计费，而是给 Prompt 裁剪和 debug 提供一个稳定参考值。
+ */
 function estimateTokensByChars(text: string): number {
   return Math.max(1, Math.ceil(text.length / 4));
 }
@@ -94,6 +118,14 @@ function placementFromInsertionPoint(insertionPoint: PromptInsertionPoint): Prom
   return { mode: "slot", slot: insertionPoint };
 }
 
+/**
+ * 判断某个 PromptUnit 在这次请求里是否应该生效。
+ * 当前支持：
+ * - agentIds
+ * - taskTypes
+ * - keywords
+ * - expression（暂时只接受，不执行表达式求值）
+ */
 function shouldUnitApply(unit: PromptBlock, req: PromptCompileRequest): { ok: boolean; reason: string } {
   const trigger = unit.trigger;
   if (!trigger) return { ok: true, reason: "no trigger (default include)" };
@@ -119,6 +151,10 @@ function shouldUnitApply(unit: PromptBlock, req: PromptCompileRequest): { ok: bo
   return { ok: true, reason: "trigger matched" };
 }
 
+/**
+ * 构造模板变量。
+ * 这些变量不仅给显式 PromptUnit 使用，也会给后面做兜底渲染的运行态单元复用。
+ */
 function buildVars(req: PromptCompileRequest): Record<string, string> {
   const toolNames = req.toolSchemas.map((tool) => tool.toolName).join(", ") || "（无）";
   return {
@@ -131,6 +167,12 @@ function buildVars(req: PromptCompileRequest): Record<string, string> {
   };
 }
 
+/**
+ * 应用旧版 override patch。
+ * 说明：
+ * - 这一步操作的是“原始 PromptUnit 定义”；
+ * - 更细粒度的角色/位置/排序调整由后面的 `promptUnitOverrides` 负责。
+ */
 function applyOverridePatches(units: PromptBlock[], patches: PromptOverridePatch[] | undefined): OverrideApplyResult {
   if (!patches || patches.length === 0) {
     return {
@@ -172,6 +214,12 @@ function applyOverridePatches(units: PromptBlock[], patches: PromptOverridePatch
   };
 }
 
+/**
+ * 对上下文来源做首版裁剪。
+ * 当前策略：
+ * - 先保留高 importance 的 pinned 项；
+ * - 再从最近内容中补齐预算。
+ */
 function sliceContextSources(req: PromptCompileRequest): {
   kept: PromptCompileRequest["contextSources"];
   omitted: PromptCompileRequest["contextSources"];
@@ -194,6 +242,10 @@ function sliceContextSources(req: PromptCompileRequest): {
   };
 }
 
+/**
+ * 应用新版 `promptUnitOverrides`。
+ * 这一步作用于已经统一成 `CompiledUnit` 的结果，因此可以改内容、角色、位置和排序。
+ */
 function applyCompiledUnitOverrides(units: CompiledUnit[], overrides: PromptUnitOverride[] | undefined): CompiledUnit[] {
   if (!overrides || overrides.length === 0) return units;
   const map = new Map(units.map((unit) => [unit.id, { ...unit }]));
@@ -231,6 +283,12 @@ function applyCompiledUnitOverrides(units: CompiledUnit[], overrides: PromptUnit
   return [...map.values()];
 }
 
+/**
+ * 计算一个单元的基础顺序权重。
+ * 规则：
+ * - slot 模式跟随 `SLOT_ORDER`
+ * - role/message anchor 使用固定区间，保证它们在基线消息之后再插入
+ */
 function baseOrderWeight(unit: CompiledUnit): number {
   if (unit.placement.mode === "slot") return SLOT_ORDER[unit.placement.slot] ?? 500;
   if (unit.placement.mode === "before_role_anchor") return 50;
@@ -240,6 +298,10 @@ function baseOrderWeight(unit: CompiledUnit): number {
   return 1000;
 }
 
+/**
+ * 处理“以某种 role 为锚点”的插入。
+ * 没找到锚点时，不报错，而是降级追加到末尾并记录 note。
+ */
 function insertByRoleAnchor(records: MessageRecord[], unit: CompiledUnit, notes: string[]): void {
   if (!unit.enabled || !unit.renderedContent) return;
   if (unit.placement.mode !== "before_role_anchor" && unit.placement.mode !== "after_role_anchor") return;
@@ -267,6 +329,10 @@ function insertByRoleAnchor(records: MessageRecord[], unit: CompiledUnit, notes:
   });
 }
 
+/**
+ * 处理“以某条 messageId 为锚点”的插入。
+ * 如果锚点不存在，同样降级追加到末尾，避免该单元被静默吞掉。
+ */
 function insertByMessageAnchor(records: MessageRecord[], unit: CompiledUnit, notes: string[]): void {
   if (!unit.enabled || !unit.renderedContent) return;
   if (unit.placement.mode !== "before_message_id" && unit.placement.mode !== "after_message_id") return;
@@ -291,6 +357,13 @@ function insertByMessageAnchor(records: MessageRecord[], unit: CompiledUnit, not
   });
 }
 
+/**
+ * 把所有编译单元装配成最终 `messages[]`。
+ * 顺序：
+ * 1. 先排好基线单元；
+ * 2. 再插入 role anchor；
+ * 3. 最后插入 message anchor。
+ */
 function assembleMessages(units: CompiledUnit[]): { finalMessages: UnifiedMessage[]; orderedUnitIds: string[]; notes: string[] } {
   const notes: string[] = [];
   const sorted = [...units].sort((a, b) => {
@@ -338,6 +411,9 @@ function assembleMessages(units: CompiledUnit[]): { finalMessages: UnifiedMessag
   };
 }
 
+/**
+ * 兼容旧配置：当 Agent 没写 `promptBindings` 时，按旧 priority 规则自动生成一份 binding。
+ */
 function buildLegacyBindings(units: PromptBlock[]): AgentPromptBinding[] {
   return units
     .slice()
@@ -351,6 +427,16 @@ function buildLegacyBindings(units: PromptBlock[]): AgentPromptBinding[] {
 }
 
 export class PromptCompiler {
+  /**
+   * 编译 Prompt。
+   * 主流程可以按六步理解：
+   * 1. 准备变量与 override；
+   * 2. 根据 Agent 绑定选择显式 PromptUnit；
+   * 3. 注入 history / memory / tool catalog / task 等运行态单元；
+   * 4. 应用编译后 override；
+   * 5. 装配最终 messages；
+   * 6. 生成 PromptTrace 与 PromptAssemblyPlan。
+   */
   compile(params: {
     agent: AgentSpec;
     blocks: PromptBlock[];
@@ -360,9 +446,11 @@ export class PromptCompiler {
     const compileId = newCompileId();
     const contextPolicyLabel = params.contextPolicyLabel ?? "context.importance_recent(v0.3)";
     const vars = buildVars(params.request);
+    // 第一步：先对原始定义层应用旧版 patch。
     const patched = applyOverridePatches(params.blocks, params.request.overridePatches);
     const units = patched.units;
     const unitById = new Map(units.map((item) => [item.id, item]));
+    // Agent 自己的 promptBindings 优先；没有时再退回旧版 priority 逻辑。
     const bindings = (params.agent.promptBindings && params.agent.promptBindings.length > 0
       ? params.agent.promptBindings
       : buildLegacyBindings(units)
@@ -372,6 +460,7 @@ export class PromptCompiler {
     const rejectedUnits: PromptTrace["rejectedUnits"] = [];
     const renderedVariables: PromptTrace["renderedVariables"] = [];
 
+    // 第二步：把显式 PromptUnit 编译成统一内部结构。
     const compiledFromBindings: CompiledUnit[] = [];
     for (const binding of bindings.sort((a, b) => a.order - b.order)) {
       if (!binding.enabled) continue;
@@ -472,6 +561,7 @@ export class PromptCompiler {
       });
     }
 
+    // 第三步：把运行态上下文也投影成同一种结构，后面才能共用同一套装配逻辑。
     const sliced = sliceContextSources(params.request);
     const historyUnits: CompiledUnit[] = sliced.kept.map((item, idx) => {
       const roleHint = item.metadata?.role;
@@ -537,15 +627,18 @@ export class PromptCompiler {
       metadata: { sourceKind: "task_envelope" }
     };
 
+    // 第四步：合并所有来源，再应用编译后 override。
     const mergedUnits = [...compiledFromBindings, ...historyUnits, ...memoryUnits, toolCatalogUnit, taskUnit];
     const finalCompiledUnits = applyCompiledUnitOverrides(mergedUnits, params.request.promptUnitOverrides);
     for (const unit of finalCompiledUnits) {
       if (!unit.enabled) continue;
+      // 有些 override 会直接改 template，因此这里补一轮兜底渲染。
       if (!unit.renderedContent || unit.renderedContent === unit.contentTemplate) {
         unit.renderedContent = renderTemplate(unit.contentTemplate, vars);
       }
     }
 
+    // 第五步：真正装配最终 messages，并计算整体 token 预算近似值。
     const assembled = assembleMessages(finalCompiledUnits);
     const finalMessages = assembled.finalMessages;
     const allText = finalMessages.map((msg) => msg.content).join("\n");
@@ -560,6 +653,7 @@ export class PromptCompiler {
       groupedUnitIds.set(unit.placement.slot, list);
     }
 
+    // PromptAssemblyPlan 偏“完整复盘”；PromptTrace 偏“快速调试摘要”。
     const promptAssemblyPlan: PromptAssemblyPlan = {
       assemblyId: `asm_${compileId}`,
       agentId: params.agent.id,
