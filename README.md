@@ -15,6 +15,7 @@ SimpAgent 当前已经不是“单个 demo 后端”，而是一个以 `packages
    说明框架主干在哪、关键目录和关键文件分别负责什么。
 2. [`docs/基于SimpleAgent框架开发App指南.md`](docs/基于SimpleAgent框架开发App指南.md)
    说明“如果你要做一个新 App，到底应该怎么接这个框架”。
+   这份文档已经把后端包装入口、真实 LLM 配置口、HTTP/WS 接口面收成速查表，适合后续 AI 直接查。
 3. [`PROGRESS.md`](PROGRESS.md)
    看当前最新结论、已知边界、关键决策和下一步。
 4. [`PLANS.md`](PLANS.md)
@@ -30,6 +31,7 @@ simpagent/
     runtime-worker/        # Worker 轻量适配层（最小链路）
     runtime-tauri-bridge/  # Tauri 前端桥接契约
   apps/
+    dev-console/           # 框架调试台（真实接口烟雾测试面板）
     mededu-cockpit/        # 医学教育前端演示应用
     trpg-desktop/          # 跑团桌面端占位
     learning-desktop/      # 学习桌面端占位
@@ -92,6 +94,13 @@ simpagent/
 
 ```bash
 npm install
+npm run build
+npm run test
+```
+
+等价地，你也可以显式跑 workspace 聚合命令：
+
+```bash
 npm run build:workspaces
 npm run test:workspaces
 ```
@@ -100,6 +109,18 @@ npm run test:workspaces
 
 ```bash
 npm run --workspace @simpagent/runtime-node dev
+```
+
+启动新的框架调试台前端：
+
+```bash
+npm run dev:console
+```
+
+启动调试台专用后端包装：
+
+```bash
+npm run dev:console-backend
 ```
 
 单独运行医学教育前端：
@@ -164,6 +185,7 @@ ws://localhost:3002/ws
 - `projectId` 并没有覆盖所有版本化定义表的数据库分区；当前推荐通过独立 `dataDir` 隔离不同 App。
 - `runtime-worker` 和 `runtime-tauri-bridge` 目前仍是适配层，不等价于 `runtime-node`。
 - 根目录早期前端入口已经不再是主线，后续开发不要再把根 Vite 壳当成默认应用。
+- `apps/dev-console` 当前已经恢复为最小调试台，但“真实 LLM 端到端跑通”仍需要用户后续提供 `apiKey/baseURL`；当前已验证的是前端构建、后端运行、库存接口和框架 package 主链。
 
 ## 一句话开发守则
 

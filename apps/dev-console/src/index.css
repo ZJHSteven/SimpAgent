@@ -1,0 +1,42 @@
+:root {
+  --bg: #edf3fb;
+  --surface-soft: #f8fbff;
+  --line: #d7e2f0;
+  --line-strong: #b6cae2;
+  --text-main: #122033;
+  --text-soft: #314760;
+  --text-muted: #657b96;
+  --primary: #2a65bd;
+  --good: #2c945e;
+  --warn: #b87419;
+  --danger: #c74343;
+
+  color: var(--text-main);
+  font-family: "IBM Plex Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.45;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, rgba(42, 101, 189, 0.16), transparent 30%),
+    radial-gradient(circle at top right, rgba(26, 143, 154, 0.12), transparent 28%),
+    linear-gradient(180deg, #f4f8fd, #edf3fb);
+}

@@ -4,9 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "cross-env SIMPAGENT_PROJECT_ID=trpg-desktop SIMPAGENT_DATA_DIR=./data PORT=3022 npm run --workspace @simpagent/runtime-node dev",
-    "start": "cross-env SIMPAGENT_PROJECT_ID=trpg-desktop SIMPAGENT_DATA_DIR=./data PORT=3022 npm run --workspace @simpagent/runtime-node start",
-    "build": "npm run --workspace @simpagent/runtime-node build"
+    "dev": "node ../../../scripts/run-runtime-node-app.mjs dev trpg-desktop 3022 ./data",
+    "start": "node ../../../scripts/run-runtime-node-app.mjs start trpg-desktop 3022 ./data",
+    "build": "node ../../../scripts/run-runtime-node-app.mjs build trpg-desktop 3022 ./data"
   }
 }
-

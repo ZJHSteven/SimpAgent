@@ -282,6 +282,8 @@ POST /api/runs
 - 优先填 `apiMode = "chat_completions"`；
 - `baseURL` 指到兼容接口根路径；
 - `vendor` 可以继续走当前兼容层支持的厂商标识。
+- `apps/dev-console` 调试台默认就应该走这条“真实 LLM 配置口”，不要把 mock provider 当成调试台主方案。
+- mock provider 目前主要仍用于 package 级自动化测试，不代表新 App 的默认接入方式。
 
 ### 5.3 实时观察一次运行
 
@@ -333,6 +335,122 @@ ws://<host>/ws
 - `POST /api/templates/:templateId/apply`
 
 如果你要做配置面板，优先围绕这些接口扩展，而不是另写一套“只给前端看的本地配置文件格式”。
+
+### 5.6 App 后端包装的最小接口面
+
+如果你要新建一个 App 的 `backend/`，现在最推荐的做法就是复用统一包装脚本：
+
+```bash
+node ../../../scripts/run-runtime-node-app.mjs dev <projectId> <port> <dataDir> [presetDir]
+```
+
+它本质上只是帮你设置下面这些环境变量，再启动 `@simpagent/runtime-node`：
+
+- `SIMPAGENT_PROJECT_ID`
+- `SIMPAGENT_DATA_DIR`
+- `PORT`
+- `SIMPAGENT_PRESET_DIR`（可选）
+
+也就是说，新 App 的 backend 层不该继续发明自己的启动协议；当前已经约定好的“框架入口面”就是这 4 个环境变量加 `runtime-node`。
+
+### 5.7 HTTP 接口速查表
+
+如果你后续要给 AI 或人类开发者一个“先别翻全仓库，先看这里”的入口，下面这组就是当前最值得先记住的 HTTP 接口面。
+
+#### 健康检查
+
+- `GET /api/health`
+
+#### 运行控制
+
+- `POST /api/runs`
+- `GET /api/runs/:runId`
+- `POST /api/runs/:runId/pause`
+- `POST /api/runs/:runId/resume`
+- `POST /api/runs/:runId/interrupt`
+
+#### 运行调试查询
+
+- `GET /api/trace/:runId/events`
+- `GET /api/trace/:runId/prompt/:compileId`
+- `GET /api/runs/:runId/state-diffs`
+- `GET /api/runs/:runId/side-effects`
+- `GET /api/runs/:runId/plan`
+- `GET /api/runs/:runId/tool-exposure-plans`
+- `GET /api/runs/:runId/user-input-requests`
+- `GET /api/runs/:runId/approval-requests`
+- `POST /api/runs/:runId/approval-requests/:requestId/respond`
+
+#### Checkpoint / Time-travel
+
+- `GET /api/threads/:threadId/history`
+- `POST /api/threads/:threadId/checkpoints/:checkpointId/state-patch`
+- `POST /api/threads/:threadId/checkpoints/:checkpointId/prompt-overrides`
+- `POST /api/threads/:threadId/checkpoints/:checkpointId/prompt-unit-overrides`
+- `POST /api/threads/:threadId/checkpoints/:checkpointId/fork`
+
+#### 版本化定义与配置
+
+- `GET/POST/PUT /api/agents`
+- `GET/POST/PUT /api/workflows`
+- `GET/POST/PUT /api/prompt-units`
+- `GET/POST/PUT /api/prompt-blocks`
+- `GET /api/tools`
+- `GET /api/tools/builtin`
+- `PUT /api/tools/builtin/:name`
+- `POST /api/tools/apply-patch/dry-run`
+- `GET /api/config/tool-exposure-policies`
+- `GET/PUT /api/config/system`
+
+#### Catalog / 图谱
+
+- `GET/POST/PUT/DELETE /api/catalog/nodes`
+- `GET /api/catalog/nodes/:nodeId`
+- `GET/PUT/DELETE /api/catalog/nodes/:nodeId/facets/:facetType`
+- `GET /api/catalog/nodes/:nodeId/facets`
+- `GET/POST/PUT/DELETE /api/catalog/relations`
+- `GET /api/catalog/prompt-units`
+- `GET /api/catalog/context-prompt-units`
+
+#### 模板
+
+- `GET /api/templates`
+- `POST /api/templates/:templateId/apply`
+
+如果你要做一个新 App 的“最小可运行框架前端”，优先把这些接口接上，而不是绕开框架另写一套临时后端。
+
+### 5.8 WebSocket 事件速查表
+
+当前实时调试主线走：
+
+```text
+ws://<host>/ws
+```
+
+客户端至少要认识这些消息：
+
+#### 客户端发给服务端
+
+- `hello`
+- `ping`
+- `subscribe_run`
+- `unsubscribe_run`
+
+#### 服务端发给客户端
+
+- `run_snapshot`
+- `trace_event`
+- `replay_events_batch`
+- `warning`
+- `error`
+- `heartbeat`
+
+推荐最小策略：
+
+1. 先 `hello`，把 `lastEventSeq` 带上。
+2. 再发 `subscribe_run` 订阅当前 run。
+3. 优先吃增量 `trace_event`。
+4. 若收到窗口不足的 `warning`，回退 HTTP `GET /api/trace/:runId/events` 做补拉。
 
 ## 6. 哪些能力目前最值得直接拿来用
 

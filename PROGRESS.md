@@ -1,9 +1,9 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：`packages/runtime-node` 仍是当前框架真源，`packages/core` 提供跨运行时抽象；现有 package 级构建与测试已通过，说明 Node 主链可运行。
-- 现状：项目记忆文件此前混入大量历史流水，`PLANS.md` 与 `PROGRESS.md` 的职责边界不清；本轮已开始收口。
-- 现状：`apps/dev-console` 在 git 中存在被删除状态，但根 `README.md`、运行时代码默认 `projectId`、部分注释仍把它当成现成调试台，说明“调试台定位仍存在，但工程未恢复”，属于当前最明显的文档/目录漂移。
+- 现状：`packages/runtime-node` 仍是当前框架真源，`packages/core` 提供跨运行时抽象；现有 package 级构建、workspace 聚合构建、runtime-node 测试都已通过，说明 Node 主链可运行。
+- 现状：`PLANS.md` 与 `PROGRESS.md` 已完成第一轮职责收口；`PLANS.md` 只保留当前计划，`PROGRESS.md` 负责最新状态快照。
+- 现状：`apps/dev-console` 已恢复为最小框架调试台，并且已经能构建前端、构建后端包装、动态启动后端并打通基础库存接口。
 - 已完成：
   - Monorepo/workspaces 已建立，主线目录为 `packages/*`、`apps/*`、`backend` 兼容壳。
   - `@simpagent/core` 已提供核心契约、PromptCompiler、ToolLoop、WorkflowRegistry、Ports 与统一运行时抽象。
@@ -26,15 +26,44 @@
   - 文档收口第一批已完成（2026-04-01）：
     - 根 `README.md` 已扩写为真正的仓库入口文档，而不再只是简短目录说明。
     - 新增 `docs/基于SimpleAgent框架开发App指南.md`，专门回答“如何基于当前框架开发一个新 App、哪些能力已经能直接复用、哪些接口不要重复造轮子”。
+    - 开发指南已补上“接口速查表”，把 App backend 包装入口、真实 LLM 配置口、HTTP/WS 事件面收口，减少后续 AI 再次全仓阅读的需要。
+  - workspace / 根脚本收口已完成（2026-04-01）：
+    - 根 `package.json` 已把 `build/test/dev/preview` 收口到真实 workspace 入口，不再指向已经失效的根前端。
+    - 根 workspace 已纳入 `apps/*/backend`，因此 app 级 backend 包名可以通过 `--workspace` 正常执行。
+    - 新增 `scripts/run-runtime-node-app.mjs`，替代仓库中原本并不存在的 `cross-env` 依赖，让 app 级 backend 包装可以稳定复用 `@simpagent/runtime-node`。
+  - 最小 `apps/dev-console` 调试台已恢复（2026-04-01）：
+    - 新增独立前端 `@simpagent/app-dev-console`。
+    - 新增独立后端包装 `@simpagent/dev-console-backend`。
+    - 前端已直接对接现有 HTTP / WS，而不是另写后端。
+    - 前端已暴露真实 LLM 配置入口：`vendor / apiMode / baseURL / apiKey / model / temperature`。
+    - 当前面板已覆盖：
+      - 框架库存查看（agents / workflows / prompt-units / builtin tools / catalog）
+      - 真实 run 创建入口
+      - trace / prompt compile
+      - pause / resume / interrupt
+      - approval 列表
+      - checkpoint history
+      - state patch / prompt-unit override / fork
+      - state diff / side effect / tool exposure / system config
+  - 本轮验证已完成（2026-04-01）：
+    - `npm run --workspace @simpagent/app-dev-console build`
+    - `npm run --workspace @simpagent/dev-console-backend build`
+    - `npm run --workspace @simpagent/trpg-backend build`
+    - `npm run build:workspaces`
+    - `npm run build`
+    - `npm run test`
+    - `npm run --workspace @simpagent/runtime-node test`
+    - 动态启动 `@simpagent/dev-console-backend` 后，已成功验证：
+      - `GET /api/health`
+      - `GET /api/workflows`
+      - `GET /api/templates`
 - 正在做：
-  - 核查根脚本、workspace 配置、app 运行包装里仍然失效或漂移的部分。
-  - 评估并恢复最小 `apps/dev-console` 调试台，用真实框架接口做烟雾测试。
-  - 调试台将改为真实 LLM 配置优先：前端预留 `baseURL / apiKey / model / apiMode(chat_completions)`，不把 mock 当作最终接入方案。
+  - 等待用户提供真实 `apiKey / baseURL`，再补一轮真实 LLM 端到端运行验证。
+  - 评估调试台是否还需要更强的图形化视图，而不只是当前“观察 + 控制 + JSON 面板”。
 - 下一步：
-  1. 修正根 `package.json`、workspace 与 app 运行包装中的断链脚本。
-  2. 核查 `packages/core` 与 `packages/runtime-node` 是否还有“文档说已完成、但代码没接上”的缺口。
-  3. 恢复 `apps/dev-console`，并让它覆盖 run / trace / history / prompt / catalog / approval / fork 等关键观察面。
-  4. 跑完整构建与测试；真实 LLM 端到端验证等待用户提供 `apiKey/baseURL`。
+  1. 等用户提供真实 `apiKey / baseURL` 后，用 `apps/dev-console` 直接跑一次真实 LLM workflow，验证 createRun -> trace -> prompt compile -> human-in-the-loop 全链路。
+  2. 继续核查 `packages/core` 与 `packages/runtime-node` 是否还有“文档说已完成、但代码没接上”的缺口。
+  3. 视需要继续增强调试台的图形化视图，例如更直观的 workflow / catalog 图，而不只是当前结构化面板。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：框架真源继续以 `packages/runtime-node` 为准，而不是回退到 `backend` 或某个 app 内部后端副本。
@@ -49,10 +78,11 @@
   原因：调试台的目标是验证框架，而不是复制框架。
 
 ## 常见坑 / 复现方法
-- 坑1：仓库里曾存在 `apps/dev-console`，但当前工作区该目录被删除；如果只看 README 会误以为它仍可直接运行。
-- 坑2：`apps/mededu-cockpit` 的 `App.tsx` 文件头仍提到 `apps/dev-console`，这属于历史注释漂移，不代表当前目录角色正确。
-- 坑3：根 `README.md` 仍引用旧的 dev-console 运行方式，和当前文件树不一致；文档判断前必须先对照实际目录与 `git status`。
+- 坑1：Windows 下大补丁改文档或大文件时容易撞到命令长度限制；必要时应拆分 `apply_patch`。
+- 坑2：当前测试已经能证明 package/framework 主链可运行，但真实 LLM 端到端仍必须等用户提供 `apiKey / baseURL`，不能伪造“真模型已跑通”的结论。
+- 坑3：`projectId` 并没有覆盖所有版本化定义表的完整数据库隔离；当前更可靠的做法仍是每个 app 使用独立 `dataDir`。
 - 坑4：Windows 下大补丁改文档容易一次过大，必要时拆分提交；否则后续 review 很难定位真正的结构变化。
 - 坑5：当前测试已经能证明 package/framework 主链可运行，但还不能自动证明“调试台前端”这层也已经恢复并接通，因此本轮必须补一条 app 级验证链。
-- 坑6：根 `package.json` 当前仍残留旧根前端脚本，`npm run build` 直接执行会失败；现阶段应优先使用 `build:workspaces`，后续要把根脚本正式收口。
-- 坑7：根 workspace 目前没有纳入 `apps/*/backend`，所以现有 app 级 backend 包名命令并不能直接通过 `--workspace` 运行；这是当前需要修的真实断链点。
+- 坑6：前端 `tsconfig` 开启了 `erasableSyntaxOnly` 时，不能偷懒使用 TypeScript 参数属性这类语法糖；需要改回朴素写法。
+- 坑7：Windows 下 `spawn(npm.cmd, ...)` 在当前环境里可能直接报 `EINVAL`；统一运行包装脚本改为 `shell: true` 后才稳定。
+- 坑8：当前 `apps/dev-console` 已接好真实 LLM 参数入口，但没有用户凭据时不能伪造“真实模型已跑通”的结论；目前只验证到了框架后端运行、库存接口和前端构建层。

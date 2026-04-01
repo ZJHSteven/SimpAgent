@@ -6,11 +6,19 @@
   "workspaces": [
     "packages/*",
     "apps/*",
+    "apps/*/backend",
     "backend"
   ],
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "npm run dev:console",
+    "build": "npm run build:workspaces",
+    "test": "npm run test:workspaces",
+    "preview": "npm run preview:console",
+    "dev:console": "npm run --workspace @simpagent/app-dev-console dev",
+    "build:console": "npm run --workspace @simpagent/app-dev-console build",
+    "preview:console": "npm run --workspace @simpagent/app-dev-console preview",
+    "dev:console-backend": "npm run --workspace @simpagent/dev-console-backend dev",
+    "start:console-backend": "npm run --workspace @simpagent/dev-console-backend start",
     "dev:mededu": "npm run --workspace @simpagent/app-mededu-cockpit dev",
     "build:mededu": "npm run --workspace @simpagent/app-mededu-cockpit build",
     "preview:mededu": "npm run --workspace @simpagent/app-mededu-cockpit preview",
@@ -19,8 +27,7 @@
     "dev:runtime-node": "npm run --workspace @simpagent/runtime-node dev",
     "build:runtime-node": "npm run --workspace @simpagent/runtime-node build",
     "start:runtime-node": "npm run --workspace @simpagent/runtime-node start",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "lint": "eslint ."
   },
   "dependencies": {
     "react": "^19.2.0",
