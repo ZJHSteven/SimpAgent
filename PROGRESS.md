@@ -112,7 +112,7 @@
   - `runtime-node test:catalog-bridge` 通过，证明 MCP/skill bridge 与 catalog 上下文 Prompt 投影有效，但它走的是 `InternalShellBridge` 直连测试，不是 canonical mcp/skill tool 路由。
   - `runtime-node test:permissions-catalog` 通过，证明 shell 审批与 catalog API 有真实落地。
   - `runtime-node build` 通过，当前 Node 主运行时编译层面正常。
-- 正在做：将这次核查结论固化为后续收口基线，避免再把“分段已通”误判成“整链已通”。
+- 正在做：`packages/core` 与 `packages/runtime-node` 的注释治理与 review 路线收口。当前已确认最影响阅读的首批文件集中在 `core ports / core toolLoopExecutor / runtime-node provider capabilities / runtime-node api http`，下一步将优先补函数头、关键分支与术语解释，而不是继续只停留在文件头注释。
 - 正在做（2026-03-31，本轮实现）：
   - 已开始落实“catalog 单一工具真源 + handoff 工具化编排”重构。
   - 第一批底层契约已调整：
@@ -162,6 +162,7 @@
   6. 继续补 runtime-node API / WS / trace 的全量测试矩阵。
   7. 继续完善 handoff 周边能力：例如 packet 消费可视化、失败重试策略、以及更丰富的 handoff payload/审计视图。
   8. 后续任何 package/framework 层改动，优先对照 `docs/SimpleAgent框架总览与代码导览.md` 检查是否已有现成实现，避免重复造轮子。
+  9. 继续为 `packages/core` 与 `packages/runtime-node` 做“教学向中文注释”治理，优先覆盖高复杂度控制流与接口边界文件，再逐步扩展到 registry / storage / exposurePlanner / runtime engine 等二线重文件。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：执行内核采用 LangGraph.js（原因：直接获得 checkpoint / interrupt / replay / history / updateState，避免自研运行时黑洞）。

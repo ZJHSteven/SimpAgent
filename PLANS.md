@@ -514,3 +514,32 @@
 ## 本轮完成判据
 - 已给出明确的目标结构、命名规范与迁移顺序。
 - 本轮先完成方案冻结与项目记忆更新，不做大规模物理搬迁。
+
+---
+
+## 任务名称（2026-04-01）
+- `packages/core` + `packages/runtime-node` 注释治理与 review 路线收口
+
+## 执行目标（本轮）
+- 只关注 `packages/core` 与 `packages/runtime-node`，不处理 `apps/*`、根前端、以及其他占位包。
+- 盘点“只有文件头、缺少函数头/关键分支/术语解释”的高复杂度文件，优先补齐教学向中文注释。
+- 首批优先覆盖 review 阻力最大的核心链路文件：
+  - `packages/core/src/ports/index.ts`
+  - `packages/core/src/runtime/toolLoopExecutor.ts`
+  - `packages/runtime-node/src/providers/capabilities.ts`
+  - `packages/runtime-node/src/api/http.ts`
+- 回归执行 package 级构建与测试，确认注释改动没有引入语法问题。
+- 输出一份面向人工 review 的阅读顺序与检查重点，作为后续持续治理基线。
+
+## 分阶段计划（本轮）
+1. 扫描 `packages/core` 与 `packages/runtime-node`，确认最缺注释且最影响 review 的文件（已完成）
+2. 更新 `PLANS.md` / `PROGRESS.md`，冻结本轮边界与优先级（进行中）
+3. 为首批核心文件补充函数头、关键分支、术语解释与流程注释（待执行）
+4. 执行 `core/runtime-node` 构建与测试回归（待执行）
+5. 汇总“从哪里开始看、每段逻辑怎么看”的 review 路线图（待执行）
+
+## 本轮完成判据
+- 首批高复杂度文件的关键函数、核心分支、输入输出语义已具备教学向中文注释。
+- 注释修改后 `@simpagent/core` 与 `@simpagent/runtime-node` 至少完成构建与现有测试回归。
+- `PROGRESS.md` 已写入本轮结论与后续扩展方向。
+- 最终交付包含可直接执行的框架 review 路线，而不是只给“补了哪些注释”的清单。
