@@ -112,7 +112,12 @@
   - `runtime-node test:catalog-bridge` 通过，证明 MCP/skill bridge 与 catalog 上下文 Prompt 投影有效，但它走的是 `InternalShellBridge` 直连测试，不是 canonical mcp/skill tool 路由。
   - `runtime-node test:permissions-catalog` 通过，证明 shell 审批与 catalog API 有真实落地。
   - `runtime-node build` 通过，当前 Node 主运行时编译层面正常。
-- 正在做：`packages/core` 与 `packages/runtime-node` 的注释治理与 review 路线收口。当前已确认最影响阅读的首批文件集中在 `core ports / core toolLoopExecutor / runtime-node provider capabilities / runtime-node api http`，下一步将优先补函数头、关键分支与术语解释，而不是继续只停留在文件头注释。
+- 正在做：`packages/core` 与 `packages/runtime-node` 的注释治理与 review 路线收口。首批高优先级文件已经开始补注释：
+  - `packages/core/src/ports/index.ts`：补了各 Port 方法职责、抽象边界与 review 关注点；
+  - `packages/core/src/runtime/toolLoopExecutor.ts`：补了工具循环输入/输出/停止条件与 rounds 统计说明；
+  - `packages/runtime-node/src/providers/capabilities.ts`：补了 vendor 能力矩阵与前置校验设计意图；
+  - `packages/runtime-node/src/api/http.ts`：补了路由分区、输入收窄、provider 默认值合并、审批恢复与 PromptUnit 兼容入口说明。
+  下一步继续执行 package 级构建与测试回归，并输出一份适合人工阅读的 review 路线图。
 - 正在做（2026-03-31，本轮实现）：
   - 已开始落实“catalog 单一工具真源 + handoff 工具化编排”重构。
   - 第一批底层契约已调整：

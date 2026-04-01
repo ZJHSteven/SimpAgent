@@ -31,6 +31,12 @@ interface HttpDeps extends RuntimeDeps {
   engine: FrameworkRuntimeEngine;
 }
 
+/**
+ * 统一错误返回格式。
+ * 说明：
+ * - HTTP 层尽量不要把原始异常对象直接抛给前端；
+ * - 这里统一包成 `{ ok: false, message, details }`，便于调试台稳定处理。
+ */
 function sendError(res: Response, status: number, message: string, details?: unknown) {
   res.status(status).json({
     ok: false,
@@ -39,11 +45,18 @@ function sendError(res: Response, status: number, message: string, details?: unk
   });
 }
 
+/**
+ * 把未知输入安全收窄为普通对象。
+ * 作用：
+ * - 避免 `req.body` 是数组 / null / 原始值 时，下面的属性读取直接报错；
+ * - 这是一层很轻量的 HTTP 输入防御。
+ */
 function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
+  // ===== 基础健康检查 =====
   app.get("/api/health", (_req, res) => {
     res.json({
       ok: true,
@@ -52,6 +65,7 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
     });
   });
 
+  // ===== Run 控制面：创建 / 查看 / 暂停 / 恢复 / 中断 =====
   app.post("/api/runs", async (req, res) => {
     try {
       const body = asObject(req.body) as Partial<CreateRunRequest>;
@@ -59,6 +73,8 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
         sendError(res, 400, "缺少必要字段：workflowId / userInput");
         return;
       }
+      // provider 允许“部分传入 + 系统默认补齐”。
+      // 这样前端只改少数字段时，不需要每次都把整套 provider 配置重发一遍。
       const systemConfig = deps.db.getSystemConfig(deps.projectId);
       const providerInput = asObject(body.provider);
       const provider = {
@@ -95,6 +111,7 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
         sendError(res, 400, "provider 信息不完整，且系统默认模型路由不可用");
         return;
       }
+      // 真正的 run 创建逻辑收口在 runtime engine，HTTP 层只负责参数校验与出入口转换。
       const result = await deps.engine.createRun({
         workflowId: body.workflowId,
         workflowVersion: body.workflowVersion,
@@ -121,6 +138,7 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
     }
   });
 
+  // ===== Run 调试查询面：state diff / side effect / plan / exposure / human input / approval =====
   app.get("/api/runs/:runId/state-diffs", (req, res) => {
     try {
       const limit = Number(req.query.limit ?? 200);
@@ -178,6 +196,7 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
     }
   });
 
+  // ===== Run 状态控制：pause / resume / approval respond / interrupt =====
   app.post("/api/runs/:runId/pause", async (req, res) => {
     try {
       const body = asObject(req.body);
@@ -191,6 +210,9 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
   app.post("/api/runs/:runId/resume", async (req, res) => {
     try {
       const body = asObject(req.body);
+      // 兼容两种调用方式：
+      // 1. 直接把 payload 放在 body 根上；
+      // 2. 显式使用 { resumePayload } 包一层。
       await deps.engine.resumeRun(req.params.runId, (body.resumePayload ?? body) as unknown as any);
       res.json({ ok: true });
     } catch (error) {
@@ -212,6 +234,7 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
         return;
       }
       const body = asObject(req.body);
+      // 这里仍然复用 `resumeRun()`，因为审批本质上也是一种“人工恢复执行并带回恢复载荷”。
       await deps.engine.resumeRun(req.params.runId, {
         requestId: req.params.requestId,
         action: typeof body.action === "string" ? body.action : undefined,
@@ -235,6 +258,7 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
     }
   });
 
+  // ===== Checkpoint / Time-travel 能力：history / state patch / prompt patch / fork =====
   app.get("/api/threads/:threadId/history", async (req, res) => {
     try {
       const history = await deps.engine.getThreadHistory(req.params.threadId);
@@ -391,6 +415,7 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
     }
   });
 
+  // ===== 统一图谱 catalog CRUD =====
   /**
    * v0.4：统一图谱 HTTP CRUD。
    * 说明：
@@ -552,6 +577,12 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
     }
   });
 
+  /**
+   * PromptUnit 保存辅助函数。
+   * 说明：
+   * - 新旧路由（`prompt-units` / `prompt-blocks`）最终都走这里；
+   * - 这样可以保证审计、版本化语义完全一致。
+   */
   const savePromptUnit = (body: PromptBlock) => {
     const version = deps.db.saveVersionedConfig("prompt_block", body);
     deps.db.writeAudit("save_prompt_unit", "prompt_unit", body.id, { version });
@@ -597,6 +628,7 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
     }
   });
 
+  // ===== Tool 查询与配置 =====
   app.get("/api/tools", (_req, res) => {
     res.json({ ok: true, data: deps.toolRegistry.list() });
   });
@@ -688,6 +720,7 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
     }
   });
 
+  // ===== 系统配置 / 暴露策略元信息 =====
   /**
    * v0.2：暴露适配策略枚举，供前端工具策略面板显示。
    */
@@ -740,6 +773,7 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
     }
   });
 
+  // ===== 模板能力 =====
   app.get("/api/templates", (_req, res) => {
     try {
       const data = listRuntimeTemplates();
