@@ -1,0 +1,104 @@
+[
+  {
+    "id": "workflow.mededu.default",
+    "name": "医学教育-患者问诊工作流",
+    "entryNode": "node.trigger",
+    "nodes": [
+      {
+        "id": "node.trigger",
+        "type": "agent",
+        "label": "触发器",
+        "agentId": "agent.mededu.trigger"
+      },
+      {
+        "id": "node.patient",
+        "type": "agent",
+        "label": "患者主代理",
+        "agentId": "agent.mededu.patient.main"
+      },
+      {
+        "id": "node.timeline",
+        "type": "agent",
+        "label": "时间线记忆",
+        "agentId": "agent.mededu.memory.timeline"
+      },
+      {
+        "id": "node.affinity",
+        "type": "agent",
+        "label": "好感度记忆",
+        "agentId": "agent.mededu.memory.affinity"
+      },
+      {
+        "id": "node.exam",
+        "type": "agent",
+        "label": "检查记忆",
+        "agentId": "agent.mededu.memory.exam"
+      },
+      {
+        "id": "node.clinical",
+        "type": "agent",
+        "label": "临床导师",
+        "agentId": "agent.mededu.mentor.clinical"
+      },
+      {
+        "id": "node.research",
+        "type": "agent",
+        "label": "研究导师",
+        "agentId": "agent.mededu.mentor.research"
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge.trigger.patient",
+        "from": "node.trigger",
+        "to": "node.patient",
+        "condition": { "type": "always" }
+      },
+      {
+        "id": "edge.patient.timeline",
+        "from": "node.patient",
+        "to": "node.timeline",
+        "condition": { "type": "always" }
+      },
+      {
+        "id": "edge.timeline.affinity",
+        "from": "node.timeline",
+        "to": "node.affinity",
+        "condition": { "type": "always" }
+      },
+      {
+        "id": "edge.affinity.exam",
+        "from": "node.affinity",
+        "to": "node.exam",
+        "condition": { "type": "always" }
+      },
+      {
+        "id": "edge.exam.clinical",
+        "from": "node.exam",
+        "to": "node.clinical",
+        "condition": { "type": "always" }
+      },
+      {
+        "id": "edge.clinical.research",
+        "from": "node.clinical",
+        "to": "node.research",
+        "condition": { "type": "always" }
+      }
+    ],
+    "routingPolicies": [
+      { "id": "route.trigger", "nodeId": "node.trigger", "mode": "fixed" },
+      { "id": "route.patient", "nodeId": "node.patient", "mode": "fixed" },
+      { "id": "route.timeline", "nodeId": "node.timeline", "mode": "fixed" },
+      { "id": "route.affinity", "nodeId": "node.affinity", "mode": "fixed" },
+      { "id": "route.exam", "nodeId": "node.exam", "mode": "fixed" },
+      { "id": "route.clinical", "nodeId": "node.clinical", "mode": "fixed" }
+    ],
+    "interruptPolicy": {
+      "defaultInterruptBefore": false,
+      "defaultInterruptAfter": false
+    },
+    "enabled": true,
+    "version": 1
+  }
+]
+

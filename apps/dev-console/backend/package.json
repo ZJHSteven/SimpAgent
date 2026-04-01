@@ -1,0 +1,12 @@
+{
+  "name": "@simpagent/dev-console-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "cross-env SIMPAGENT_PROJECT_ID=dev-console SIMPAGENT_DATA_DIR=./data SIMPAGENT_PRESET_DIR=./presets/mededu-default-v1 PORT=3002 npm run --workspace @simpagent/runtime-node dev",
+    "start": "cross-env SIMPAGENT_PROJECT_ID=dev-console SIMPAGENT_DATA_DIR=./data SIMPAGENT_PRESET_DIR=./presets/mededu-default-v1 PORT=3002 npm run --workspace @simpagent/runtime-node start",
+    "build": "npm run --workspace @simpagent/runtime-node build"
+  }
+}
+
