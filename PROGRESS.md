@@ -23,16 +23,18 @@
   - 现有验证已通过（2026-04-01 再次确认）：
     - `npm run --workspace @simpagent/runtime-node build`
     - `npm run --workspace @simpagent/runtime-node test`
+  - 文档收口第一批已完成（2026-04-01）：
+    - 根 `README.md` 已扩写为真正的仓库入口文档，而不再只是简短目录说明。
+    - 新增 `docs/基于SimpleAgent框架开发App指南.md`，专门回答“如何基于当前框架开发一个新 App、哪些能力已经能直接复用、哪些接口不要重复造轮子”。
 - 正在做：
-  - 收缩 `PLANS.md` 与 `PROGRESS.md`，把“当前计划”和“历史沉淀”分开。
-  - 清理根 `README.md` 与调试台相关漂移描述。
-  - 准备新增“框架给 App 开发者用”的开发指南。
+  - 核查根脚本、workspace 配置、app 运行包装里仍然失效或漂移的部分。
   - 评估并恢复最小 `apps/dev-console` 调试台，用真实框架接口做烟雾测试。
+  - 调试台将改为真实 LLM 配置优先：前端预留 `baseURL / apiKey / model / apiMode(chat_completions)`，不把 mock 当作最终接入方案。
 - 下一步：
-  1. 补 `README.md` 与新增框架开发指南文档，明确当前对外暴露能力与推荐接线方式。
+  1. 修正根 `package.json`、workspace 与 app 运行包装中的断链脚本。
   2. 核查 `packages/core` 与 `packages/runtime-node` 是否还有“文档说已完成、但代码没接上”的缺口。
   3. 恢复 `apps/dev-console`，并让它覆盖 run / trace / history / prompt / catalog / approval / fork 等关键观察面。
-  4. 跑完整构建与测试，确认调试台不是展示壳，而是能走真实最小链路。
+  4. 跑完整构建与测试；真实 LLM 端到端验证等待用户提供 `apiKey/baseURL`。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：框架真源继续以 `packages/runtime-node` 为准，而不是回退到 `backend` 或某个 app 内部后端副本。
@@ -52,3 +54,5 @@
 - 坑3：根 `README.md` 仍引用旧的 dev-console 运行方式，和当前文件树不一致；文档判断前必须先对照实际目录与 `git status`。
 - 坑4：Windows 下大补丁改文档容易一次过大，必要时拆分提交；否则后续 review 很难定位真正的结构变化。
 - 坑5：当前测试已经能证明 package/framework 主链可运行，但还不能自动证明“调试台前端”这层也已经恢复并接通，因此本轮必须补一条 app 级验证链。
+- 坑6：根 `package.json` 当前仍残留旧根前端脚本，`npm run build` 直接执行会失败；现阶段应优先使用 `build:workspaces`，后续要把根脚本正式收口。
+- 坑7：根 workspace 目前没有纳入 `apps/*/backend`，所以现有 app 级 backend 包名命令并不能直接通过 `--workspace` 运行；这是当前需要修的真实断链点。
