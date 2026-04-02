@@ -98,7 +98,25 @@
   - 不把用户明文密钥提交进 git；
   - 可以预留本地存储、环境变量或开发时默认填充机制，但不能把已暴露密钥继续固化到代码库。
 
-7. 补齐“预设 / 定义参考文档”（当前进行中）
+7. 修正 dev-console 前端“没有反应”和“缺少真正对话界面”的问题（新增，2026-04-02）
+- 当前主界面虽然已有控制台能力，但仍然偏“运维面板”，缺少一个真正可直接观察聊天往返的对话区；
+- 用户在填入 `API Key` 后，应该能直接：
+  - 输入一句话；
+  - 创建真实 run；
+  - 在主界面看到清晰的用户消息 / assistant 回复 / tool 调用回显；
+- 需要排查并修正当前“没有反应”的具体原因，重点检查：
+  - provider 默认值是否被旧的 localStorage 覆盖；
+  - `createRun()` 后状态刷新与 WS 订阅是否稳定；
+  - run 创建后是否有清晰的首屏反馈；
+  - 聊天消息是否缺少结构化渲染层。
+- 当前状态（2026-04-02 已完成第一版）：
+  - 已新增 `/api/runs/:runId/conversation`；
+  - 已把顶部入口区改成“配置 + 对话”双栏；
+  - 已补用户输入 / assistant 回复 / tool 回显时间线；
+  - 已补“恢复 DeepSeek 默认”按钮与 provider 本地缓存回填修正；
+  - 已修正“WS 默认地址没有从当前 HTTP 地址推导”的问题。
+
+8. 补齐“预设 / 定义参考文档”（当前进行中）
 - 现有《基于SimpleAgent框架开发App指南》偏向“如何接框架运行时”，还不够回答“二次开发时到底有哪些可定义块、每个 JSON 能写哪些键、效果是什么”。
 - 需要新增一份更贴近 preset / setup 的参考文档，至少覆盖：
   - PromptUnit / PromptBlock
@@ -133,6 +151,12 @@
 - 增加“原始 JSON”折叠区，作为完整字段兜底；
 - 清理当前不利于阅读的黑框展示。
 
+4. 对话区与前端交互修复
+- 补一个真正的聊天对话区，优先直接使用现有 run / prompt compile / trace 数据拼出消息时间线；
+- 若现有接口不足，则在 `runtime-node` 增加最小消息查询能力；
+- 修正 provider 本地缓存回填策略，避免旧缓存把默认模型名和 baseURL 覆盖掉；
+- 在首屏明确展示“当前正在使用的模型、baseURL、workflow、run 状态”。
+
 ## 已完成进展（2026-04-01，最新）
 - 已完成：`scripts/run-runtime-node-app.mjs` 现在会基于 backend 包自身目录解析 `dataDir / presetDir`，不再把 `./data` 错落到仓库根目录。
 - 已完成：`apps/dev-console/backend/package.json` 默认加载 `./presets/medical-training-bench-v1`。
@@ -153,9 +177,12 @@
   - 可以新建空白草稿
   - 可以通过 `POST / PUT` 新建或更新对象
 - 已完成：checkpoint 区已加入 PromptUnit Override 快速生成器，不再只能手写 JSON。
+- 已完成：运行入口区现在已具备真正的聊天消息面板，而不是只有控制面板。
+- 已完成：新增 runtime conversation 查询接口，前端不再需要只靠 trace / JSON 猜当前对话。
 - 下一步重点补齐：正式的配置编辑器
   - 继续把 JSON 编辑器增强成“结构化字段 + 高级 JSON”双模式
   - 继续补 workflow / catalog 更强的可视图编辑
+  - 补聊天时间线、首屏反馈与 provider 配置回填修复
 - 已验证：
   - `npm run --workspace @simpagent/dev-console-backend build`
   - `npm run --workspace @simpagent/app-dev-console build`

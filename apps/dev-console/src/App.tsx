@@ -8,6 +8,7 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { deriveWsUrl, requestJson, toErrorMessage, withJsonBody } from "./api";
+import { RunConversationPanel } from "./RunConversationPanel";
 import type {
   AgentSummary,
   ApprovalRequestSummary,
@@ -15,6 +16,7 @@ import type {
   CatalogNodeSummary,
   CatalogRelationSummary,
   CheckpointHistoryItem,
+  RunConversationSummary,
   PromptCompileDetail,
   PromptUnitSummary,
   ProviderFormState,
@@ -66,17 +68,41 @@ const PROMPT_INSERTION_POINTS = [
 ] as const;
 
 const MESSAGE_ROLE_OPTIONS = ["system", "developer", "user", "assistant", "tool"] as const;
+const PROVIDER_FORM_STORAGE_VERSION = 2;
 
 function readStoredString(key: string, fallback: string): string {
   const value = window.localStorage.getItem(key);
   return value && value.trim() ? value : fallback;
 }
 
+function readStoredRuntimeBaseUrl(): string {
+  return readStoredString(STORAGE_KEYS.runtimeBaseUrl, DEFAULT_HTTP_BASE_URL);
+}
+
+function sanitizeProviderForm(input: Partial<ProviderFormState> | null | undefined): ProviderFormState {
+  return {
+    vendor: typeof input?.vendor === "string" && input.vendor.trim() ? input.vendor : DEFAULT_PROVIDER_FORM.vendor,
+    apiMode: input?.apiMode === "responses" ? "responses" : DEFAULT_PROVIDER_FORM.apiMode,
+    baseURL: typeof input?.baseURL === "string" && input.baseURL.trim() ? input.baseURL : DEFAULT_PROVIDER_FORM.baseURL,
+    apiKey: typeof input?.apiKey === "string" ? input.apiKey : DEFAULT_PROVIDER_FORM.apiKey,
+    model: typeof input?.model === "string" && input.model.trim() ? input.model : DEFAULT_PROVIDER_FORM.model,
+    temperature:
+      typeof input?.temperature === "string" && input.temperature.trim()
+        ? input.temperature
+        : DEFAULT_PROVIDER_FORM.temperature
+  };
+}
+
 function readStoredProviderForm(): ProviderFormState {
   const raw = window.localStorage.getItem(STORAGE_KEYS.provider);
   if (!raw) return DEFAULT_PROVIDER_FORM;
   try {
-    return { ...DEFAULT_PROVIDER_FORM, ...(JSON.parse(raw) as Partial<ProviderFormState>) };
+    const parsed = JSON.parse(raw) as Partial<ProviderFormState> & { __schemaVersion?: number; value?: Partial<ProviderFormState> };
+    const legacyValue = parsed.value && typeof parsed.value === "object" ? parsed.value : parsed;
+    if (parsed.__schemaVersion === PROVIDER_FORM_STORAGE_VERSION) {
+      return sanitizeProviderForm(legacyValue);
+    }
+    return sanitizeProviderForm(legacyValue);
   } catch {
     return DEFAULT_PROVIDER_FORM;
   }
@@ -404,8 +430,8 @@ function CatalogGraph(props: { nodes: CatalogNodeSummary[]; relations: CatalogRe
 }
 
 function App() {
-  const [runtimeBaseUrl, setRuntimeBaseUrl] = useState(() => readStoredString(STORAGE_KEYS.runtimeBaseUrl, DEFAULT_HTTP_BASE_URL));
-  const [wsUrl, setWsUrl] = useState(() => readStoredString(STORAGE_KEYS.wsUrl, deriveWsUrl(DEFAULT_HTTP_BASE_URL)));
+  const [runtimeBaseUrl, setRuntimeBaseUrl] = useState(() => readStoredRuntimeBaseUrl());
+  const [wsUrl, setWsUrl] = useState(() => readStoredString(STORAGE_KEYS.wsUrl, deriveWsUrl(readStoredRuntimeBaseUrl())));
   const [providerForm, setProviderForm] = useState<ProviderFormState>(() => readStoredProviderForm());
   const [runInput, setRunInput] = useState(() => readStoredString(STORAGE_KEYS.runInput, "请基于当前 workflow 开始执行，并尽量给出结构化、可审计的输出。"));
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -436,6 +462,7 @@ function App() {
   const [toolExposurePlans, setToolExposurePlans] = useState<ToolExposurePlanSummary[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRequestSummary[]>([]);
   const [historyItems, setHistoryItems] = useState<CheckpointHistoryItem[]>([]);
+  const [conversation, setConversation] = useState<RunConversationSummary | null>(null);
   const [selectedCompileId, setSelectedCompileId] = useState("");
   const [promptCompile, setPromptCompile] = useState<PromptCompileDetail | null>(null);
   const [wsState, setWsState] = useState("idle");
@@ -467,7 +494,13 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEYS.runtimeBaseUrl, runtimeBaseUrl);
     window.localStorage.setItem(STORAGE_KEYS.wsUrl, wsUrl);
-    window.localStorage.setItem(STORAGE_KEYS.provider, JSON.stringify(providerForm));
+    window.localStorage.setItem(
+      STORAGE_KEYS.provider,
+      JSON.stringify({
+        __schemaVersion: PROVIDER_FORM_STORAGE_VERSION,
+        value: providerForm
+      })
+    );
     window.localStorage.setItem(STORAGE_KEYS.runInput, runInput);
   }, [runtimeBaseUrl, wsUrl, providerForm, runInput]);
 
@@ -562,24 +595,38 @@ function App() {
       setRunSummary(summary);
       setActiveRunId(summary.run_id);
       setActiveThreadId(summary.thread_id);
-      const [nextTraces, nextStateDiffs, nextSideEffects, nextToolExposurePlans, nextApprovals] = await Promise.all([
+      const [nextTraces, nextStateDiffs, nextSideEffects, nextToolExposurePlans, nextApprovals, nextConversation] = await Promise.all([
         requestJson<TraceEventSummary[]>(runtimeBaseUrl, `/api/trace/${runId}/events?afterSeq=0&limit=200`),
         requestJson<StateDiffSummary[]>(runtimeBaseUrl, `/api/runs/${runId}/state-diffs?limit=30`),
         requestJson<SideEffectSummary[]>(runtimeBaseUrl, `/api/runs/${runId}/side-effects?limit=30`),
         requestJson<ToolExposurePlanSummary[]>(runtimeBaseUrl, `/api/runs/${runId}/tool-exposure-plans?limit=20`),
-        requestJson<ApprovalRequestSummary[]>(runtimeBaseUrl, `/api/runs/${runId}/approval-requests`)
+        requestJson<ApprovalRequestSummary[]>(runtimeBaseUrl, `/api/runs/${runId}/approval-requests`),
+        requestJson<RunConversationSummary>(runtimeBaseUrl, `/api/runs/${runId}/conversation`)
       ]);
       setTraces(nextTraces);
       setStateDiffs(nextStateDiffs);
       setSideEffects(nextSideEffects);
       setToolExposurePlans(nextToolExposurePlans);
       setApprovals(nextApprovals);
+      setConversation(nextConversation);
       if (summary.thread_id || threadId) {
         setHistoryItems(await requestJson<CheckpointHistoryItem[]>(runtimeBaseUrl, `/api/threads/${summary.thread_id || threadId}/history`));
       }
       const latestCompileId = [...nextTraces].reverse().map(extractCompileId).find(Boolean) ?? "";
       if (latestCompileId) setSelectedCompileId(latestCompileId);
       setErrorText("");
+    } catch (error) {
+      setErrorText(toErrorMessage(error));
+    }
+  }
+
+  async function loadConversation(runId = activeRunId) {
+    if (!runId) {
+      setConversation(null);
+      return;
+    }
+    try {
+      setConversation(await requestJson<RunConversationSummary>(runtimeBaseUrl, `/api/runs/${runId}/conversation`));
     } catch (error) {
       setErrorText(toErrorMessage(error));
     }
@@ -621,11 +668,27 @@ function App() {
       setToolExposurePlans([]);
       setApprovals([]);
       setHistoryItems([]);
+      setConversation({
+        runId: created.runId,
+        threadId: created.threadId,
+        workflowId: selectedWorkflowId,
+        status: "created",
+        currentNodeId: selectedWorkflow?.entryNode ?? null,
+        userInput: runInput,
+        latestAssistantText: null,
+        messages: []
+      });
       setSelectedCompileId("");
       lastEventSeqRef.current = 0;
-      setStatusText(`已创建真实 run：${created.runId}`);
+      setStatusText(`已创建真实 run：${created.runId}，聊天区会自动刷新回复。`);
       await loadRunViews(created.runId, created.threadId);
     });
+  }
+
+  function resetProviderFormToDefaults() {
+    setProviderForm(DEFAULT_PROVIDER_FORM);
+    setStatusText("已恢复 DeepSeek 默认模型配置。");
+    setErrorText("");
   }
 
   async function postAction(path: string, body: Record<string, unknown>) {
@@ -837,6 +900,7 @@ function App() {
       setTraces((prev) => [...prev.filter((item) => item.seq !== message.event.seq), message.event].sort((a, b) => a.seq - b.seq).slice(-200));
       const compileId = extractCompileId(message.event);
       if (compileId) setSelectedCompileId(compileId);
+      void loadConversation(message.runId);
       return;
     }
     if (message.type === "run_snapshot") {
@@ -844,8 +908,9 @@ function App() {
       setRunSummary((prev) =>
         prev
           ? { ...prev, status: message.snapshot.status, current_node_id: message.snapshot.currentNodeId ?? null }
-          : prev
+            : prev
       );
+      void loadConversation(message.runId);
       return;
     }
     if (message.type === "warning" || message.type === "error") {
@@ -912,35 +977,70 @@ function App() {
       </section>
 
       <main className="grid">
-        <Card title="真实 LLM 与运行入口" subtitle="这里保留 OpenAI-compatible 配置口，默认已经填入 DeepSeek 兼容参数。">
-          <div className="form-grid">
-            <label><span>HTTP Base URL</span><input value={runtimeBaseUrl} onChange={(event) => setRuntimeBaseUrl(event.target.value)} /></label>
-            <label><span>WS URL</span><input value={wsUrl} onChange={(event) => setWsUrl(event.target.value)} /></label>
-            <label><span>Vendor</span><input value={providerForm.vendor} onChange={(event) => setProviderForm((prev) => ({ ...prev, vendor: event.target.value }))} /></label>
-            <label><span>API Mode</span><select value={providerForm.apiMode} onChange={(event) => setProviderForm((prev) => ({ ...prev, apiMode: event.target.value as ProviderFormState["apiMode"] }))}><option value="chat_completions">chat_completions</option><option value="responses">responses</option></select></label>
-            <label><span>Model</span><input value={providerForm.model} onChange={(event) => setProviderForm((prev) => ({ ...prev, model: event.target.value }))} /></label>
-            <label><span>Temperature</span><input value={providerForm.temperature} onChange={(event) => setProviderForm((prev) => ({ ...prev, temperature: event.target.value }))} /></label>
-            <label className="wide"><span>Base URL</span><input value={providerForm.baseURL} onChange={(event) => setProviderForm((prev) => ({ ...prev, baseURL: event.target.value }))} /></label>
-            <label className="wide"><span>API Key</span><input type="password" value={providerForm.apiKey} onChange={(event) => setProviderForm((prev) => ({ ...prev, apiKey: event.target.value }))} /></label>
-            <label><span>Workflow</span><select value={selectedWorkflowId} onChange={(event) => setSelectedWorkflowId(event.target.value)}>{workflows.map((workflow) => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)}</select></label>
-            <label><span>模板</span><select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
-            <label className="wide"><span>用户输入</span><textarea value={runInput} onChange={(event) => setRunInput(event.target.value)} rows={4} /></label>
-          </div>
-          <div className="button-row">
-            <button onClick={() => setWsUrl(deriveWsUrl(runtimeBaseUrl))}>按 HTTP 地址重算 WS</button>
-            <button onClick={() => void loadInventory()}>刷新库存</button>
-            <button
-              onClick={() =>
-                void runBusyAction("正在应用模板...", async () => {
-                  await requestJson<Record<string, unknown>>(runtimeBaseUrl, `/api/templates/${selectedTemplateId}/apply`, withJsonBody({}));
-                  await loadInventory();
-                })
-              }
-              disabled={!selectedTemplateId}
-            >
-              应用模板
-            </button>
-            <button className="primary" onClick={() => void createRun()}>创建真实 Run</button>
+        <Card title="真实 LLM 与运行入口" subtitle="这里不仅能填 OpenAI-compatible 配置，也会直接显示真正的对话区。">
+          <div className="launchpad-grid">
+            <section className="launchpad-grid__controls">
+              <div className="form-grid">
+                <label><span>HTTP Base URL</span><input value={runtimeBaseUrl} onChange={(event) => setRuntimeBaseUrl(event.target.value)} /></label>
+                <label><span>WS URL</span><input value={wsUrl} onChange={(event) => setWsUrl(event.target.value)} /></label>
+                <label><span>Vendor</span><input value={providerForm.vendor} onChange={(event) => setProviderForm((prev) => ({ ...prev, vendor: event.target.value }))} placeholder={DEFAULT_PROVIDER_FORM.vendor} /></label>
+                <label><span>API Mode</span><select value={providerForm.apiMode} onChange={(event) => setProviderForm((prev) => ({ ...prev, apiMode: event.target.value as ProviderFormState["apiMode"] }))}><option value="chat_completions">chat_completions</option><option value="responses">responses</option></select></label>
+                <label><span>Model</span><input value={providerForm.model} onChange={(event) => setProviderForm((prev) => ({ ...prev, model: event.target.value }))} placeholder={DEFAULT_PROVIDER_FORM.model} /></label>
+                <label><span>Temperature</span><input value={providerForm.temperature} onChange={(event) => setProviderForm((prev) => ({ ...prev, temperature: event.target.value }))} placeholder={DEFAULT_PROVIDER_FORM.temperature} /></label>
+                <label className="wide"><span>Base URL</span><input value={providerForm.baseURL} onChange={(event) => setProviderForm((prev) => ({ ...prev, baseURL: event.target.value }))} placeholder={DEFAULT_PROVIDER_FORM.baseURL} /></label>
+                <label className="wide"><span>API Key</span><input type="password" value={providerForm.apiKey} onChange={(event) => setProviderForm((prev) => ({ ...prev, apiKey: event.target.value }))} placeholder="填入你的真实 API Key 后直接点创建真实 Run" /></label>
+                <label><span>Workflow</span><select value={selectedWorkflowId} onChange={(event) => setSelectedWorkflowId(event.target.value)}>{workflows.map((workflow) => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)}</select></label>
+                <label><span>模板</span><select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
+                <label className="wide"><span>用户输入</span><textarea value={runInput} onChange={(event) => setRunInput(event.target.value)} rows={4} placeholder="输入一句真实问题，然后在右侧直接看对话回显。" /></label>
+              </div>
+              <div className="button-row">
+                <button onClick={() => setWsUrl(deriveWsUrl(runtimeBaseUrl))}>按 HTTP 地址重算 WS</button>
+                <button onClick={() => void loadInventory()}>刷新库存</button>
+                <button onClick={() => resetProviderFormToDefaults()}>恢复 DeepSeek 默认</button>
+                <button
+                  onClick={() =>
+                    void runBusyAction("正在应用模板...", async () => {
+                      await requestJson<Record<string, unknown>>(runtimeBaseUrl, `/api/templates/${selectedTemplateId}/apply`, withJsonBody({}));
+                      await loadInventory();
+                    })
+                  }
+                  disabled={!selectedTemplateId}
+                >
+                  应用模板
+                </button>
+                <button className="primary" onClick={() => void createRun()}>创建真实 Run</button>
+              </div>
+              <div className="launchpad-summary">
+                <article className="info-card info-card--nested">
+                  <h4>当前模型路由</h4>
+                  <div className="summary-list">
+                    <div className="summary-row">
+                      <span>Vendor</span>
+                      <strong>{providerForm.vendor || DEFAULT_PROVIDER_FORM.vendor}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>API Mode</span>
+                      <strong>{providerForm.apiMode}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Model</span>
+                      <strong>{providerForm.model || DEFAULT_PROVIDER_FORM.model}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Base URL</span>
+                      <strong>{providerForm.baseURL || DEFAULT_PROVIDER_FORM.baseURL}</strong>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </section>
+            <RunConversationPanel
+              conversation={conversation}
+              runSummary={runSummary}
+              promptCompile={promptCompile}
+              busyText={busyText}
+              onRefresh={() => void loadRunViews()}
+            />
           </div>
         </Card>
 

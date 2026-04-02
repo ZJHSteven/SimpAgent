@@ -144,6 +144,30 @@ export interface RunSummary {
   updated_at: string;
 }
 
+export interface ConversationMessageSummary {
+  role: "system" | "developer" | "user" | "assistant" | "tool";
+  content: string;
+  name?: string;
+  toolCallId?: string;
+  toolCalls?: Array<{
+    toolCallId: string;
+    toolName: string;
+    argumentsJson?: Record<string, unknown>;
+  }>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RunConversationSummary {
+  runId: string;
+  threadId: string;
+  workflowId: string;
+  status: string;
+  currentNodeId: string | null;
+  userInput: string;
+  latestAssistantText: string | null;
+  messages: ConversationMessageSummary[];
+}
+
 export interface TraceEventSummary {
   seq: number;
   eventId: string;

@@ -6,6 +6,8 @@
 - 现状：`apps/dev-console` 已恢复为最小框架调试台，并且已经能构建前端、构建后端包装、动态启动后端并打通基础库存接口。
 - 现状：dev-console 的项目级数据库落盘问题已修正；SQLite 现在可以明确落到 `apps/dev-console/backend/data/`，不再依赖仓库根 `data/`。
 - 现状：dev-console 前端主界面已升级为结构化调试工作台，主视图不再依赖大块黑底 JSON，原始 JSON 已退到折叠兜底区。
+- 现状：dev-console 现在已有真正的对话区；填入 API Key 后可以在同一屏里直接看到用户输入、assistant 回复、tool 回显和最新 prompt compile，而不是只有控制面板。
+- 现状：runtime-node 已补 `/api/runs/:runId/conversation`，前端不再需要只靠 trace / JSON 猜当前会话内容。
 - 已完成：
   - Monorepo/workspaces 已建立，主线目录为 `packages/*`、`apps/*`、`backend` 兼容壳。
   - `@simpagent/core` 已提供核心契约、PromptCompiler、ToolLoop、WorkflowRegistry、Ports 与统一运行时抽象。
@@ -136,15 +138,37 @@
       - `npm run --workspace @simpagent/app-dev-console build` 通过
       - `npm run build` 通过
       - `npm run test` 通过
+  - dev-console 对话入口与会话视图第一版已完成（2026-04-02）：
+    - `packages/runtime-node/src/runtime/engine.ts` 已新增 run conversation 读取能力，直接暴露 live `conversationState.messages`。
+    - `packages/runtime-node/src/api/http.ts` 已新增 `GET /api/runs/:runId/conversation`。
+    - `apps/dev-console/src/App.tsx` 已把顶部区域改成“配置 + 对话”双栏，不再只有参数表单。
+    - `apps/dev-console/src/RunConversationPanel.tsx` 已新增真正的聊天时间线组件：
+      - 显示用户输入
+      - 显示 assistant 回复
+      - 解析 tool message，直接展示工具名 / 成败 / 输出摘要
+      - 展示最近一次 prompt compile 的 message 序列
+    - provider 默认值体验已修正：
+      - 本地缓存现在带 schema version
+      - 旧缓存会自动回填 DeepSeek 默认值，避免 model / baseURL 看起来像“没填全”
+      - WS 默认地址改为从当前 runtimeBaseUrl 推导，避免页面“没反应”
+      - 新增“恢复 DeepSeek 默认”按钮
+    - 已验证：
+      - `npm run --workspace @simpagent/app-dev-console build` 通过
+      - `npm run --workspace @simpagent/dev-console-backend build` 通过
+      - `npm run build` 通过
+      - `npm run test` 通过
+      - 动态启动 `@simpagent/dev-console-backend` 后，已成功验证：
+        - `GET /api/runs/:runId/conversation`
+        - 返回 `userInput`
+        - 返回 `messages`
+        - 返回 `latestAssistantText`
 - 正在做：
-  - 已根据用户最新要求重写下一阶段 `PLANS.md`：
-    - dev-console 要从“最小壳”继续升级成“项目级测试台”；
-    - 重点改项目级 `data/` 落盘、专属 preset、结构化前端 UI、prompt unit 顺序/开关可视化。
+  - 在“已有聊天区 + 已有 JSON 配置编辑器”的基础上，继续评估更强的结构化编辑体验。
   - 评估调试台是否还需要更强的图形化视图，而不只是当前“结构化工作台 + 原始 JSON 兜底”。
 - 下一步：
   1. 把当前 JSON 配置编辑器继续推进成“结构化字段表单 + 高级 JSON”双模式。
   2. 继续增强 workflow / catalog 的图形视图，评估是否要支持节点/边的直接编辑。
-  3. 如果后续还要降低二次开发门槛，可以继续补一份“catalog memory / tool / integration 示例清单”。
+  3. 给 prompt unit / agent / workflow 新建功能补更强的表单化输入，降低直接改 JSON 的门槛。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：框架真源继续以 `packages/runtime-node` 为准，而不是回退到 `backend` 或某个 app 内部后端副本。

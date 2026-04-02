@@ -138,6 +138,21 @@ export function registerHttpRoutes(app: Express, deps: HttpDeps): void {
     }
   });
 
+  /**
+   * 当前 run 的对话视图。
+   * 说明：
+   * - 调试台需要一个真正面向“聊天”的读取接口，而不是只靠 trace / JSON 面板拼凑；
+   * - 这里直接返回 run 当前 checkpoint 中的 conversationState 摘要。
+   */
+  app.get("/api/runs/:runId/conversation", async (req, res) => {
+    try {
+      const data = await deps.engine.getConversationView(req.params.runId);
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendError(res, 500, error instanceof Error ? error.message : "查询 run conversation 失败");
+    }
+  });
+
   // ===== Run 调试查询面：state diff / side effect / plan / exposure / human input / approval =====
   app.get("/api/runs/:runId/state-diffs", (req, res) => {
     try {

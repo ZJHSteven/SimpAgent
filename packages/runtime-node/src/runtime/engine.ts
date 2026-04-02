@@ -522,6 +522,63 @@ export class FrameworkRuntimeEngine {
     return this.deps.db.getPromptCompile(compileId);
   }
 
+  /**
+   * 读取当前 run 的对话视图。
+   * 说明：
+   * - 前端“聊天区”真正关心的是用户输入、assistant 回复、tool 回显；
+   * - 这些数据本来就存在 `conversationState` 里，只是之前没有单独暴露查询接口；
+   * - 这里优先读 live checkpoint state；
+   * - 如果 run 刚创建、尚未形成可读 checkpoint，则回退到 runs 表里的输入摘要，避免前端首屏直接报错。
+   */
+  async getConversationView(runId: string): Promise<{
+    runId: string;
+    threadId: string;
+    workflowId: string;
+    status: RunStatus;
+    currentNodeId: string | null;
+    userInput: string;
+    latestAssistantText: string | null;
+    messages: UnifiedMessage[];
+  }> {
+    const record = this.getRunRecord(runId);
+    const summary = this.deps.db.getRunSummary(runId);
+    const fallbackInput =
+      summary?.input_json && safeJsonParseObject(summary.input_json)
+        ? String(safeJsonParseObject(summary.input_json)?.userInput ?? "")
+        : "";
+
+    try {
+      const workflow = this.resolveWorkflow(record.workflowId, record.workflowVersion);
+      const graph = this.getOrBuildGraph(workflow);
+      const snapshot = await graph.getState(this.threadConfig(record.threadId));
+      const state = (snapshot.values as GraphEnvelope | undefined)?.state;
+      if (!state) {
+        throw new Error("当前 run 尚未生成可读取的状态快照");
+      }
+      return {
+        runId,
+        threadId: record.threadId,
+        workflowId: record.workflowId,
+        status: state.status,
+        currentNodeId: state.routingState.currentNodeId ?? null,
+        userInput: state.conversationState.userInput,
+        latestAssistantText: state.conversationState.latestAssistantText ?? null,
+        messages: state.conversationState.messages
+      };
+    } catch {
+      return {
+        runId,
+        threadId: record.threadId,
+        workflowId: record.workflowId,
+        status: (summary?.status as RunStatus | undefined) ?? "created",
+        currentNodeId: summary?.current_node_id ?? null,
+        userInput: fallbackInput,
+        latestAssistantText: null,
+        messages: []
+      };
+    }
+  }
+
   private async executeGraph(record: RunRecord, workflow: WorkflowSpec, input: unknown, checkpointId?: string) {
     const graph = this.getOrBuildGraph(workflow);
     this.deps.db.updateRunStatus(record.runId, "running");
