@@ -62,7 +62,7 @@
   - trace / side effect / state diff
   - 审批 / 中断 / fork 的后续观察面
 
-4. 调试台前端升级为真正可读、可操作的 UI（下一阶段主任务）
+4. 调试台前端升级为真正可读、可操作的 UI（第一版已完成，后续继续增强）
 - 不再以大块黑底 JSON 作为主要展示方式；
 - JSON 仍保留，但退到“原始数据”抽屉或详情视图，不再占主界面主体；
 - 主要面板改为结构化 UI 展示：
@@ -74,7 +74,7 @@
 - 不丢字段：
   - UI 展示必须尽量覆盖原始数据，不允许“解析后只剩两项，其他八项全没了”。
 
-5. 加入调试台特有的编辑交互（下一阶段主任务）
+5. 加入调试台特有的编辑交互（第一版已完成，后续继续增强）
 - 支持在 agent 定义里查看 prompt unit 绑定顺序；
 - 支持通过拖拽或等价的顺序控制方式调整 prompt unit 顺序；
 - 支持开关某个 prompt unit 是否启用；
@@ -118,8 +118,15 @@
   - 9 个 app 专属 prompt units
   - 1 个 app 专属 workflow
 - 已完成：`apps/dev-console/src/App.tsx` 默认 provider 已切到 DeepSeek 兼容配置，并优先选择 `workflow.devconsole.medical_training_bench`。
+- 已完成：调试台前端主界面已从“以大块 JSON 为主”升级为“结构化工作台 + 原始 JSON 折叠兜底”。
+- 已完成：前端现在可以直接操作部分框架配置：
+  - 调整 agent 内 prompt binding 顺序
+  - 启用 / 禁用某个 prompt binding
+  - 启用 / 禁用 builtin tool
+  - 处理 approval 请求
 - 已验证：
   - `npm run --workspace @simpagent/dev-console-backend build`
+  - `npm run --workspace @simpagent/app-dev-console build`
   - `npm run test`
   - 独立端口启动 `dev-console` backend 后，`/api/agents`、`/api/workflows`、`/api/prompt-blocks` 能读出 app 专属定义
   - `apps/dev-console/backend/data-*/framework.sqlite` 会真实生成

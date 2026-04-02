@@ -5,6 +5,7 @@
 - 现状：`PLANS.md` 与 `PROGRESS.md` 已完成第一轮职责收口；`PLANS.md` 只保留当前计划，`PROGRESS.md` 负责最新状态快照。
 - 现状：`apps/dev-console` 已恢复为最小框架调试台，并且已经能构建前端、构建后端包装、动态启动后端并打通基础库存接口。
 - 现状：dev-console 的项目级数据库落盘问题已修正；SQLite 现在可以明确落到 `apps/dev-console/backend/data/`，不再依赖仓库根 `data/`。
+- 现状：dev-console 前端主界面已升级为结构化调试工作台，主视图不再依赖大块黑底 JSON，原始 JSON 已退到折叠兜底区。
 - 已完成：
   - Monorepo/workspaces 已建立，主线目录为 `packages/*`、`apps/*`、`backend` 兼容壳。
   - `@simpagent/core` 已提供核心契约、PromptCompiler、ToolLoop、WorkflowRegistry、Ports 与统一运行时抽象。
@@ -78,15 +79,36 @@
       - 以独立端口启动时，API 能读出 app 专属的 agent / workflow / prompt-unit
       - `npm run --workspace @simpagent/dev-console-backend build` 通过
       - `npm run test` 通过
+  - dev-console 前端结构化工作台第一版已完成（2026-04-02）：
+    - `apps/dev-console/src/App.tsx` 已重构为结构化 UI：
+      - agent 列表 + agent 详情
+      - prompt unit 库 + prompt unit 详情
+      - builtin tool 状态面板
+      - workflow 拓扑 + edge 摘要
+      - catalog class / relation type 摘要
+      - run / approval / trace / checkpoint 的结构化展示
+      - 原始 JSON 已退到折叠详情区，不再占主界面主体
+    - 已接上可写操作：
+      - 调整 agent prompt binding 顺序
+      - 启用 / 禁用某个 prompt binding
+      - 启用 / 禁用 builtin tool
+      - approval approve / reject
+    - 前端辅助也已补齐：
+      - `apps/dev-console/src/api.ts` 支持 `PUT` JSON 请求
+      - `apps/dev-console/src/types.ts` 已补充调试台真正用到的字段
+      - `apps/dev-console/src/App.css` 已补齐结构化工作台样式
+    - 已验证：
+      - `npm run --workspace @simpagent/app-dev-console build` 通过
+      - `npm run build` 通过
 - 正在做：
   - 已根据用户最新要求重写下一阶段 `PLANS.md`：
     - dev-console 要从“最小壳”继续升级成“项目级测试台”；
     - 重点改项目级 `data/` 落盘、专属 preset、结构化前端 UI、prompt unit 顺序/开关可视化。
-  - 评估调试台是否还需要更强的图形化视图，而不只是当前“观察 + 控制 + JSON 面板”。
+  - 评估调试台是否还需要更强的图形化视图，而不只是当前“结构化工作台 + 原始 JSON 兜底”。
 - 下一步：
-  1. 先修正 dev-console 的 SQLite 与项目数据目录，确保落盘到 `apps/dev-console/backend/data/`。
-  2. 为 dev-console 新建专属 preset，覆盖医学诊疗训练、多 agent、prompt units、handoff、评判与科研辅助。
-  3. 重构调试台前端，减少纯 JSON 黑框，改成结构化展示，并加入 prompt unit 顺序/开关调节。
+  1. 继续把 workflow / catalog 从摘要面板推进到更强的图形视图。
+  2. 继续补 prompt unit 插入位置、trigger、override 的可视交互，而不只是在 checkpoint 区写原始 JSON。
+  3. 评估是否要加入 agent / workflow / prompt unit 的正式保存编辑器，而不只是在现有接口上做轻量调节。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：框架真源继续以 `packages/runtime-node` 为准，而不是回退到 `backend` 或某个 app 内部后端副本。

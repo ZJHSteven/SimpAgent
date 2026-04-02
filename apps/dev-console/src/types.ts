@@ -22,6 +22,7 @@ export interface AgentSummary {
   name: string;
   role?: string;
   description?: string;
+  enabled?: boolean;
   promptBindings?: Array<{
     bindingId: string;
     unitId: string;
@@ -29,12 +30,17 @@ export interface AgentSummary {
     order: number;
   }>;
   toolAllowList?: string[];
+  toolRoutePolicy?: {
+    mode?: string;
+    reason?: string;
+  };
   handoffPolicy?: {
     allowedTargets?: string[];
     allowDynamicHandoff?: boolean;
     strategy?: string;
   };
   memoryPolicies?: string[];
+  tags?: string[];
   version: number;
 }
 
@@ -47,9 +53,10 @@ export interface WorkflowNodeLite {
 }
 
 export interface WorkflowEdgeLite {
-  id: string;
+  id?: string;
   from: string;
   to: string;
+  priority?: number;
   condition?: Record<string, unknown>;
 }
 
@@ -70,6 +77,9 @@ export interface PromptUnitSummary {
   insertionPoint?: string;
   priority?: number;
   enabled: boolean;
+  trigger?: {
+    agentIds?: string[];
+  };
   tags?: string[];
   version: number;
 }

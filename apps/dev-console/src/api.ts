@@ -80,10 +80,16 @@ export async function requestJson<T>(baseUrl: string, path: string, init?: Reque
   return payload.data;
 }
 
-/** 发送 POST JSON body 的便捷方法。 */
-export function withJsonBody(body: unknown): RequestInit {
+/**
+ * 发送 JSON body 的便捷方法。
+ * 说明：
+ * - 之前只支持 POST；
+ * - 现在调试台已经开始直接编辑 agent / tool 配置，因此这里补一个 method 参数，
+ *   让同一套辅助函数也能发 PUT。
+ */
+export function withJsonBody(body: unknown, method: "POST" | "PUT" = "POST"): RequestInit {
   return {
-    method: "POST",
+    method,
     body: JSON.stringify(body)
   };
 }
