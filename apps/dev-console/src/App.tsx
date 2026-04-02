@@ -55,6 +55,18 @@ const PREFERRED_WORKFLOW_IDS = [
   "workflow.default"
 ] as const;
 
+const PROMPT_INSERTION_POINTS = [
+  "system_pre",
+  "system_post",
+  "developer",
+  "task_pre",
+  "task_post",
+  "memory_context",
+  "tool_context"
+] as const;
+
+const MESSAGE_ROLE_OPTIONS = ["system", "developer", "user", "assistant", "tool"] as const;
+
 function readStoredString(key: string, fallback: string): string {
   const value = window.localStorage.getItem(key);
   return value && value.trim() ? value : fallback;
@@ -104,6 +116,100 @@ function countBy<T extends string>(values: T[]): Array<{ key: T; count: number }
   return [...map.entries()]
     .map(([key, count]) => ({ key, count }))
     .sort((left, right) => right.count - left.count || left.key.localeCompare(right.key));
+}
+
+type TopologyNodeView = {
+  id: string;
+  label: string;
+  meta?: string;
+  tone?: "default" | "accent" | "soft";
+};
+
+type TopologyEdgeView = {
+  id: string;
+  from: string;
+  to: string;
+  label?: string;
+};
+
+type ConfigEntityType = "prompt_unit" | "agent" | "workflow";
+
+/**
+ * 计算一个简单、稳定的节点布局。
+ * 说明：
+ * - 这里不追求复杂力导布局，只求“稳定可读”；
+ * - 相同输入每次得到相同位置，便于人工比对不同版本。
+ */
+function buildTopologyLayout(nodes: TopologyNodeView[]): Array<TopologyNodeView & { x: number; y: number }> {
+  const columns = nodes.length <= 4 ? nodes.length || 1 : nodes.length <= 8 ? 4 : 5;
+  return nodes.map((node, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    return {
+      ...node,
+      x: 28 + column * 190,
+      y: 26 + row * 122
+    };
+  });
+}
+
+function buildCloneId(baseId: string, suffix = "copy"): string {
+  return `${baseId}.${suffix}.${Date.now()}`;
+}
+
+function buildBlankPromptUnitDraft(): Record<string, unknown> {
+  return {
+    id: `block.devconsole.new.${Date.now()}`,
+    name: "new.prompt.unit",
+    kind: "persona",
+    template: "请填写新的 PromptUnit 内容。",
+    insertionPoint: "system_post",
+    priority: 80,
+    enabled: true,
+    tags: ["dev-console"]
+  };
+}
+
+function buildBlankAgentDraft(): Record<string, unknown> {
+  return {
+    id: `agent.devconsole.new.${Date.now()}`,
+    name: "New Agent",
+    role: "custom",
+    description: "请填写新的 agent 描述。",
+    promptBindings: [],
+    toolAllowList: [],
+    handoffPolicy: {
+      allowedTargets: [],
+      allowDynamicHandoff: true,
+      strategy: "hybrid"
+    },
+    enabled: true,
+    version: 1,
+    tags: ["dev-console"]
+  };
+}
+
+function buildBlankWorkflowDraft(): Record<string, unknown> {
+  return {
+    id: `workflow.devconsole.new.${Date.now()}`,
+    name: "新工作流",
+    entryNode: "node.start",
+    nodes: [
+      {
+        id: "node.start",
+        type: "agent",
+        label: "起始节点",
+        agentId: "agent.devconsole.orchestrator"
+      }
+    ],
+    edges: [],
+    interruptPolicy: {
+      defaultInterruptBefore: false,
+      defaultInterruptAfter: false
+    },
+    enabled: true,
+    version: 1
+  };
 }
 
 function Card(props: { title: string; subtitle?: string; children: React.ReactNode; actions?: React.ReactNode }) {
@@ -161,19 +267,84 @@ function EmptyHint(props: { text: string }) {
   return <div className="empty-hint">{props.text}</div>;
 }
 
+function TopologyCanvas(props: { nodes: TopologyNodeView[]; edges: TopologyEdgeView[]; emptyText: string; hint?: string }) {
+  if (!props.nodes.length) return <EmptyHint text={props.emptyText} />;
+  const positionedNodes = buildTopologyLayout(props.nodes);
+  const nodeMap = new Map(positionedNodes.map((node) => [node.id, node]));
+  const width = Math.max(720, ...positionedNodes.map((node) => node.x + 180));
+  const height = Math.max(220, ...positionedNodes.map((node) => node.y + 86));
+
+  return (
+    <div className="topology-canvas">
+      {props.hint ? <p className="topology-canvas__hint">{props.hint}</p> : null}
+      <div className="topology-canvas__viewport">
+        <div className="topology-canvas__stage" style={{ width, height }}>
+          <svg className="topology-canvas__svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+            <defs>
+              <marker id="topology-arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(42, 101, 189, 0.72)" />
+              </marker>
+            </defs>
+            {props.edges.map((edge) => {
+              const from = nodeMap.get(edge.from);
+              const to = nodeMap.get(edge.to);
+              if (!from || !to) return null;
+              const startX = from.x + 76;
+              const startY = from.y + 68;
+              const endX = to.x + 76;
+              const endY = to.y;
+              const midX = (startX + endX) / 2;
+              const midY = (startY + endY) / 2;
+              return (
+                <g key={edge.id}>
+                  <path
+                    d={`M ${startX} ${startY} C ${startX} ${midY}, ${endX} ${midY}, ${endX} ${endY}`}
+                    className="topology-canvas__edge"
+                    markerEnd="url(#topology-arrow)"
+                  />
+                  {edge.label ? (
+                    <text x={midX} y={midY - 8} textAnchor="middle" className="topology-canvas__edge-label">
+                      {edge.label}
+                    </text>
+                  ) : null}
+                </g>
+              );
+            })}
+          </svg>
+          {positionedNodes.map((node) => (
+            <article
+              key={node.id}
+              className={`topology-node topology-node--${node.tone ?? "default"}`}
+              style={{ left: node.x, top: node.y }}
+            >
+              <strong>{node.label}</strong>
+              {node.meta ? <span>{node.meta}</span> : null}
+              <small>{node.id}</small>
+            </article>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WorkflowGraph(props: { workflow: WorkflowSummary | null }) {
   if (!props.workflow) return <EmptyHint text="当前没有 workflow。" />;
+  const topologyNodes: TopologyNodeView[] = props.workflow.nodes.map((node, index) => ({
+    id: node.id,
+    label: node.label || node.id,
+    meta: `${node.type} / ${node.agentId ?? node.toolId ?? "未绑定实体"}`,
+    tone: index === 0 ? "accent" : "default"
+  }));
+  const topologyEdges: TopologyEdgeView[] = props.workflow.edges.map((edge, index) => ({
+    id: edge.id || `${edge.from}-${edge.to}-${index}`,
+    from: edge.from,
+    to: edge.to,
+    label: edge.priority ? `priority ${edge.priority}` : undefined
+  }));
   return (
     <div className="workflow-board">
-      <div className="workflow-graph">
-        {props.workflow.nodes.map((node) => (
-          <article key={node.id} className="node-card">
-            <strong>{node.label || node.id}</strong>
-            <span>{node.type}</span>
-            <p>{node.agentId ?? node.toolId ?? "未绑定实体"}</p>
-          </article>
-        ))}
-      </div>
+      <TopologyCanvas nodes={topologyNodes} edges={topologyEdges} emptyText="当前 workflow 没有可展示节点。" hint="上半部分是工作流拓扑预览，边上的文字表示优先级。" />
       <div className="edge-list">
         {props.workflow.edges.length ? (
           props.workflow.edges.map((edge, index) => (
@@ -192,6 +363,43 @@ function WorkflowGraph(props: { workflow: WorkflowSummary | null }) {
         )}
       </div>
     </div>
+  );
+}
+
+function CatalogGraph(props: { nodes: CatalogNodeSummary[]; relations: CatalogRelationSummary[] }) {
+  const prioritizedRelations = props.relations.slice(0, 12);
+  const relationNodeIds = new Set<string>();
+  for (const relation of prioritizedRelations) {
+    relationNodeIds.add(relation.fromNodeId);
+    relationNodeIds.add(relation.toNodeId);
+  }
+  const candidateNodes =
+    props.nodes.filter((node) => relationNodeIds.has(node.nodeId)).slice(0, 12).length > 0
+      ? props.nodes.filter((node) => relationNodeIds.has(node.nodeId)).slice(0, 12)
+      : props.nodes.slice(0, 12);
+  const visibleNodeIds = new Set(candidateNodes.map((node) => node.nodeId));
+  const topologyNodes: TopologyNodeView[] = candidateNodes.map((node) => ({
+    id: node.nodeId,
+    label: node.title || node.name,
+    meta: `${node.primaryKind || node.nodeClass} / sort ${node.sortOrder}`,
+    tone: node.primaryKind === "prompt" || node.primaryKind === "tool" ? "accent" : "soft"
+  }));
+  const topologyEdges: TopologyEdgeView[] = prioritizedRelations
+    .filter((relation) => visibleNodeIds.has(relation.fromNodeId) && visibleNodeIds.has(relation.toNodeId))
+    .map((relation) => ({
+      id: relation.relationId,
+      from: relation.fromNodeId,
+      to: relation.toNodeId,
+      label: relation.relationType
+    }));
+
+  return (
+    <TopologyCanvas
+      nodes={topologyNodes}
+      edges={topologyEdges}
+      emptyText="当前没有可展示的 catalog 节点。"
+      hint="这里只预览前 12 条 relation 涉及的节点，目的是快速确认图谱是否真正连起来。"
+    />
   );
 }
 
@@ -232,7 +440,14 @@ function App() {
   const [promptCompile, setPromptCompile] = useState<PromptCompileDetail | null>(null);
   const [wsState, setWsState] = useState("idle");
   const [statePatchText, setStatePatchText] = useState('{\n  "conversationState": {\n    "latestAssistantText": "这是人工修订后的阶段性结果。"\n  }\n}');
-  const [promptUnitOverrideText, setPromptUnitOverrideText] = useState('[\n  {\n    "overrideId": "override.sample.sort",\n    "unitId": "block.devconsole.med.system",\n    "action": "change_sort",\n    "payload": {\n      "priority": 999\n    }\n  }\n]');
+  const [promptUnitOverrideText, setPromptUnitOverrideText] = useState('[\n  {\n    "overrideId": "override.sample.sort",\n    "unitId": "block.devconsole.med.system",\n    "action": "change_sort",\n    "payload": {\n      "sortWeight": 999\n    }\n  }\n]');
+  const [editorEntityType, setEditorEntityType] = useState<ConfigEntityType>("prompt_unit");
+  const [editorDraftText, setEditorDraftText] = useState("");
+  const [editorStatusText, setEditorStatusText] = useState("");
+  const [overrideSortWeight, setOverrideSortWeight] = useState("500");
+  const [overridePlacementSlot, setOverridePlacementSlot] = useState<(typeof PROMPT_INSERTION_POINTS)[number]>("system_post");
+  const [overrideRole, setOverrideRole] = useState<(typeof MESSAGE_ROLE_OPTIONS)[number]>("system");
+  const [overrideContentText, setOverrideContentText] = useState("");
   const lastEventSeqRef = useRef(0);
 
   const selectedWorkflow = useMemo(() => workflows.find((item) => item.id === selectedWorkflowId) ?? null, [selectedWorkflowId, workflows]);
@@ -243,6 +458,11 @@ function App() {
   const latestCheckpoint = historyItems[0] ?? null;
   const catalogClassSummary = useMemo(() => countBy(catalogNodes.map((item) => item.nodeClass)), [catalogNodes]);
   const relationTypeSummary = useMemo(() => countBy(catalogRelations.map((item) => item.relationType)), [catalogRelations]);
+  const editorSourceObject = useMemo(() => {
+    if (editorEntityType === "prompt_unit") return selectedPromptUnit;
+    if (editorEntityType === "agent") return selectedAgent;
+    return selectedWorkflow;
+  }, [editorEntityType, selectedAgent, selectedPromptUnit, selectedWorkflow]);
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEYS.runtimeBaseUrl, runtimeBaseUrl);
@@ -272,6 +492,19 @@ function App() {
       if (preferredPromptUnit) setSelectedPromptUnitId(preferredPromptUnit.id);
     }
   }, [promptUnits, selectedPromptUnitId]);
+
+  useEffect(() => {
+    if (selectedPromptUnit) {
+      setOverridePlacementSlot((selectedPromptUnit.insertionPoint as (typeof PROMPT_INSERTION_POINTS)[number]) ?? "system_post");
+      setOverrideContentText(selectedPromptUnit.template);
+    }
+  }, [selectedPromptUnit]);
+
+  useEffect(() => {
+    if (!editorDraftText.trim() && editorSourceObject) {
+      setEditorDraftText(formatJson(editorSourceObject));
+    }
+  }, [editorDraftText, editorSourceObject]);
 
   async function loadInventory() {
     try {
@@ -459,6 +692,143 @@ function App() {
       action: approved ? "approve" : "reject",
       justification: approved ? "dev-console approve" : "dev-console reject"
     });
+  }
+
+  function setActiveSelection(kind: ConfigEntityType, entityId: string) {
+    if (kind === "prompt_unit") {
+      setSelectedPromptUnitId(entityId);
+      return;
+    }
+    if (kind === "agent") {
+      setSelectedAgentId(entityId);
+      return;
+    }
+    setSelectedWorkflowId(entityId);
+  }
+
+  function parseEditorDraft(): Record<string, unknown> {
+    const parsed = JSON.parse(editorDraftText) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("编辑器内容必须是 JSON 对象。");
+    }
+    return parsed as Record<string, unknown>;
+  }
+
+  function loadSelectedEntityToEditor(kind = editorEntityType) {
+    const source =
+      kind === "prompt_unit"
+        ? selectedPromptUnit
+        : kind === "agent"
+          ? selectedAgent
+          : selectedWorkflow;
+    if (!source) {
+      setErrorText("当前没有可加载到编辑器的对象。");
+      return;
+    }
+    setEditorEntityType(kind);
+    setEditorDraftText(formatJson(source));
+    setEditorStatusText(`已载入 ${kind}：${source.id}`);
+  }
+
+  function createBlankEditorDraft(kind = editorEntityType) {
+    const draft =
+      kind === "prompt_unit"
+        ? buildBlankPromptUnitDraft()
+        : kind === "agent"
+          ? buildBlankAgentDraft()
+          : buildBlankWorkflowDraft();
+    setEditorEntityType(kind);
+    setEditorDraftText(formatJson(draft));
+    setEditorStatusText(`已创建新的 ${kind} 草稿`);
+  }
+
+  function cloneCurrentEntityToEditor(kind = editorEntityType) {
+    const source =
+      kind === "prompt_unit"
+        ? selectedPromptUnit
+        : kind === "agent"
+          ? selectedAgent
+          : selectedWorkflow;
+    if (!source) {
+      setErrorText("当前没有可复制的对象。");
+      return;
+    }
+    const cloned = {
+      ...source,
+      id: buildCloneId(source.id)
+    };
+    setEditorEntityType(kind);
+    setEditorDraftText(formatJson(cloned));
+    setEditorStatusText(`已基于 ${source.id} 生成复制草稿`);
+  }
+
+  function formatEditorDraft() {
+    try {
+      setEditorDraftText(formatJson(parseEditorDraft()));
+      setEditorStatusText("编辑器 JSON 已格式化");
+      setErrorText("");
+    } catch (error) {
+      setErrorText(toErrorMessage(error));
+    }
+  }
+
+  async function saveEditorDraft(mode: "create" | "update") {
+    await runBusyAction(mode === "create" ? "正在新建配置..." : "正在更新配置...", async () => {
+      const draft = parseEditorDraft();
+      const entityId = typeof draft.id === "string" ? draft.id : "";
+      if (!entityId.trim()) throw new Error("草稿必须包含字符串类型的 id。");
+      const basePath =
+        editorEntityType === "prompt_unit"
+          ? "/api/prompt-units"
+          : editorEntityType === "agent"
+            ? "/api/agents"
+            : "/api/workflows";
+      await requestJson<Record<string, unknown>>(
+        runtimeBaseUrl,
+        mode === "create" ? basePath : `${basePath}/${entityId}`,
+        withJsonBody(draft, mode === "create" ? "POST" : "PUT")
+      );
+      await loadInventory();
+      setActiveSelection(editorEntityType, entityId);
+      setEditorStatusText(mode === "create" ? `已新建 ${editorEntityType}：${entityId}` : `已更新 ${editorEntityType}：${entityId}`);
+      setStatusText(mode === "create" ? `已新建配置：${entityId}` : `已更新配置：${entityId}`);
+      setErrorText("");
+    });
+  }
+
+  function appendPromptUnitOverride(action: "enable" | "disable" | "change_sort" | "change_placement" | "change_role" | "replace_content") {
+    if (!selectedPromptUnit) {
+      setErrorText("请先选择一个 PromptUnit，再生成 override。");
+      return;
+    }
+    try {
+      const current = JSON.parse(promptUnitOverrideText) as unknown;
+      const currentOverrides = Array.isArray(current) ? current : [];
+      const payload =
+        action === "change_sort"
+          ? { sortWeight: Number(overrideSortWeight) }
+          : action === "change_placement"
+            ? { placement: { mode: "slot", slot: overridePlacementSlot } }
+            : action === "change_role"
+              ? { role: overrideRole }
+              : action === "replace_content"
+                ? { contentTemplate: overrideContentText }
+                : {};
+      const nextOverrides = [
+        ...currentOverrides,
+        {
+          overrideId: `override.${selectedPromptUnit.id}.${action}.${Date.now()}`,
+          unitId: selectedPromptUnit.id,
+          action,
+          payload
+        }
+      ];
+      setPromptUnitOverrideText(formatJson(nextOverrides));
+      setEditorStatusText(`已把 ${selectedPromptUnit.id} 的 ${action} override 追加到草稿中`);
+      setErrorText("");
+    } catch (error) {
+      setErrorText(`当前 PromptUnit Override JSON 不是合法数组：${toErrorMessage(error)}`);
+    }
   }
 
   const handleWsMessage = useEffectEvent((message: WsServerEvent) => {
@@ -764,6 +1134,7 @@ function App() {
                 <span>{catalogNodes.length} nodes / {catalogRelations.length} relations</span>
               </header>
               <div className="stack-grid">
+                <CatalogGraph nodes={catalogNodes} relations={catalogRelations} />
                 <article className="info-card">
                   <h4>Node Class 分布</h4>
                   {catalogClassSummary.length ? (
@@ -798,6 +1169,57 @@ function App() {
             </section>
           </div>
           <RawJsonDetails summary="查看 workflow / catalog / tool 原始 JSON" value={{ selectedWorkflow, catalogNodes, catalogRelations, toolExposureMeta }} emptyText="暂无 workflow / catalog 原始数据。" />
+        </Card>
+
+        <Card title="配置编辑器" subtitle="控制台必须可编辑。这里直接支持 prompt unit / agent / workflow 的新建与更新。">
+          <div className="editor-toolbar">
+            <label>
+              <span>编辑对象类型</span>
+              <select value={editorEntityType} onChange={(event) => setEditorEntityType(event.target.value as ConfigEntityType)}>
+                <option value="prompt_unit">PromptUnit</option>
+                <option value="agent">Agent</option>
+                <option value="workflow">Workflow</option>
+              </select>
+            </label>
+            <button onClick={() => loadSelectedEntityToEditor()}>载入当前选中对象</button>
+            <button onClick={() => cloneCurrentEntityToEditor()}>复制当前对象为新草稿</button>
+            <button onClick={() => createBlankEditorDraft()}>新建空白草稿</button>
+            <button onClick={() => formatEditorDraft()}>格式化 JSON</button>
+          </div>
+          <div className="double-grid">
+            <article className="info-card">
+              <h4>当前编辑上下文</h4>
+              <div className="summary-list">
+                <div className="summary-row">
+                  <span>当前类型</span>
+                  <strong>{editorEntityType}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>当前选中对象</span>
+                  <strong>{editorSourceObject?.id || "暂无"}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>编辑器状态</span>
+                  <strong>{editorStatusText || "尚未编辑"}</strong>
+                </div>
+              </div>
+              <div className="info-card__section">
+                <strong>说明</strong>
+                <p>这里是控制台写入口，不是展示面板。建议先“载入当前选中对象”，修改 `id` 后再点“新建”；如果是修改已有对象，则保持 `id` 不变后点“更新”。</p>
+              </div>
+            </article>
+            <article className="info-card">
+              <h4>可编辑 JSON 草稿</h4>
+              <label className="wide">
+                <span>Draft JSON</span>
+                <textarea value={editorDraftText} onChange={(event) => setEditorDraftText(event.target.value)} rows={20} />
+              </label>
+              <div className="button-row">
+                <button onClick={() => void saveEditorDraft("update")}>更新当前对象</button>
+                <button className="primary" onClick={() => void saveEditorDraft("create")}>新建对象</button>
+              </div>
+            </article>
+          </div>
         </Card>
 
         <Card title="当前 Run 控制与审批" subtitle="这里验证 human-in-the-loop 主链：创建后可刷新、暂停、恢复、中断、处理审批。">
@@ -947,6 +1369,66 @@ function App() {
             </article>
             <article className="info-card">
               <h4>Checkpoint 操作区</h4>
+              <div className="override-builder">
+                <article className="info-card info-card--nested">
+                  <h4>PromptUnit Override 快速生成</h4>
+                  {selectedPromptUnit ? (
+                    <div className="detail-stack">
+                      <div className="summary-list">
+                        <div className="summary-row">
+                          <span>当前目标 PromptUnit</span>
+                          <strong>{selectedPromptUnit.id}</strong>
+                        </div>
+                        <div className="summary-row">
+                          <span>插入点</span>
+                          <strong>{selectedPromptUnit.insertionPoint || "未声明"}</strong>
+                        </div>
+                      </div>
+                      <div className="button-row button-row--tight">
+                        <button onClick={() => appendPromptUnitOverride("enable")}>追加 Enable Override</button>
+                        <button onClick={() => appendPromptUnitOverride("disable")}>追加 Disable Override</button>
+                      </div>
+                      <div className="form-grid">
+                        <label>
+                          <span>Sort Weight</span>
+                          <input value={overrideSortWeight} onChange={(event) => setOverrideSortWeight(event.target.value)} />
+                        </label>
+                        <div className="button-stack">
+                          <span>排序调整</span>
+                          <button onClick={() => appendPromptUnitOverride("change_sort")}>追加 Change Sort Override</button>
+                        </div>
+                        <label>
+                          <span>Placement Slot</span>
+                          <select value={overridePlacementSlot} onChange={(event) => setOverridePlacementSlot(event.target.value as (typeof PROMPT_INSERTION_POINTS)[number])}>
+                            {PROMPT_INSERTION_POINTS.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+                          </select>
+                        </label>
+                        <div className="button-stack">
+                          <span>插入位置调整</span>
+                          <button onClick={() => appendPromptUnitOverride("change_placement")}>追加 Change Placement Override</button>
+                        </div>
+                        <label>
+                          <span>Role</span>
+                          <select value={overrideRole} onChange={(event) => setOverrideRole(event.target.value as (typeof MESSAGE_ROLE_OPTIONS)[number])}>
+                            {MESSAGE_ROLE_OPTIONS.map((role) => <option key={role} value={role}>{role}</option>)}
+                          </select>
+                        </label>
+                        <div className="button-stack">
+                          <span>Role 调整</span>
+                          <button onClick={() => appendPromptUnitOverride("change_role")}>追加 Change Role Override</button>
+                        </div>
+                        <label className="wide">
+                          <span>Replacement Content</span>
+                          <textarea value={overrideContentText} onChange={(event) => setOverrideContentText(event.target.value)} rows={5} />
+                        </label>
+                        <button className="wide" onClick={() => appendPromptUnitOverride("replace_content")}>追加 Replace Content Override</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <EmptyHint text="请先在上面的 PromptUnit 库中选中一个 PromptUnit。" />
+                  )}
+                </article>
+              </div>
               <div className="form-grid">
                 <label className="wide"><span>State Patch JSON</span><textarea value={statePatchText} onChange={(event) => setStatePatchText(event.target.value)} rows={7} /></label>
                 <label className="wide"><span>PromptUnit Override JSON</span><textarea value={promptUnitOverrideText} onChange={(event) => setPromptUnitOverrideText(event.target.value)} rows={7} /></label>
@@ -954,6 +1436,7 @@ function App() {
               <div className="button-row">
                 <button onClick={() => void postAction(`/api/threads/${activeThreadId}/checkpoints/${latestCheckpoint?.checkpointId || ""}/state-patch`, { reason: "dev-console state patch", operator: "dev-console", patch: parseJsonInput(statePatchText) })} disabled={!latestCheckpoint?.checkpointId}>写入 State Patch</button>
                 <button onClick={() => void postAction(`/api/threads/${activeThreadId}/checkpoints/${latestCheckpoint?.checkpointId || ""}/prompt-unit-overrides`, { reason: "dev-console prompt-unit override", operator: "dev-console", overrides: parseJsonInput(promptUnitOverrideText) })} disabled={!latestCheckpoint?.checkpointId}>写入 PromptUnit Override</button>
+                <button onClick={() => setPromptUnitOverrideText("[]")}>清空 Override JSON</button>
                 <button onClick={() => void postAction(`/api/threads/${activeThreadId}/checkpoints/${latestCheckpoint?.checkpointId || ""}/fork`, { operator: "dev-console", reason: "dev-console fork from latest checkpoint" })} disabled={!latestCheckpoint?.checkpointId}>从最新 Checkpoint Fork</button>
               </div>
             </article>

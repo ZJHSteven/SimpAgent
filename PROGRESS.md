@@ -100,15 +100,37 @@
     - 已验证：
       - `npm run --workspace @simpagent/app-dev-console build` 通过
       - `npm run build` 通过
+  - dev-console 控制台编辑能力第一版已完成（2026-04-02）：
+    - `apps/dev-console/src/App.tsx` 已新增正式配置编辑器：
+      - 可载入当前选中的 prompt unit / agent / workflow
+      - 可复制当前对象为新草稿
+      - 可新建空白草稿
+      - 可通过现有 HTTP API 直接 `POST / PUT` 新建或更新对象
+    - 当前编辑器定位是“控制台写入口”，因此采用：
+      - 结构化工作台负责浏览、筛选、定位对象
+      - JSON 草稿编辑器负责精确修改与新增
+    - Checkpoint 区已新增 PromptUnit Override 快速生成器：
+      - enable / disable
+      - change_sort
+      - change_placement
+      - change_role
+      - replace_content
+    - 图形视图也已补强：
+      - workflow 现在有 SVG 拓扑预览
+      - catalog 现在有 relation 子图预览
+    - 已验证：
+      - `npm run --workspace @simpagent/app-dev-console build` 通过
+      - `npm run build` 通过
+      - `npm run test` 通过
 - 正在做：
   - 已根据用户最新要求重写下一阶段 `PLANS.md`：
     - dev-console 要从“最小壳”继续升级成“项目级测试台”；
     - 重点改项目级 `data/` 落盘、专属 preset、结构化前端 UI、prompt unit 顺序/开关可视化。
   - 评估调试台是否还需要更强的图形化视图，而不只是当前“结构化工作台 + 原始 JSON 兜底”。
 - 下一步：
-  1. 继续把 workflow / catalog 从摘要面板推进到更强的图形视图。
-  2. 继续补 prompt unit 插入位置、trigger、override 的可视交互，而不只是在 checkpoint 区写原始 JSON。
-  3. 评估是否要加入 agent / workflow / prompt unit 的正式保存编辑器，而不只是在现有接口上做轻量调节。
+  1. 把当前 JSON 配置编辑器继续推进成“结构化字段表单 + 高级 JSON”双模式。
+  2. 继续增强 workflow / catalog 的图形视图，评估是否要支持节点/边的直接编辑。
+  3. 把 PromptUnit Override 继续做成可视化 patch 面板，而不是只生成 JSON。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：框架真源继续以 `packages/runtime-node` 为准，而不是回退到 `backend` 或某个 app 内部后端副本。

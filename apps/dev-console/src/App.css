@@ -289,7 +289,9 @@ button:disabled {
 
 .inventory-columns,
 .double-grid,
-.triple-grid {
+.triple-grid,
+.editor-toolbar,
+.override-builder {
   display: grid;
   gap: 16px;
 }
@@ -304,6 +306,12 @@ button:disabled {
 
 .triple-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.editor-toolbar {
+  grid-template-columns: 220px repeat(4, minmax(0, 1fr));
+  margin-bottom: 16px;
+  align-items: end;
 }
 
 .list-panel,
@@ -331,9 +339,20 @@ button:disabled {
 .detail-stack,
 .binding-list,
 .tool-list,
-.trace-list {
+.trace-list,
+.button-stack {
   display: grid;
   gap: 12px;
+}
+
+.button-stack {
+  align-content: end;
+}
+
+.button-stack span,
+.topology-canvas__hint {
+  color: var(--text-muted);
+  font-size: 0.88rem;
 }
 
 .selection-list {
@@ -513,6 +532,72 @@ button:disabled {
   gap: 14px;
 }
 
+.topology-canvas {
+  display: grid;
+  gap: 10px;
+}
+
+.topology-canvas__viewport {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(245, 249, 255, 0.96), rgba(238, 245, 255, 0.92));
+}
+
+.topology-canvas__stage {
+  position: relative;
+}
+
+.topology-canvas__svg {
+  position: absolute;
+  inset: 0;
+}
+
+.topology-canvas__edge {
+  fill: none;
+  stroke: rgba(42, 101, 189, 0.42);
+  stroke-width: 2;
+}
+
+.topology-canvas__edge-label {
+  fill: var(--text-soft);
+  font-size: 12px;
+}
+
+.topology-node {
+  position: absolute;
+  width: 152px;
+  min-height: 64px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(42, 101, 189, 0.18);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 22px rgba(31, 47, 84, 0.08);
+}
+
+.topology-node strong,
+.topology-node span,
+.topology-node small {
+  display: block;
+}
+
+.topology-node span,
+.topology-node small {
+  margin-top: 4px;
+  color: var(--text-muted);
+}
+
+.topology-node--accent {
+  background: rgba(232, 243, 255, 0.98);
+  border-color: rgba(42, 101, 189, 0.35);
+}
+
+.topology-node--soft {
+  background: rgba(243, 249, 250, 0.96);
+  border-color: rgba(33, 126, 138, 0.22);
+}
+
 .workflow-graph {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -586,6 +671,10 @@ button:disabled {
   margin-bottom: 10px;
 }
 
+.override-builder {
+  margin-bottom: 16px;
+}
+
 .summary-list {
   display: grid;
   gap: 10px;
@@ -630,6 +719,8 @@ button:disabled {
   .inventory-columns,
   .double-grid,
   .triple-grid,
+  .editor-toolbar,
+  .override-builder,
   .metric-grid,
   .metric-grid--compact,
   .button-row--tight,

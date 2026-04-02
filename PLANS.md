@@ -83,6 +83,13 @@
   - 顺序上移/下移
   - 启用/禁用
   - 插入位置与 trigger 的可视化展示
+- 新增要求（2026-04-02 用户补充）：
+  - `dev-console` 不是纯展示台，而是控制台；
+  - 前端必须支持修改 / 新增：
+    - prompt unit
+    - agent
+    - workflow
+  - 允许采用“结构化表单 + 高级 JSON 编辑”混合方案，但不能只有只读展示。
 
 6. 提升调试台默认可用性（部分完成）
 - 把当前实测可用的 DeepSeek 配置作为 dev-console 默认测试配置写入前端默认值；
@@ -124,6 +131,15 @@
   - 启用 / 禁用某个 prompt binding
   - 启用 / 禁用 builtin tool
   - 处理 approval 请求
+- 已完成：控制台第一版配置编辑器已接通：
+  - 可以载入当前选中的 prompt unit / agent / workflow
+  - 可以复制当前对象为新草稿
+  - 可以新建空白草稿
+  - 可以通过 `POST / PUT` 新建或更新对象
+- 已完成：checkpoint 区已加入 PromptUnit Override 快速生成器，不再只能手写 JSON。
+- 下一步重点补齐：正式的配置编辑器
+  - 继续把 JSON 编辑器增强成“结构化字段 + 高级 JSON”双模式
+  - 继续补 workflow / catalog 更强的可视图编辑
 - 已验证：
   - `npm run --workspace @simpagent/dev-console-backend build`
   - `npm run --workspace @simpagent/app-dev-console build`
