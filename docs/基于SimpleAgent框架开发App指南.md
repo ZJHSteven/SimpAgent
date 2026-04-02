@@ -14,6 +14,16 @@
 - 新 App 的推荐结构是什么；
 - 哪些边界和坑需要提前知道。
 
+如果你现在关心的不是“怎么接 runtime”，而是：
+
+- preset 到底能定义什么；
+- `prompt_blocks.json / agents.json / workflows.json` 每个字段怎么写；
+- memory / MCP / skill / tool 到底该放 preset、API 还是 catalog；
+
+请继续看：
+
+- `docs/SimpleAgent预设与配置定义参考.md`
+
 ## 2. 先记住两个总原则
 
 ### 原则 A：当前框架真源是 `packages/runtime-node`

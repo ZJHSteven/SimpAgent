@@ -29,6 +29,20 @@
     - 根 `README.md` 已扩写为真正的仓库入口文档，而不再只是简短目录说明。
     - 新增 `docs/基于SimpleAgent框架开发App指南.md`，专门回答“如何基于当前框架开发一个新 App、哪些能力已经能直接复用、哪些接口不要重复造轮子”。
     - 开发指南已补上“接口速查表”，把 App backend 包装入口、真实 LLM 配置口、HTTP/WS 事件面收口，减少后续 AI 再次全仓阅读的需要。
+  - 预设/定义参考文档已补齐（2026-04-02）：
+    - 新增 `docs/SimpleAgent预设与配置定义参考.md`，专门回答：
+      - 当前二次开发到底有哪些配置入口；
+      - 哪些属于 `presetDir` 文件层；
+      - 哪些属于 API 层；
+      - 哪些属于 catalog 图谱层。
+    - 文档已明确当前“文件型 preset”正式支持的只有：
+      - `prompt_blocks.json`
+      - `agents.json`
+      - `workflows.json`
+    - 文档也明确说明了：
+      - builtin tool config 不属于当前 `presetDir` 三文件直读范围；
+      - memory / MCP / skill / integration 主要走 catalog facet，而不是单独的 `memory.json / mcp.json / skills.json`。
+    - `docs/基于SimpleAgent框架开发App指南.md` 已补链到这份新文档，避免后续只看运行指南、看不到定义参考。
   - workspace / 根脚本收口已完成（2026-04-01）：
     - 根 `package.json` 已把 `build/test/dev/preview` 收口到真实 workspace 入口，不再指向已经失效的根前端。
     - 根 workspace 已纳入 `apps/*/backend`，因此 app 级 backend 包名可以通过 `--workspace` 正常执行。
@@ -130,7 +144,7 @@
 - 下一步：
   1. 把当前 JSON 配置编辑器继续推进成“结构化字段表单 + 高级 JSON”双模式。
   2. 继续增强 workflow / catalog 的图形视图，评估是否要支持节点/边的直接编辑。
-  3. 把 PromptUnit Override 继续做成可视化 patch 面板，而不是只生成 JSON。
+  3. 如果后续还要降低二次开发门槛，可以继续补一份“catalog memory / tool / integration 示例清单”。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：框架真源继续以 `packages/runtime-node` 为准，而不是回退到 `backend` 或某个 app 内部后端副本。
