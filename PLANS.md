@@ -98,6 +98,22 @@
   - 不把用户明文密钥提交进 git；
   - 可以预留本地存储、环境变量或开发时默认填充机制，但不能把已暴露密钥继续固化到代码库。
 
+7. 补齐“预设 / 定义参考文档”（当前进行中）
+- 现有《基于SimpleAgent框架开发App指南》偏向“如何接框架运行时”，还不够回答“二次开发时到底有哪些可定义块、每个 JSON 能写哪些键、效果是什么”。
+- 需要新增一份更贴近 preset / setup 的参考文档，至少覆盖：
+  - PromptUnit / PromptBlock
+  - Agent
+  - Workflow
+  - Tools / Builtin Tool Config
+  - Memory / Catalog Memory Facet
+  - MCP / Skill / Integration Facet
+- 目标不是完整 JSON Schema 转储，而是：
+  - 常用字段解释
+  - 可选值范围
+  - 推荐写法
+  - 字段变化会导致什么运行结果
+  - 最小示例
+
 ## 分阶段计划
 1. 后端隔离修正
 - 复盘 `INIT_CWD / dataDir / presetDir` 当前解析链；
