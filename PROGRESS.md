@@ -1,10 +1,10 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：旧 ChatGPT 静态复刻实验已统一归档到 `chatgpt-temp/`，新的 Vite React 前端已初始化到 `frontend/`。
-- 已完成：`chatgpt-temp/` 旧 Playwright 测试 2 个用例通过；`frontend/` 已安装依赖，`npm run build` 与 `npm run lint` 均通过。
-- 正在做：本轮目录整理已完成，当前没有进行中的整理任务。
-- 下一步：后续可从 `frontend/` 开始把旧静态复刻逐步组件化，并按正式 VI 前后端目标继续拆分模块。
+- 现状：修复了由于 HTML 换行符格式导致 `contenteditable` 悬空撑爆高度的 Bug，并修正了圆角边框设计。目前已完成终端功能测试，确认环境连接正常。
+- 已完成：终端连接性测试（`ls` 命令成功执行）；删除了 `contenteditable` 内部多余换行；回滚了 CSS 绝对定位方案；修正了 `border` 和 `border-radius` 设计。
+- 正在做：将聊天元素 UI 精修至贴合网站效果和 ChatGPT 原始形态。
+- 下一步：对目前的布局与功能做确认，然后在 `frontend` 的 React 工程下复刻和抽离组件，正式实现交互和业务。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：旧 ChatGPT 复刻实验统一命名为 `chatgpt-temp/`。（原因：这是临时测试实验，不应继续散落在正式项目根目录。）
