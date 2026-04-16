@@ -151,19 +151,8 @@
       background: var(--color-sidebar-hover);
     }
 
-    .sidebar-toggle__hover-icon {
-      display: none;
-    }
-
-    .sidebar-toggle:hover .sidebar-toggle__main-icon {
-      display: none;
-    }
-
-    .sidebar-toggle:hover .sidebar-toggle__hover-icon {
-      display: block;
-    }
-
     /* 侧栏顶部品牌区：包含一个图片头像和文本。 */
+
     .brand {
       display: flex;
       align-items: center;
@@ -213,14 +202,10 @@
       justify-content: flex-start;
       min-height: 42px;
       margin-top: auto;
-      padding: 8px 10px;
-      border-radius: var(--radius-small);
-      color: var(--color-text);
-    }
-
     .sidebar-profile:hover {
       background: var(--color-sidebar-hover);
     }
+
 
     .sidebar-profile-avatar {
       display: inline-flex;
@@ -253,10 +238,14 @@
 
     .app-shell[data-sidebar-state="collapsed"] .sidebar-action,
     .app-shell[data-sidebar-state="collapsed"] .sidebar-profile {
-      justify-content: flex-start;
+      display: flex;
+      justify-content: center;
       width: 40px;
-      padding-inline: 4px;
+      padding: 0;
+      margin-left: auto;
+      margin-right: auto;
     }
+
 
     /* 品牌图标直接引用本地下载的 sprite，不再手工重绘。 */
     .brand__image {
@@ -282,13 +271,14 @@
       gap: 10px;
       min-height: 40px;
       width: 100%;
-      padding: 8px 6px;
+      padding: 8px 10px; /* 统一 Padding 以确保对齐 */
       border-radius: var(--radius-small);
       background: transparent;
       color: var(--color-text);
       text-align: left;
-      transition: background 160ms ease, transform 160ms ease;
+      transition: background 160ms ease;
     }
+
 
     /* hover 只改变背景和轻微位移，不改变尺寸。 */
     .sidebar-action:hover {
@@ -987,7 +977,8 @@
   <div id="mobile-sidebar-overlay" class="md:hidden" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 20; transition: opacity 200ms ease; opacity: 0;"></div>
 
   <!-- 应用根容器：左侧栏和右侧聊天区都放在这里。 -->
-  <div class="app-shell" id="app-shell" data-sidebar-state="expanded">
+  <div class="app-shell" id="app-shell" data-sidebar-state="collapsed">
+
     <!-- 左侧栏：提供新聊天、搜索和历史记录入口。 -->
     <aside class="sidebar" id="sidebar" aria-label="聊天侧栏">
       <div class="sidebar-rail-header flex items-center justify-between min-h-[var(--header-height)]" style="padding-top: 4px;">
@@ -1002,12 +993,10 @@
           aria-expanded="true"
           aria-controls="sidebar">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="sidebar-toggle__main-icon">
-            <use href="#55180d" fill="currentColor"></use>
-          </svg>
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="sidebar-toggle__hover-icon">
-            <use href="#836f7a" fill="currentColor"></use>
+            <use href="#38e54b" fill="currentColor"></use>
           </svg>
         </button>
+
         <!-- 移动端额外显示的叉叉按键 -->
         <button class="md:hidden sidebar-close-button hover:bg-black/5" id="mobile-sidebar-close" style="display: none; width: 36px; height: 36px; align-items: center; justify-content: center; border-radius: 8px; margin-left: 8px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 8.586l4.95-4.95a1 1 0 0 1 1.414 1.414L11.414 10l4.95 4.95a1 1 0 0 1-1.414 1.414L10 11.414l-4.95 4.95a1 1 0 0 1-1.414-1.414L8.586 10 3.636 5.05A1 1 0 0 1 5.05 3.636L10 8.586z" clip-rule="evenodd" /></svg>
@@ -1048,40 +1037,40 @@
           </button>
         </nav>
 
-        <!-- 最近聊天区块 -->
-        <div class="history-list">
+        <div class="history-list flex-1 overflow-y-auto">
+          <!-- 今天 -->
           <h3 class="sidebar-section-title">今天</h3>
-          <button class="sidebar-action" type="button">
-            <span class="sidebar-label" style="font-size: 13px; color: var(--color-text); font-weight: 400; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">规则与数值模拟</span>
-          </button>
+          <nav class="sidebar-menu" aria-label="今天聊天记录">
+            <button class="sidebar-action" type="button">
+              <span class="sidebar-label" style="font-size: 13px; color: var(--color-text); font-weight: 400; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">规则与数值模拟</span>
+            </button>
+          </nav>
+
+          <!-- 最近 -->
+          <div class="sidebar-section-title">最近</div>
+          <ul class="sidebar-menu list-none p-0 m-0">
+            <li><button class="sidebar-action" type="button"><span class="sidebar-label">骰子概率分析</span></button></li>
+            <li><button class="sidebar-action" type="button"><span class="sidebar-label">个人开发者接入 ChatGPT</span></button></li>
+            <li><button class="sidebar-action" type="button"><span class="sidebar-label">API 架构与 LangGraph 分析</span></button></li>
+            <li><button class="sidebar-action" type="button"><span class="sidebar-label">Quest3 局域网代理配置</span></button></li>
+            <li><button class="sidebar-action" type="button"><span class="sidebar-label">文件上传与检索方式</span></button></li>
+          </ul>
         </div>
 
-        <button class="sidebar-profile" type="button" aria-label="打开设置菜单">
-          <span class="sidebar-action-icon" aria-hidden="true" style="margin-right:8px; display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px;">
-             <!-- 设置图标，直接替换 -->
-             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/></svg>
-          </span>
-            <span class="sidebar-label">最近聊天</span>
+        <!-- 底部设置区域 -->
+        <div class="sidebar-footer">
+          <button class="sidebar-profile sidebar-action" type="button" aria-label="打开设置菜单">
+            <span class="sidebar-action-icon" aria-hidden="true">
+              <!-- 设置图标 -->
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/></svg>
+            </span>
+            <span class="sidebar-label">设置</span>
           </button>
-        </nav>
+          <p class="mt-2 text-[11px] text-muted text-center px-2">
+            页面只模拟前端交互，不会向任何 AI 服务发送内容。
+          </p>
+        </div>
 
-        <!-- 历史会话列表。 -->
-        <div class="sidebar-section-title">最近</div>
-        <ul class="history-list">
-          <li><span class="history-item" aria-current="page">骰子概率分析</span></li>
-          <li><span class="history-item">个人开发者接入 ChatGPT</span></li>
-          <li><span class="history-item">API 架构与 LangGraph 分析</span></li>
-          <li><span class="history-item">Quest3 局域网代理配置</span></li>
-          <li><span class="history-item">文件上传与检索方式</span></li>
-        </ul>
-
-          <span class="sidebar-label">设置</span>
-        </button>
-
-        <!-- 底部说明。 -->
-        <p class="sidebar-footer">
-          页面只模拟前端交互，不会向任何 AI 服务发送内容。
-        </p>
       </div>
     </aside>
 
