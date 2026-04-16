@@ -5,8 +5,10 @@
  * 测试范围：
  * 1. 桌面端基础渲染：标题、侧栏、输入器和本地 sprite 图标都要存在。
  * 2. 输入边界：空输入不发送，Shift + Enter 只换行，Enter 正常发送。
- * 3. 移动端布局：侧栏可以打开，新聊天可以重置内容，页面不能横向溢出。
- * 4. 异常监听：浏览器控制台不能出现 error，页面不能抛 pageerror。
+ * 3. 桌面侧栏：宽屏可以在展开态和窄 rail 收起态之间切换。
+ * 4. 思考面板：点击“已思考”按钮可以打开右侧思考详情。
+ * 5. 移动端布局：侧栏可以打开，新聊天可以重置内容，页面不能横向溢出。
+ * 6. 异常监听：浏览器控制台不能出现 error，页面不能抛 pageerror。
  */
 
 // 引入 Playwright Test 的 test 和 expect，用于组织用例和断言结果。
@@ -66,8 +68,23 @@ async function expectSpriteIconsLoaded(page) {
     Array.from(document.querySelectorAll("use")).map((use) => use.getAttribute("href")),
   );
 
-  // composer 里这几个 id 来自用户贴出的原始 DOM 片段。
-  const expectedIds = ["6be74c", "127a53", "23ce94", "ba3792", "29f921", "01bab7"];
+  // 这些 id 来自用户贴出的原始 DOM 片段，覆盖 composer、侧栏和思考面板。
+  const expectedIds = [
+    "6be74c",
+    "127a53",
+    "23ce94",
+    "ba3792",
+    "29f921",
+    "01bab7",
+    "55180d",
+    "836f7a",
+    "3a5c87",
+    "ac6d36",
+    "003104",
+    "b140e7",
+    "6b0d8c",
+    "a4763e",
+  ];
 
   // 每个关键 symbol 都必须至少出现一次。
   for (const id of expectedIds) {
@@ -104,11 +121,38 @@ test("桌面端可以渲染核心聊天界面并完成发送流程", async ({ pa
   const editor = page.getByRole("textbox", { name: "与 ChatGPT 聊天" });
   await expect(editor).toBeVisible();
 
+  // 刷新后的 composer 主输入区不应因为 placeholder 被撑得过高。
+  const composerPrimaryHeight = await page.locator(".composer-primary").evaluate((node) =>
+    Math.round(node.getBoundingClientRect().height),
+  );
+  expect(composerPrimaryHeight).toBeLessThanOrEqual(64);
+
   // 页面图标应该引用本地下载的 sprite。
   await expectSpriteIconsLoaded(page);
 
   // 桌面端不应横向溢出。
   await expectNoHorizontalOverflow(page);
+
+  // 宽屏侧栏展开态应比原先更收紧。
+  const expandedSidebarBox = await page.locator("#sidebar").boundingBox();
+  expect(expandedSidebarBox.width).toBeLessThanOrEqual(245);
+
+  // 宽屏侧栏可以收起成窄 rail。
+  await page.getByLabel("收起边栏").click();
+  await expect(page.locator("#app-shell")).toHaveAttribute("data-sidebar-state", "collapsed");
+  const collapsedSidebarBox = await page.locator("#sidebar").boundingBox();
+  expect(collapsedSidebarBox.width).toBeLessThanOrEqual(70);
+
+  // 再次打开后恢复展开态。
+  await page.getByLabel("打开边栏").click();
+  await expect(page.locator("#app-shell")).toHaveAttribute("data-sidebar-state", "expanded");
+
+  // 思考按钮可以打开右侧思考面板。
+  await page.getByLabel("查看思考过程").click();
+  await expect(page.locator("#thought-panel")).toHaveAttribute("data-open", "true");
+  await expect(page.locator("#thought-panel")).toContainText("Searching GitHub for FancySS update temp files");
+  await page.getByLabel("关闭思考详情").click();
+  await expect(page.locator("#thought-panel")).toHaveAttribute("data-open", "false");
 
   // 空输入按 Enter 应提示错误，且不会新增用户气泡。
   await editor.click();

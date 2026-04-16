@@ -45,7 +45,9 @@
       --color-focus: #0f8f70;
       --color-danger: #b42318;
       --shadow-composer: 0 16px 40px rgb(0 0 0 / 10%);
-      --sidebar-width: 280px;
+      --sidebar-width: 232px;
+      --sidebar-collapsed-width: 56px;
+      --thought-panel-width: 360px;
       --header-height: 58px;
       --content-width: 760px;
       --radius-small: 8px;
@@ -100,6 +102,12 @@
       display: grid;
       grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
       min-height: 100vh;
+      transition: grid-template-columns 180ms ease;
+    }
+
+    /* 宽屏收起侧栏时保留窄 rail，不把侧栏完全移出屏幕。 */
+    .app-shell[data-sidebar-state="collapsed"] {
+      grid-template-columns: var(--sidebar-collapsed-width) minmax(0, 1fr);
     }
 
     /* 左侧栏模拟 ChatGPT 的历史列表区域。 */
@@ -113,6 +121,44 @@
       overflow-y: auto;
       border-right: 1px solid var(--color-border);
       background: var(--color-sidebar);
+      transition: width 180ms ease, padding 180ms ease;
+    }
+
+    /* 侧栏顶部 rail 按钮区域。 */
+    .sidebar-rail-header {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: var(--header-height);
+    }
+
+    /* 收起/展开按钮复用原始 sprite，hover 时显示第二个边栏图标。 */
+    .sidebar-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      margin-inline: 2px;
+      border-radius: var(--radius-small);
+      background: transparent;
+      color: var(--color-text);
+    }
+
+    .sidebar-toggle:hover {
+      background: var(--color-sidebar-hover);
+    }
+
+    .sidebar-toggle__hover-icon {
+      display: none;
+    }
+
+    .sidebar-toggle:hover .sidebar-toggle__main-icon {
+      display: none;
+    }
+
+    .sidebar-toggle:hover .sidebar-toggle__hover-icon {
+      display: block;
     }
 
     /* 侧栏顶部品牌区：包含一个图片头像和文本。 */
@@ -122,6 +168,89 @@
       gap: 10px;
       min-height: 44px;
       padding: 6px 8px;
+    }
+
+    .sidebar-body {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .sidebar-menu {
+      display: grid;
+      gap: 2px;
+      margin-top: 8px;
+    }
+
+    .sidebar-action-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      flex: 0 0 auto;
+    }
+
+    .sidebar-shortcut {
+      margin-left: auto;
+      color: var(--color-muted);
+      font-size: 11px;
+      opacity: 0;
+      transition: opacity 120ms ease;
+    }
+
+    .sidebar-action:hover .sidebar-shortcut {
+      opacity: 1;
+    }
+
+    .sidebar-profile {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 42px;
+      margin-top: auto;
+      padding: 8px 10px;
+      border-radius: var(--radius-small);
+      color: var(--color-text);
+    }
+
+    .sidebar-profile:hover {
+      background: var(--color-sidebar-hover);
+    }
+
+    .sidebar-profile-avatar {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: var(--radius-round);
+      background: #d9d9d4;
+      color: #444;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .app-shell[data-sidebar-state="collapsed"] .sidebar {
+      padding-inline: 8px;
+      overflow-x: hidden;
+    }
+
+    .app-shell[data-sidebar-state="collapsed"] .brand,
+    .app-shell[data-sidebar-state="collapsed"] .sidebar-section-title,
+    .app-shell[data-sidebar-state="collapsed"] .history-list,
+    .app-shell[data-sidebar-state="collapsed"] .sidebar-footer,
+    .app-shell[data-sidebar-state="collapsed"] .sidebar-label,
+    .app-shell[data-sidebar-state="collapsed"] .sidebar-shortcut {
+      display: none;
+    }
+
+    .app-shell[data-sidebar-state="collapsed"] .sidebar-action,
+    .app-shell[data-sidebar-state="collapsed"] .sidebar-profile {
+      justify-content: center;
+      width: 40px;
+      padding-inline: 0;
     }
 
     /* 品牌图标直接引用本地下载的 sprite，不再手工重绘。 */
@@ -432,9 +561,19 @@
       width: 100%;
     }
 
+    /* 输入主区域本地微调：修复刷新后 placeholder 行把上半区撑得过高的问题。 */
+    .composer-primary {
+      min-height: 44px !important;
+      align-items: center;
+    }
+
+    .composer-primary .wcDTda_prosemirror-parent {
+      max-height: 132px;
+    }
+
     /* 原始 ProseMirror 输入区需要一点本地兜底，保证脱离 React 后仍可编辑。 */
     .ProseMirror {
-      min-height: 24px;
+      min-height: 22px;
       outline: 0;
       overflow-wrap: anywhere;
       white-space: pre-wrap;
@@ -465,6 +604,162 @@
     /* fallback textarea 只用于 JS 同步值，不参与视觉显示。 */
     .wcDTda_fallbackTextarea {
       display: none;
+    }
+
+    /* “已思考”按钮使用 ChatGPT 式轻量文本按钮。 */
+    .thought-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      width: fit-content;
+      margin-top: 2px;
+      padding: 4px 0;
+      border-radius: var(--radius-small);
+      background: transparent;
+      color: var(--color-muted);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .thought-toggle:hover {
+      color: var(--color-text);
+    }
+
+    .thought-toggle svg {
+      width: 16px;
+      height: 16px;
+      transition: transform 160ms ease;
+    }
+
+    .thought-toggle[aria-expanded="true"] svg {
+      transform: rotate(90deg);
+    }
+
+    /* 思考详情侧栏，模拟 ChatGPT 右侧思考抽屉。 */
+    .thought-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      z-index: 24;
+      display: flex;
+      flex-direction: column;
+      width: min(var(--thought-panel-width), 92vw);
+      height: 100vh;
+      padding: 14px 10px;
+      border-left: 1px solid var(--color-border);
+      background: var(--color-page);
+      box-shadow: -24px 0 60px rgb(0 0 0 / 10%);
+      transform: translateX(104%);
+      transition: transform 180ms ease;
+    }
+
+    .thought-panel[data-open="true"] {
+      transform: translateX(0);
+    }
+
+    .thought-panel__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 8px 14px;
+    }
+
+    .thought-panel__title {
+      margin: 0;
+      color: var(--color-muted);
+      font-size: 16px;
+      font-weight: 650;
+    }
+
+    .thought-panel__close {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-small);
+      background: transparent;
+      color: var(--color-muted);
+    }
+
+    .thought-panel__close:hover {
+      background: var(--color-sidebar-hover);
+      color: var(--color-text);
+    }
+
+    .thought-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 0 8px 18px;
+    }
+
+    .thought-step {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr);
+      gap: 10px;
+      color: var(--color-muted);
+    }
+
+    .thought-step__rail {
+      display: flex;
+      align-items: center;
+      flex-direction: column;
+    }
+
+    .thought-step__icon {
+      width: 15px;
+      height: 20px;
+      color: var(--color-muted);
+    }
+
+    .thought-step__line {
+      width: 1px;
+      flex: 1;
+      min-height: 30px;
+      border-radius: var(--radius-round);
+      background: #d9d9d4;
+    }
+
+    .thought-step__body {
+      min-width: 0;
+      margin-bottom: 12px;
+    }
+
+    .thought-step__title {
+      color: var(--color-text);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .thought-step__text {
+      margin: 6px 0 0;
+      color: var(--color-muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .source-pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .source-pill {
+      display: inline-flex;
+      align-items: center;
+      max-width: 100%;
+      height: 25px;
+      padding: 0 10px;
+      border-radius: var(--radius-round);
+      background: #f4f4f4;
+      color: var(--color-muted);
+      font-size: 12px;
+      text-decoration: none;
+    }
+
+    .source-pill:hover {
+      background: #1f1f1f;
+      color: #ffffff;
     }
 
     /* composer 下方提示和状态信息。 */
@@ -509,6 +804,11 @@
     /* 窄屏布局：侧栏变成可覆盖抽屉，主区占满屏幕。 */
     @media (max-width: 820px) {
       .app-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .app-shell[data-sidebar-state="collapsed"],
+      .app-shell[data-sidebar-state="expanded"] {
         grid-template-columns: 1fr;
       }
 
@@ -585,12 +885,37 @@
     <symbol id="ba3792" viewBox="0 0 16 16"><path d="M12.134 5.944a.666.666 0 0 1 .922.922l-.085.105-4.5 4.5a.666.666 0 0 1-.942 0l-4.5-4.5-.085-.105a.666.666 0 0 1 .922-.922l.105.085L8 10.06l4.03-4.03z"/></symbol>
     <symbol id="29f921" viewBox="0 0 20 20"><path d="M15.78 10.196a.665.665 0 0 1 .449.827l-.08.25a6.5 6.5 0 0 1-5.485 4.357l.001 1.205h1.418l.134.014a.665.665 0 0 1 0 1.302l-.134.014H7.916a.665.665 0 0 1 0-1.33h1.42l-.002-1.205a6.5 6.5 0 0 1-5.484-4.357l-.08-.25-.026-.132a.665.665 0 0 1 1.25-.371l.051.124.064.198a5.17 5.17 0 0 0 9.844-.198l.052-.124a.664.664 0 0 1 .776-.324m-3.529-4.779a2.252 2.252 0 1 0-4.503 0v3.75a2.252 2.252 0 0 0 4.503 0zm1.33 3.75a3.581 3.581 0 0 1-7.163 0v-3.75a3.582 3.582 0 0 1 7.163 0z"/></symbol>
     <symbol id="01bab7" viewBox="0 0 20 20"><path d="M9 16V6.414L5.707 9.707a1 1 0 1 1-1.414-1.414l5-5 .076-.068a1 1 0 0 1 1.338.068l5 5 .068.076a1 1 0 0 1-1.406 1.406l-.076-.068L11 6.414V16a1 1 0 1 1-2 0"/></symbol>
+    <symbol id="55180d" viewBox="0 0 20 20"><path d="M11.248 18.25q-.825 0-1.568-.314a4.3 4.3 0 0 1-1.32-.874 4 4 0 0 1-1.304.214 4 4 0 0 1-2.046-.544 4.27 4.27 0 0 1-1.518-1.485 4 4 0 0 1-.56-2.095q0-.48.131-1.04A4.4 4.4 0 0 1 2.04 10.71a4.07 4.07 0 0 1 .017-3.4 4.2 4.2 0 0 1 1.056-1.418 3.8 3.8 0 0 1 1.6-.842 3.9 3.9 0 0 1 .76-1.683q.593-.759 1.451-1.188a4.04 4.04 0 0 1 1.832-.429q.825 0 1.567.313.742.314 1.32.875a4 4 0 0 1 1.304-.215q1.106 0 2.046.545a4.14 4.14 0 0 1 1.501 1.485q.578.941.578 2.095 0 .48-.132 1.04.66.61 1.023 1.419.363.792.363 1.666 0 .892-.38 1.717a4.3 4.3 0 0 1-1.072 1.435 3.8 3.8 0 0 1-1.584.825 3.8 3.8 0 0 1-.775 1.683 4.06 4.06 0 0 1-1.436 1.188 4.04 4.04 0 0 1-1.832.429m-4.076-2.062q.825 0 1.435-.347l3.103-1.782a.36.36 0 0 0 .164-.313v-1.42L7.881 14.62a.67.67 0 0 1-.726 0l-3.118-1.798a.5.5 0 0 1-.017.115v.198q0 .841.396 1.551.413.693 1.139 1.089a3.2 3.2 0 0 0 1.617.412m.165-2.69a.4.4 0 0 0 .181.05q.083 0 .165-.05l1.238-.71-3.977-2.31a.7.7 0 0 1-.363-.643v-3.58q-.825.362-1.32 1.122a2.9 2.9 0 0 0-.495 1.65q0 .809.413 1.55.412.743 1.072 1.123zm3.91 3.663q.875 0 1.585-.396a2.96 2.96 0 0 0 1.534-2.64v-3.564a.32.32 0 0 0-.165-.297l-1.254-.726v4.604a.7.7 0 0 1-.363.643l-3.119 1.799a3 3 0 0 0 1.783.577m.627-6.039V8.878L10.01 7.822 8.129 8.878v2.244l1.881 1.056zM7.057 5.859a.7.7 0 0 1 .363-.644l3.119-1.798a3 3 0 0 0-1.782-.578q-.874 0-1.584.396A2.96 2.96 0 0 0 6.05 4.324a3.07 3.07 0 0 0-.396 1.551v3.547q0 .199.165.314l1.237.726zm8.383 7.887q.825-.364 1.303-1.123.495-.758.495-1.65a3.15 3.15 0 0 0-.412-1.55q-.413-.743-1.073-1.123l-3.086-1.782q-.099-.065-.181-.049a.3.3 0 0 0-.165.05l-1.238.692 3.993 2.327a.6.6 0 0 1 .264.264.64.64 0 0 1 .1.363zm-3.317-8.382a.63.63 0 0 1 .726 0l3.135 1.831v-.297q0-.792-.396-1.501a2.86 2.86 0 0 0-1.105-1.155q-.71-.43-1.65-.43-.825 0-1.436.347L8.294 5.941a.36.36 0 0 0-.165.314v1.418z"/></symbol>
+    <symbol id="836f7a" viewBox="0 0 20 20"><path d="M6.835 4c-.451.004-.82.012-1.137.038-.386.032-.659.085-.876.162l-.2.086c-.44.224-.807.564-1.063.982l-.103.184c-.126.247-.206.562-.248 1.076-.043.523-.043 1.19-.043 2.135v2.664c0 .944 0 1.612.043 2.135.042.515.122.829.248 1.076l.103.184c.256.418.624.758 1.063.982l.2.086c.217.077.49.13.876.162.316.026.685.034 1.136.038zm11.33 7.327c0 .922 0 1.654-.048 2.243-.043.522-.125.977-.305 1.395l-.082.177a4 4 0 0 1-1.473 1.593l-.276.155c-.465.237-.974.338-1.57.387-.59.048-1.322.048-2.244.048H7.833c-.922 0-1.654 0-2.243-.048-.522-.042-.977-.126-1.395-.305l-.176-.082a4 4 0 0 1-1.594-1.473l-.154-.275c-.238-.466-.34-.975-.388-1.572-.048-.589-.048-1.32-.048-2.243V8.663c0-.922 0-1.654.048-2.243.049-.597.15-1.106.388-1.571l.154-.276a4 4 0 0 1 1.594-1.472l.176-.083c.418-.18.873-.263 1.395-.305.589-.048 1.32-.048 2.243-.048h4.334c.922 0 1.654 0 2.243.048.597.049 1.106.15 1.571.388l.276.154a4 4 0 0 1 1.473 1.594l.082.176c.18.418.262.873.305 1.395.048.589.048 1.32.048 2.243zm-10 4.668h4.002c.944 0 1.612 0 2.135-.043.514-.042.829-.122 1.076-.248l.184-.103c.418-.256.758-.624.982-1.063l.086-.2c.077-.217.13-.49.162-.876.043-.523.043-1.19.043-2.135V8.663c0-.944 0-1.612-.043-2.135-.032-.386-.085-.659-.162-.876l-.086-.2a2.67 2.67 0 0 0-.982-1.063l-.184-.103c-.247-.126-.562-.206-1.076-.248-.523-.043-1.19-.043-2.135-.043H8.164L8.165 4z"/></symbol>
+    <symbol id="3a5c87" viewBox="0 0 20 20"><path d="M2.669 11.333V8.667c0-.922 0-1.655.048-2.244.048-.597.15-1.106.387-1.571l.155-.276a4 4 0 0 1 1.593-1.472l.177-.083c.418-.179.872-.263 1.395-.305.589-.048 1.32-.048 2.243-.048h.5a.665.665 0 0 1 0 1.33h-.5c-.944 0-1.613 0-2.135.043-.386.032-.66.085-.876.162l-.2.086a2.67 2.67 0 0 0-1.064.982l-.102.184c-.126.247-.206.562-.248 1.076-.043.523-.043 1.192-.043 2.136v2.666c0 .944 0 1.613.043 2.136.042.514.122.829.248 1.076l.102.184c.257.418.624.758 1.064.982l.2.086c.217.077.49.13.876.161.522.043 1.19.044 2.135.044h2.667c.944 0 1.612-.001 2.135-.044.514-.042.829-.121 1.076-.247l.184-.104c.418-.256.759-.623.983-1.062l.086-.2c.077-.217.13-.49.16-.876.043-.523.044-1.192.044-2.136v-.5a.665.665 0 0 1 1.33 0v.5c0 .922.001 1.655-.047 2.244-.043.522-.127.977-.306 1.395l-.083.176a4 4 0 0 1-1.471 1.593l-.276.154c-.466.238-.975.34-1.572.39-.59.047-1.321.047-2.243.047H8.667c-.923 0-1.654 0-2.243-.048-.523-.043-.977-.126-1.395-.305l-.177-.084a4 4 0 0 1-1.593-1.471l-.155-.276c-.237-.465-.339-.974-.387-1.57-.049-.59-.048-1.322-.048-2.245m10.796-8.22a2.43 2.43 0 0 1 3.255.167l.167.185c.727.892.727 2.18 0 3.071l-.168.185-5.046 5.048a4 4 0 0 1-1.945 1.072l-.317.058-1.817.26a.665.665 0 0 1-.752-.753l.26-1.816.058-.319a4 4 0 0 1 1.072-1.944L13.28 3.28zm2.314 1.108a1.103 1.103 0 0 0-1.476-.076l-.084.076-5.046 5.048a2.67 2.67 0 0 0-.716 1.296l-.04.212-.134.939.94-.134.211-.039a2.67 2.67 0 0 0 1.298-.716L15.78 5.78l.076-.084c.33-.404.33-.988 0-1.392z"/></symbol>
+    <symbol id="ac6d36" viewBox="0 0 20 20"><path d="M14.086 8.75a5.335 5.335 0 1 0-10.67 0 5.335 5.335 0 0 0 10.67 0m1.33 0a6.64 6.64 0 0 1-1.512 4.225l.066.055 3 3 .086.104a.666.666 0 0 1-.922.922l-.104-.085-3-3-.055-.068a6.665 6.665 0 1 1 2.44-5.153"/></symbol>
+    <symbol id="003104" viewBox="0 0 20 20"><path d="M16.835 10c0-3.51-3.024-6.418-6.835-6.418S3.165 6.49 3.165 10c0 1.454.514 2.797 1.388 3.877.122.151.172.35.136.54-.095.508-.23 1.003-.384 1.487a13 13 0 0 0 1.823-.376l.126-.023a.67.67 0 0 1 .37.077 7.14 7.14 0 0 0 3.376.837c3.811 0 6.835-2.91 6.835-6.42m1.33 0c0 4.314-3.692 7.749-8.165 7.749a8.5 8.5 0 0 1-3.766-.873c-.92.242-1.865.393-2.86.455a.665.665 0 0 1-.661-.903l.207-.565c.162-.468.3-.933.402-1.402A7.45 7.45 0 0 1 1.835 10c0-4.315 3.692-7.748 8.165-7.748S18.165 5.685 18.165 10"/></symbol>
+    <symbol id="b140e7" viewBox="0 0 20 20"><path d="M7.53 3.78a.666.666 0 0 1 .836-.086l.105.085 5.75 5.75c.26.26.26.682 0 .942l-5.75 5.75a.666.666 0 0 1-.942-.942L12.81 10l-5.28-5.28-.085-.104a.666.666 0 0 1 .085-.837"/></symbol>
+    <symbol id="6b0d8c" viewBox="0 0 20 20"><path d="M10 2.125a7.875 7.875 0 1 1 0 15.75 7.875 7.875 0 0 1 0-15.75m-2.113 8.5c.056 1.691.338 3.188.753 4.28.233.614.495 1.068.755 1.358s.465.362.605.362.346-.073.605-.362c.26-.29.522-.744.755-1.358.415-1.092.697-2.589.753-4.28zm-4.482 0a6.63 6.63 0 0 0 4.493 5.657 7 7 0 0 1-.427-.933c-.477-1.257-.777-2.91-.834-4.724zm9.958 0c-.057 1.814-.357 3.467-.834 4.724a7 7 0 0 1-.428.933 6.63 6.63 0 0 0 4.494-5.657zm-1.262-6.908c.157.285.301.6.428.934.477 1.257.777 2.91.834 4.724h3.232A6.63 6.63 0 0 0 12.1 3.717M10 3.375c-.14 0-.346.073-.605.362-.26.29-.522.744-.755 1.358-.415 1.092-.697 2.589-.753 4.28h4.226c-.056-1.691-.338-3.188-.753-4.28-.233-.614-.495-1.068-.755-1.358s-.465-.362-.605-.362m-2.102.342a6.63 6.63 0 0 0-4.493 5.658h3.232c.057-1.814.357-3.467.834-4.724q.191-.504.427-.934"/></symbol>
+    <symbol id="a4763e" viewBox="0 0 20 20"><path d="M12.498 6.909a.665.665 0 0 1 1.088.766L9.627 13.3a.665.665 0 0 1-.982.117l-.054-.053-2.083-2.292-.08-.107a.666.666 0 0 1 .964-.877l.1.09 1.525 1.676z"/><path fill-rule="evenodd" d="M10.333 2.085a7.915 7.915 0 1 1 0 15.83 7.915 7.915 0 0 1 0-15.83m0 1.33a6.585 6.585 0 1 0 0 13.17 6.585 6.585 0 0 0 0-13.17" clip-rule="evenodd"/></symbol>
   </svg>
 
   <!-- 应用根容器：左侧栏和右侧聊天区都放在这里。 -->
-  <div class="app-shell">
+  <div class="app-shell" id="app-shell" data-sidebar-state="expanded">
     <!-- 左侧栏：提供新聊天、搜索和历史记录入口。 -->
     <aside class="sidebar" id="sidebar" aria-label="聊天侧栏">
+      <div class="sidebar-rail-header">
+        <button
+          class="sidebar-toggle"
+          id="sidebar-toggle"
+          type="button"
+          aria-label="收起边栏"
+          aria-expanded="true"
+          aria-controls="sidebar">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="sidebar-toggle__main-icon">
+            <use href="#55180d" fill="currentColor"></use>
+          </svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="sidebar-toggle__hover-icon">
+            <use href="#836f7a" fill="currentColor"></use>
+          </svg>
+        </button>
+      </div>
+
       <!-- 品牌区域：图标来自本地下载的 ChatGPT sprite。 -->
       <div class="brand">
         <svg class="brand__image" aria-hidden="true">
@@ -602,32 +927,58 @@
         </div>
       </div>
 
-      <!-- 主要侧栏操作。 -->
-      <button class="sidebar-action" type="button" id="new-chat-button" aria-label="新聊天">
-        <span aria-hidden="true">＋</span>
-        <span>新聊天</span>
-      </button>
+      <div class="sidebar-body">
+        <!-- 主要侧栏操作，图标复用原始 ChatGPT sprite。 -->
+        <nav class="sidebar-menu" aria-label="主操作">
+          <button class="sidebar-action __menu-item hoverable" type="button" id="new-chat-button" aria-label="新聊天">
+            <span class="sidebar-action-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" class="icon">
+                <use href="#3a5c87" fill="currentColor"></use>
+              </svg>
+            </span>
+            <span class="sidebar-label">新聊天</span>
+            <span class="sidebar-shortcut" aria-hidden="true">Ctrl Shift O</span>
+          </button>
 
-      <!-- 搜索入口当前只做展示，方便以后接入真实过滤。 -->
-      <button class="sidebar-action" type="button" aria-label="搜索聊天">
-        <span aria-hidden="true">⌕</span>
-        <span>搜索聊天</span>
-      </button>
+          <button class="sidebar-action __menu-item hoverable" type="button" aria-label="搜索聊天">
+            <span class="sidebar-action-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" class="icon">
+                <use href="#ac6d36" fill="currentColor"></use>
+              </svg>
+            </span>
+            <span class="sidebar-label">搜索聊天</span>
+          </button>
 
-      <!-- 历史会话列表。 -->
-      <div class="sidebar-section-title">最近</div>
-      <ul class="history-list">
-        <li><span class="history-item" aria-current="page">骰子概率分析</span></li>
-        <li><span class="history-item">个人开发者接入 ChatGPT</span></li>
-        <li><span class="history-item">API 架构与 LangGraph 分析</span></li>
-        <li><span class="history-item">Quest3 局域网代理配置</span></li>
-        <li><span class="history-item">文件上传与检索方式</span></li>
-      </ul>
+          <button class="sidebar-action __menu-item hoverable" type="button" aria-label="最近聊天">
+            <span class="sidebar-action-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" class="icon">
+                <use href="#003104" fill="currentColor"></use>
+              </svg>
+            </span>
+            <span class="sidebar-label">最近聊天</span>
+          </button>
+        </nav>
 
-      <!-- 底部说明。 -->
-      <p class="sidebar-footer">
-        页面只模拟前端交互，不会向任何 AI 服务发送内容。
-      </p>
+        <!-- 历史会话列表。 -->
+        <div class="sidebar-section-title">最近</div>
+        <ul class="history-list">
+          <li><span class="history-item" aria-current="page">骰子概率分析</span></li>
+          <li><span class="history-item">个人开发者接入 ChatGPT</span></li>
+          <li><span class="history-item">API 架构与 LangGraph 分析</span></li>
+          <li><span class="history-item">Quest3 局域网代理配置</span></li>
+          <li><span class="history-item">文件上传与检索方式</span></li>
+        </ul>
+
+        <button class="sidebar-profile" type="button" aria-label="打开个人资料菜单">
+          <span class="sidebar-profile-avatar" aria-hidden="true">SZ</span>
+          <span class="sidebar-label">个人资料</span>
+        </button>
+
+        <!-- 底部说明。 -->
+        <p class="sidebar-footer">
+          页面只模拟前端交互，不会向任何 AI 服务发送内容。
+        </p>
+      </div>
     </aside>
 
     <!-- 右侧主聊天区。 -->
@@ -705,6 +1056,19 @@ layout = sidebar + header + messageThread + composer
 userMessage = rightAlignedGrayBubble
 assistantMessage = readableMarkdownColumn</code></pre>
             </div>
+
+            <button
+              class="thought-toggle"
+              id="thought-toggle"
+              type="button"
+              aria-label="查看思考过程"
+              aria-expanded="false"
+              aria-controls="thought-panel">
+              <span>已思考 2m 17s</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true">
+                <use href="#b140e7" fill="currentColor"></use>
+              </svg>
+            </button>
           </article>
         </div>
       </section>
@@ -740,7 +1104,7 @@ assistantMessage = readableMarkdownColumn</code></pre>
             </div>
 
             <div
-              class="-my-2.5 flex min-h-14 items-center overflow-x-hidden px-1.5 [grid-area:primary] group-data-expanded/composer:mb-0 group-data-expanded/composer:px-2.5"
+              class="composer-primary -my-2.5 flex min-h-14 items-center overflow-x-hidden px-1.5 [grid-area:primary] group-data-expanded/composer:mb-0 group-data-expanded/composer:px-2.5"
               style="transform: none; transform-origin: 50% 50% 0px;">
               <div class="wcDTda_prosemirror-parent text-token-text-primary max-h-[max(30svh,5rem)] max-h-52 min-h-[var(--deep-research-composer-extra-height,unset)] flex-1 overflow-auto [scrollbar-width:thin] firefox vertical-scroll-fade-mask">
                 <textarea
@@ -828,6 +1192,76 @@ assistantMessage = readableMarkdownColumn</code></pre>
         </form>
       </footer>
     </main>
+
+    <!-- 右侧思考详情面板：先做静态复刻，后续再抽成组件。 -->
+    <aside class="thought-panel" id="thought-panel" data-open="false" aria-label="思考详情">
+      <div class="thought-panel__header">
+        <h2 class="thought-panel__title">思考</h2>
+        <button class="thought-panel__close" id="thought-panel-close" type="button" aria-label="关闭思考详情">
+          ×
+        </button>
+      </div>
+
+      <div class="thought-list">
+        <div class="thought-step">
+          <div class="thought-step__rail">
+            <svg class="thought-step__icon" aria-hidden="true">
+              <use href="#6b0d8c" fill="currentColor"></use>
+            </svg>
+            <div class="thought-step__line"></div>
+          </div>
+          <div class="thought-step__body">
+            <div class="thought-step__title">Searching GitHub for FancySS update temp files</div>
+            <div class="source-pill-row">
+              <a class="source-pill" href="https://github.com" target="_blank" rel="noopener">github.com</a>
+              <a class="source-pill" href="https://gist.github.com" target="_blank" rel="noopener">gist.github.com</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="thought-step">
+          <div class="thought-step__rail">
+            <svg class="thought-step__icon" aria-hidden="true">
+              <use href="#6b0d8c" fill="currentColor"></use>
+            </svg>
+            <div class="thought-step__line"></div>
+          </div>
+          <div class="thought-step__body">
+            <div class="thought-step__title">Checking repo for cleanup paths and definitions</div>
+            <p class="thought-step__text">
+              I’m weighing the possibility of inspecting the repo for cleanup or uninstall instructions, then narrowing the advice to safe file inspection first.
+            </p>
+          </div>
+        </div>
+
+        <div class="thought-step">
+          <div class="thought-step__rail">
+            <svg class="thought-step__icon" aria-hidden="true">
+              <use href="#6b0d8c" fill="currentColor"></use>
+            </svg>
+            <div class="thought-step__line"></div>
+          </div>
+          <div class="thought-step__body">
+            <div class="thought-step__title">Inspecting GitHub repo for uninstall/cleanup information</div>
+            <div class="source-pill-row">
+              <a class="source-pill" href="https://github.com/iKenzo/KoolShare-fancyss" target="_blank" rel="noopener">github.com</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="thought-step">
+          <div class="thought-step__rail">
+            <svg class="thought-step__icon" aria-hidden="true">
+              <use href="#a4763e" fill="currentColor"></use>
+            </svg>
+          </div>
+          <div class="thought-step__body">
+            <div class="thought-step__title">Thought for 2m 17s</div>
+            <p class="thought-step__text">完成</p>
+          </div>
+        </div>
+      </div>
+    </aside>
   </div>
 
   <script>
@@ -859,9 +1293,14 @@ assistantMessage = readableMarkdownColumn</code></pre>
     const messageList = getRequiredElement("#message-list");
     const thread = getRequiredElement("#thread");
     const helper = getRequiredElement("#composer-help");
+    const appShell = getRequiredElement("#app-shell");
     const sidebar = getRequiredElement("#sidebar");
+    const sidebarToggle = getRequiredElement("#sidebar-toggle");
     const mobileMenuButton = getRequiredElement("#mobile-menu-button");
     const newChatButton = getRequiredElement("#new-chat-button");
+    const thoughtToggle = getRequiredElement("#thought-toggle");
+    const thoughtPanel = getRequiredElement("#thought-panel");
+    const thoughtPanelClose = getRequiredElement("#thought-panel-close");
 
     // 设置底部提示文本；tone 用于区分普通提示和错误提示。
     function setHelperText(text, tone = "normal") {
@@ -1049,8 +1488,35 @@ assistantMessage = readableMarkdownColumn</code></pre>
       }
     }
 
+    // 同步宽屏侧栏按钮的状态文案。
+    function syncSidebarToggleState(isCollapsed) {
+      // aria-expanded 表示侧栏主体内容是否展开。
+      sidebarToggle.setAttribute("aria-expanded", String(!isCollapsed));
+
+      // 按钮文案描述下一步动作。
+      sidebarToggle.setAttribute("aria-label", isCollapsed ? "打开边栏" : "收起边栏");
+    }
+
+    // 宽屏收起或展开侧栏。
+    function toggleDesktopSidebar() {
+      // 当前是否已处于收起 rail 状态。
+      const isCollapsed = appShell.dataset.sidebarState === "collapsed";
+
+      // 写入下一个状态，CSS 负责改变 grid 宽度。
+      appShell.dataset.sidebarState = isCollapsed ? "expanded" : "collapsed";
+
+      // 同步辅助属性。
+      syncSidebarToggleState(!isCollapsed);
+    }
+
     // 打开或关闭移动端侧栏。
     function toggleMobileSidebar() {
+      // 宽屏下顶部按钮也用于侧栏收起，不使用移动抽屉逻辑。
+      if (window.matchMedia("(min-width: 821px)").matches) {
+        toggleDesktopSidebar();
+        return;
+      }
+
       // 读取当前打开状态。
       const isOpen = sidebar.dataset.open === "true";
 
@@ -1059,6 +1525,20 @@ assistantMessage = readableMarkdownColumn</code></pre>
 
       // 同步 aria-label，让辅助技术知道按钮下一步动作。
       mobileMenuButton.setAttribute("aria-label", isOpen ? "打开侧栏" : "关闭侧栏");
+    }
+
+    // 打开或关闭右侧思考面板。
+    function toggleThoughtPanel(forceOpen) {
+      // forceOpen 可用于关闭按钮强制关闭；未传时取反。
+      const shouldOpen = typeof forceOpen === "boolean"
+        ? forceOpen
+        : thoughtPanel.dataset.open !== "true";
+
+      // 写入面板开关状态。
+      thoughtPanel.dataset.open = String(shouldOpen);
+
+      // 同步按钮展开状态。
+      thoughtToggle.setAttribute("aria-expanded", String(shouldOpen));
     }
 
     // 新聊天按钮：清空消息并放入欢迎语。
@@ -1113,6 +1593,13 @@ assistantMessage = readableMarkdownColumn</code></pre>
 
     // 监听移动端侧栏按钮。
     mobileMenuButton.addEventListener("click", toggleMobileSidebar);
+
+    // 监听宽屏侧栏收起按钮。
+    sidebarToggle.addEventListener("click", toggleDesktopSidebar);
+
+    // 监听思考按钮和面板关闭按钮。
+    thoughtToggle.addEventListener("click", () => toggleThoughtPanel());
+    thoughtPanelClose.addEventListener("click", () => toggleThoughtPanel(false));
 
     // 监听新聊天按钮。
     newChatButton.addEventListener("click", resetConversation);
