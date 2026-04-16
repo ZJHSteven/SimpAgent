@@ -1,0 +1,12 @@
+{
+  "name": "simpagent-chatgpt-static-replica",
+  "version": "0.1.0",
+  "private": true,
+  "description": "本地静态 ChatGPT 风格聊天页面复刻与 Playwright 验证。",
+  "scripts": {
+    "test:ui": "playwright test tests/chat-ui.spec.js --reporter=line"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
+  }
+}

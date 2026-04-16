@@ -1,0 +1,8 @@
+# Node 依赖目录体积很大，应通过 package-lock.json 复现，而不是提交进仓库。
+node_modules/
+
+# Playwright 运行失败或截图时会生成临时结果目录，不属于源码。
+test-results/
+
+# Playwright HTML 报告是本地查看产物，不提交。
+playwright-report/
