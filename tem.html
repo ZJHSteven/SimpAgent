@@ -588,10 +588,19 @@
 
     /* 原始 ProseMirror 输入区需要一点本地兜底，保证脱离 React 后仍可编辑。 */
     .ProseMirror {
-      min-height: 22px;
+      display: block !important;
+      width: 100%;
+      min-height: 24px !important;
       outline: 0;
       overflow-wrap: anywhere;
       white-space: pre-wrap;
+    }
+
+    /* 空编辑器也必须保留点击高度，否则清掉 placeholder 后会变成不可见空盒子。 */
+    .ProseMirror:empty::before {
+      display: block;
+      min-height: 24px;
+      content: "";
     }
 
     /* 原页面 placeholder 是 p[data-placeholder]，这里用 CSS 还原占位文字。 */
