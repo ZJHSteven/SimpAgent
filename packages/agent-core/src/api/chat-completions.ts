@@ -13,6 +13,14 @@ interface WireMessage {
   role: "system" | "developer" | "user" | "assistant" | "tool";
   content: ContextContent;
   tool_call_id?: string;
+  tool_calls?: Array<{
+    readonly id: string;
+    readonly type: "function";
+    readonly function: {
+      readonly name: string;
+      readonly arguments: string;
+    };
+  }>;
   name?: string;
 }
 
@@ -42,6 +50,18 @@ function toWireMessages(messages: readonly ContextMessage[]): WireMessage[] {
       role: message.role,
       content: message.content,
       ...(message.toolCallId === undefined ? {} : { tool_call_id: message.toolCallId }),
+      ...(message.toolCalls === undefined
+        ? {}
+        : {
+            tool_calls: message.toolCalls.map((toolCall) => ({
+              id: toolCall.id,
+              type: "function" as const,
+              function: {
+                name: toolCall.name,
+                arguments: toolCall.argumentsText
+              }
+            }))
+          }),
       ...(message.name === undefined ? {} : { name: message.name })
     });
   }

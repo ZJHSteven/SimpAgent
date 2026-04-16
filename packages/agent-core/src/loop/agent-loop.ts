@@ -27,6 +27,7 @@ export interface RunAgentTurnInput {
   readonly clock: RuntimeClock;
   readonly idGenerator: IdGenerator;
   readonly approvalPolicy: ApprovalPolicy;
+  readonly maxToolIterations?: number;
   readonly onEvent: (event: AgentEvent) => void | Promise<void>;
 }
 
@@ -62,6 +63,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
   const toolApprovals: unknown[] = [];
   const toolResults: unknown[] = [];
   const errors: unknown[] = [];
+  const requests = [];
 
   await input.onEvent({
     type: "run_started",
@@ -70,138 +72,145 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     runId: input.runId
   });
 
-  const adapterResponse = await sendChatCompletionsRequest({
-    adapterInput: {
-      strategy: input.strategy,
-      messages: currentMessages,
-      tools: input.toolExecutor.listTools(),
-      stream: true
-    },
-    fetchFn: input.fetchFn,
-    clock: input.clock
-  });
+  for (let iteration = 0; iteration < (input.maxToolIterations ?? 3); iteration += 1) {
+    const adapterResponse = await sendChatCompletionsRequest({
+      adapterInput: {
+        strategy: input.strategy,
+        messages: currentMessages,
+        tools: input.toolExecutor.listTools(),
+        stream: true
+      },
+      fetchFn: input.fetchFn,
+      clock: input.clock
+    });
+    requests.push(adapterResponse.request);
 
-  let assistantText = "";
-  let thinkingText = "";
+    let assistantText = "";
+    let thinkingText = "";
 
-  for (const event of adapterResponse.events) {
-    responseEvents.push(event);
+    for (const event of adapterResponse.events) {
+      responseEvents.push(event);
 
-    if (event.type === "message_delta") {
-      assistantText += event.delta;
-      await input.onEvent({
-        type: "message_delta",
-        threadId: input.threadId,
-        turnId: input.turnId,
-        delta: event.delta
-      });
+      if (event.type === "message_delta") {
+        assistantText += event.delta;
+        await input.onEvent({
+          type: "message_delta",
+          threadId: input.threadId,
+          turnId: input.turnId,
+          delta: event.delta
+        });
+      }
+
+      if (event.type === "thinking_delta") {
+        thinkingText += event.delta;
+        await input.onEvent({
+          type: "thinking_delta",
+          threadId: input.threadId,
+          turnId: input.turnId,
+          delta: event.delta
+        });
+      }
     }
 
-    if (event.type === "thinking_delta") {
-      thinkingText += event.delta;
+    const toolCalls = assembleToolCalls(adapterResponse.events);
+
+    if (thinkingText.length > 0) {
+      currentMessages.push(
+        createTextMessage({
+          id: input.idGenerator.nextId("msg"),
+          role: "thinking",
+          content: thinkingText,
+          turnId: input.turnId
+        })
+      );
+    }
+
+    if (assistantText.length > 0 || toolCalls.length > 0) {
+      currentMessages.push(
+        createTextMessage({
+          id: input.idGenerator.nextId("msg"),
+          role: "assistant",
+          content: assistantText,
+          turnId: input.turnId,
+          ...(toolCalls.length === 0 ? {} : { toolCalls })
+        })
+      );
+    }
+
+    if (toolCalls.length === 0) {
+      break;
+    }
+
+    for (const toolCall of toolCalls) {
       await input.onEvent({
-        type: "thinking_delta",
+        type: "tool_call",
         threadId: input.threadId,
         turnId: input.turnId,
-        delta: event.delta
+        toolCall
       });
-    }
-  }
 
-  if (thinkingText.length > 0) {
-    currentMessages.push(
-      createTextMessage({
-        id: input.idGenerator.nextId("msg"),
-        role: "thinking",
-        content: thinkingText,
-        turnId: input.turnId
-      })
-    );
-  }
+      const approvalRequest: ToolApprovalRequest = {
+        threadId: input.threadId,
+        turnId: input.turnId,
+        toolCall,
+        parsedArguments: parseToolArguments(toolCall) as never,
+        riskSummary: `工具 ${toolCall.name} 即将执行。`
+      };
 
-  if (assistantText.length > 0) {
-    currentMessages.push(
-      createTextMessage({
-        id: input.idGenerator.nextId("msg"),
-        role: "assistant",
-        content: assistantText,
-        turnId: input.turnId
-      })
-    );
-  }
+      await input.onEvent({
+        type: "tool_approval_requested",
+        request: approvalRequest
+      });
 
-  const toolCalls = assembleToolCalls(adapterResponse.events);
+      const approval =
+        input.approvalPolicy === "always_approve"
+          ? { decision: "approve" as const, reason: "配置允许自动执行工具。" }
+          : input.approvalPolicy === "deny"
+            ? { decision: "deny" as const, reason: "配置拒绝所有工具。" }
+            : await input.runtime.approvalRuntime.requestApproval(approvalRequest);
 
-  for (const toolCall of toolCalls) {
-    await input.onEvent({
-      type: "tool_call",
-      threadId: input.threadId,
-      turnId: input.turnId,
-      toolCall
-    });
+      toolApprovals.push({ request: approvalRequest, approval });
 
-    const approvalRequest: ToolApprovalRequest = {
-      threadId: input.threadId,
-      turnId: input.turnId,
-      toolCall,
-      parsedArguments: parseToolArguments(toolCall) as never,
-      riskSummary: `工具 ${toolCall.name} 即将执行。`
-    };
+      const result =
+        approval.decision === "approve"
+          ? await input.toolExecutor.executeTool(toolCall)
+          : deniedToolResult;
 
-    await input.onEvent({
-      type: "tool_approval_requested",
-      request: approvalRequest
-    });
+      toolResults.push({ toolCall, result });
 
-    const approval =
-      input.approvalPolicy === "always_approve"
-        ? { decision: "approve" as const, reason: "配置允许自动执行工具。" }
-        : input.approvalPolicy === "deny"
-          ? { decision: "deny" as const, reason: "配置拒绝所有工具。" }
-          : await input.runtime.approvalRuntime.requestApproval(approvalRequest);
+      currentMessages.push(
+        createTextMessage({
+          id: input.idGenerator.nextId("msg"),
+          role: "tool",
+          content: stringifyToolResult(result.content),
+          turnId: input.turnId,
+          toolCallId: toolCall.id,
+          name: toolCall.name
+        })
+      );
 
-    toolApprovals.push({ request: approvalRequest, approval });
-
-    const result =
-      approval.decision === "approve"
-        ? await input.toolExecutor.executeTool(toolCall)
-        : deniedToolResult;
-
-    toolResults.push({ toolCall, result });
-
-    currentMessages.push(
-      createTextMessage({
-        id: input.idGenerator.nextId("msg"),
-        role: "tool",
-        content: stringifyToolResult(result.content),
+      await input.onEvent({
+        type: "tool_result",
+        threadId: input.threadId,
         turnId: input.turnId,
         toolCallId: toolCall.id,
-        name: toolCall.name
-      })
-    );
-
-    await input.onEvent({
-      type: "tool_result",
-      threadId: input.threadId,
-      turnId: input.turnId,
-      toolCallId: toolCall.id,
-      result
-    });
+        result
+      });
+    }
   }
 
   const trace: TraceRecord = {
     threadId: input.threadId,
     turnId: input.turnId,
     createdAt,
-    request: adapterResponse.request,
+    request: requests.at(0),
+    requests,
     responseEvents: responseEvents as never,
     toolApprovals: toolApprovals as never,
     toolResults: toolResults as never,
     errors: errors as never,
     metrics: {
-      status: adapterResponse.status,
-      totalMs: adapterResponse.totalMs,
-      firstTokenMs: adapterResponse.firstTokenMs ?? null
+      requestCount: requests.length
     }
   };
 

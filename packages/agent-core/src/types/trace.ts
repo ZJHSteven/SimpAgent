@@ -6,6 +6,7 @@ export interface TraceRecord {
   readonly turnId: SimpAgentId;
   readonly createdAt: number;
   readonly request?: ObservableHttpRequest;
+  readonly requests?: readonly ObservableHttpRequest[];
   readonly responseEvents: readonly JsonValue[];
   readonly toolApprovals: readonly JsonValue[];
   readonly toolResults: readonly JsonValue[];
@@ -19,4 +20,3 @@ export interface TraceStore {
   saveThread(threadId: SimpAgentId, snapshot: JsonObject): Promise<void>;
   listThreads(): Promise<readonly JsonObject[]>;
 }
-

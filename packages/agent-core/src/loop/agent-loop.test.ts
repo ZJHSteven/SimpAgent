@@ -36,7 +36,14 @@ describe("agent loop human-in-loop", () => {
       "",
       ""
     ].join("\n");
-    const fetchFn = vi.fn(async () => new Response(toolStream, { status: 200 }));
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(toolStream, { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(['data: {"choices":[{"delta":{"content":"已拒绝执行工具。"}}]}', "", "data: [DONE]", "", ""].join("\n"), {
+          status: 200
+        })
+      );
     const fileRuntime: FileRuntime = {
       readTextFile: vi.fn(),
       editTextFile: vi.fn()
@@ -78,6 +85,7 @@ describe("agent loop human-in-loop", () => {
 
     expect(fileRuntime.readTextFile).not.toHaveBeenCalled();
     expect(result.messages.at(-1)?.content).toContain("TOOL_EXECUTION_DENIED_BY_HUMAN");
+    expect(fetchFn).toHaveBeenCalledTimes(2);
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "tool_approval_requested"
@@ -86,4 +94,3 @@ describe("agent loop human-in-loop", () => {
     expect(traceStore.traces).toHaveLength(1);
   });
 });
-

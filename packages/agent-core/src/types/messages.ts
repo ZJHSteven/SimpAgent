@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue, SimpAgentId } from "./common.js";
+import type { ToolCallRequest } from "./tools.js";
 
 /**
  * SimpAgent 内部上下文消息格式。
@@ -52,6 +53,7 @@ export interface ContextMessage {
   readonly tags?: readonly string[];
   readonly selector?: ContextSelector;
   readonly toolCallId?: string;
+  readonly toolCalls?: readonly ToolCallRequest[];
   readonly name?: string;
   readonly metadata?: JsonObject;
 }
@@ -76,6 +78,7 @@ export function createTextMessage(input: {
   readonly tags?: readonly string[];
   readonly selector?: ContextSelector;
   readonly toolCallId?: string;
+  readonly toolCalls?: readonly ToolCallRequest[];
   readonly name?: string;
   readonly metadata?: JsonObject;
 }): ContextMessage {
@@ -88,6 +91,7 @@ export function createTextMessage(input: {
     ...(input.tags === undefined ? {} : { tags: input.tags }),
     ...(input.selector === undefined ? {} : { selector: input.selector }),
     ...(input.toolCallId === undefined ? {} : { toolCallId: input.toolCallId }),
+    ...(input.toolCalls === undefined ? {} : { toolCalls: input.toolCalls }),
     ...(input.name === undefined ? {} : { name: input.name }),
     ...(input.metadata === undefined ? {} : { metadata: input.metadata })
   };
@@ -100,4 +104,3 @@ export function asJsonObject(value: JsonValue): JsonObject {
 
   throw new Error("期望 JSON object，但收到的值不是对象。");
 }
-
