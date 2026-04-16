@@ -40,7 +40,7 @@
       --color-muted: #6f6f6f;
       --color-border: #e3e3df;
       --color-soft-border: #eeeeeb;
-      --color-user-bubble: #f1f1ef;
+      --color-user-bubble: #dcf8c6; /* 浅绿色背景 */
       --color-assistant-mark: #10a37f;
       --color-focus: #0f8f70;
       --color-danger: #b42318;
@@ -479,19 +479,37 @@
     /* 用户气泡保留原页面的浅灰底和圆角。 */
     .user-bubble {
       max-width: min(70%, 560px);
-      padding: 10px 14px;
+      padding: 10px 16px; /* 严格遵守 px-4 (16px) */
       border-radius: 22px;
       background: var(--color-user-bubble);
-      line-height: 1.7;
+      line-height: 1.5; /* 严格遵守 leading-6 (24px approx) */
       overflow-wrap: anywhere;
       white-space: pre-wrap;
       position: relative;
+      text-indent: 0; /* 消除意外缩进 */
+      margin: 0;
+    }
+
+    /* 消息作者角色容器，控制对齐和间距 */
+    [data-message-author-role="user"] {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px; /* 控制气泡和下方按钮的距离，之前是 mt-2 (8px) 太远了 */
+    }
+
+    .message--user {
+      align-items: flex-end;
+      margin-bottom: 24px;
     }
 
     /* 消息操作栏样式：默认隐藏，hover 时显示。 */
     .message-actions {
       opacity: 0;
       transition: opacity 200ms ease;
+      display: flex;
+      align-items: center;
+      margin-right: -4px; /* 稍微向右偏移，让按钮贴合气泡边缘 */
     }
 
     .message:hover .message-actions {
@@ -1027,15 +1045,14 @@
           <!-- 用户消息：右侧灰色气泡。 -->
           <article class="message message--user">
             <h2 class="sr-only">你说：</h2>
-            <div class="user-bubble">
-              给我算一下这个骰子规则的成功概率：目标值是 15 或 16，有 1 个 12 面骰，再加 1 到 3 个 6 面骰；12 面骰的 12 是大成功，11 算 0，优势时 12 面骰投两个取高。
-            </div>
-            <!--
-              消息操作栏：
-              ChatGPT 在消息下方会有编辑、复制等按钮。
-              这里使用用户提供的按钮结构，并调整路径引用本地内联 symbol。
-            -->
-            <div class="message-actions flex gap-1 mt-2 justify-end">
+            <div data-message-author-role="user" class="w-full relative flex flex-col items-end">
+              <!-- 用户消息气泡 -->
+              <div class="user-bubble user-message-bubble-color">
+                给我算一下这个骰子规则的成功概率：目标值是 15 或 16，有 1 个 12 面骰，再加 1 到 3 个 6 面骰；12 面骰的 12 是大成功，11 算 0，优势时 12 面骰投两个取高。
+              </div>
+
+              <!-- 消息操作栏 -->
+              <div class="message-actions">
               <button class="text-token-text-secondary hover:bg-token-bg-secondary rounded-lg" aria-label="复制消息" data-testid="copy-turn-action-button" data-state="closed">
                 <span class="flex items-center justify-center touch:w-10 h-8 w-8">
                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon">
