@@ -1,0 +1,11 @@
+# SimpAgent 本地真实配置示例。
+# 复制为 simpagent.toml 后填写真实 API key；simpagent.toml 已加入 .gitignore。
+
+provider = "deepseek"
+baseUrl = "https://api.deepseek.com"
+apiKey = "sk-your-api-key"
+model = "deepseek-chat"
+approvalPolicy = "ask"
+storageDir = ".simpagent"
+timeoutMs = 60000
+

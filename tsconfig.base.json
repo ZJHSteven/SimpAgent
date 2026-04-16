@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@simpagent/agent-core": [
+        "packages/agent-core/src/index.ts"
+      ],
+      "@simpagent/runtime-node": [
+        "packages/runtime-node/src/index.ts"
+      ],
+      "@simpagent/runtime-cloudflare-worker": [
+        "packages/runtime-cloudflare-worker/src/index.ts"
+      ],
+      "@simpagent/runtime-tauri": [
+        "packages/runtime-tauri/src/index.ts"
+      ]
+    }
+  }
+}

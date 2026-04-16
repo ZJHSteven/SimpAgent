@@ -1,0 +1,18 @@
+{
+  "name": "@simpagent/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "simpagent": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@simpagent/agent-core": "file:../../packages/agent-core",
+    "@simpagent/runtime-node": "file:../../packages/runtime-node"
+  }
+}

@@ -6,3 +6,12 @@ test-results/
 
 # Playwright HTML 报告是本地查看产物，不提交。
 playwright-report/
+
+# TypeScript 后端构建产物可以由源码重新生成，不提交。
+dist/
+
+# 本地真实模型配置包含 API key，只提交 simpagent.example.toml。
+simpagent.toml
+
+# SimpAgent 运行期 trace、thread、响应片段等本地数据，不属于源码。
+.simpagent/
