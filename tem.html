@@ -1,0 +1,1005 @@
+<!doctype html>
+<!--
+  文件作用：
+  这个文件把原来从 ChatGPT 页面复制出来的庞大 DOM 快照，整理成一个可以直接本地打开的静态聊天页面。
+
+  设计取舍：
+  1. 不再依赖 ChatGPT 线上 CSS、SVG sprite、React 脚本和实验配置，因为这些资源离开原站后很容易失效。
+  2. 保留“左侧历史栏 + 顶部标题栏 + 中间消息流 + 底部输入框”的核心交互结构。
+  3. 使用纯 HTML/CSS/JavaScript，方便初学者直接阅读、修改和运行。
+-->
+<html lang="zh-CN">
+
+<head>
+  <!-- 声明字符集，确保中文不会乱码。 -->
+  <meta charset="utf-8">
+
+  <!-- 让页面在手机端按设备宽度布局，而不是按桌面宽度缩放。 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- 浏览器标签页标题。 -->
+  <title>SimpChat - 本地聊天界面复刻</title>
+
+  <style>
+    /*
+      全局设计变量：
+      把常用颜色、尺寸、阴影集中放在 :root，后续想调整整体风格时只改这里即可。
+    */
+    :root {
+      --color-page: #ffffff;
+      --color-sidebar: #f7f7f5;
+      --color-sidebar-hover: #ececea;
+      --color-text: #1f1f1f;
+      --color-muted: #6f6f6f;
+      --color-border: #e3e3df;
+      --color-soft-border: #eeeeeb;
+      --color-user-bubble: #f1f1ef;
+      --color-assistant-mark: #10a37f;
+      --color-focus: #0f8f70;
+      --color-danger: #b42318;
+      --shadow-composer: 0 16px 40px rgb(0 0 0 / 10%);
+      --sidebar-width: 280px;
+      --header-height: 58px;
+      --content-width: 760px;
+      --radius-small: 8px;
+      --radius-round: 999px;
+      font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        "Microsoft YaHei",
+        sans-serif;
+    }
+
+    /* 使用 border-box 可以让 width 包含 padding 和 border，布局更直观。 */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    /* 页面主体占满视口，并禁止整页出现横向滚动。 */
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow-x: hidden;
+      background: var(--color-page);
+      color: var(--color-text);
+    }
+
+    /* button 默认继承字体，避免不同浏览器出现明显不一致。 */
+    button,
+    textarea {
+      font: inherit;
+    }
+
+    /* 按钮统一去掉浏览器默认边框，用自定义样式表达可点击区域。 */
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    /* 键盘用户需要明显焦点环，鼠标用户也能理解当前聚焦位置。 */
+    :focus-visible {
+      outline: 2px solid var(--color-focus);
+      outline-offset: 2px;
+    }
+
+    /* 整个应用的两列骨架：左侧边栏固定宽度，右侧聊天区自适应。 */
+    .app-shell {
+      display: grid;
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    /* 左侧栏模拟 ChatGPT 的历史列表区域。 */
+    .sidebar {
+      position: sticky;
+      top: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      padding: 12px;
+      overflow-y: auto;
+      border-right: 1px solid var(--color-border);
+      background: var(--color-sidebar);
+    }
+
+    /* 侧栏顶部品牌区：包含一个图片头像和文本。 */
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 44px;
+      padding: 6px 8px;
+    }
+
+    /* 这里用 img 元素承载本地 data 图片，满足真实图片节点需求，也避免外网图片失效。 */
+    .brand__image {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-round);
+      object-fit: cover;
+      background: #0f8f70;
+    }
+
+    /* 品牌名保持克制，不做营销型大标题。 */
+    .brand__name {
+      font-size: 15px;
+      font-weight: 650;
+      line-height: 1.2;
+    }
+
+    /* 侧栏按钮是主要导航入口，保持高度稳定，避免 hover 时跳动。 */
+    .sidebar-action {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 40px;
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: var(--radius-small);
+      background: transparent;
+      color: var(--color-text);
+      text-align: left;
+      transition: background 160ms ease, transform 160ms ease;
+    }
+
+    /* hover 只改变背景和轻微位移，不改变尺寸。 */
+    .sidebar-action:hover {
+      background: var(--color-sidebar-hover);
+      transform: translateX(1px);
+    }
+
+    /* 分组标题用于历史会话列表。 */
+    .sidebar-section-title {
+      margin: 18px 8px 8px;
+      color: var(--color-muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    /* 历史条目使用列表语义，方便屏幕阅读器理解。 */
+    .history-list {
+      display: grid;
+      gap: 2px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    /* 单条历史会话做单行截断，复刻原页面的紧凑历史感。 */
+    .history-item {
+      display: block;
+      overflow: hidden;
+      padding: 8px 10px;
+      border-radius: var(--radius-small);
+      color: var(--color-text);
+      font-size: 14px;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* 当前会话用更明显背景标识。 */
+    .history-item[aria-current="page"],
+    .history-item:hover {
+      background: var(--color-sidebar-hover);
+    }
+
+    /* 侧栏底部说明，承载轻量状态信息。 */
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 12px 8px 4px;
+      color: var(--color-muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    /* 右侧聊天区是主工作区。 */
+    .chat-main {
+      display: grid;
+      grid-template-rows: var(--header-height) minmax(0, 1fr) auto;
+      min-width: 0;
+      min-height: 100vh;
+      background: var(--color-page);
+    }
+
+    /* 顶部栏固定在聊天区上方，模拟 ChatGPT 的模型/会话控制栏。 */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-width: 0;
+      padding: 10px 18px;
+      background: rgb(255 255 255 / 92%);
+      border-bottom: 1px solid transparent;
+      backdrop-filter: blur(12px);
+    }
+
+    /* 移动端菜单按钮默认隐藏，窄屏再显示。 */
+    .mobile-menu-button {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius-small);
+      background: transparent;
+      color: var(--color-text);
+    }
+
+    /* 顶部标题区域允许截断，避免长标题撑破布局。 */
+    .conversation-title {
+      min-width: 0;
+    }
+
+    /* 模型名按钮复刻“ChatGPT 5.4”那类顶部入口。 */
+    .model-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+      padding: 8px 10px;
+      border-radius: var(--radius-small);
+      background: transparent;
+      color: var(--color-text);
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    /* 模型按钮 hover 只给一点灰底。 */
+    .model-button:hover {
+      background: var(--color-sidebar-hover);
+    }
+
+    /* 会话副标题用于说明当前是本地复刻。 */
+    .conversation-subtitle {
+      margin-top: 2px;
+      color: var(--color-muted);
+      font-size: 12px;
+    }
+
+    /* 分享按钮采用圆角矩形，和原页面的操作按钮接近。 */
+    .share-button {
+      flex: 0 0 auto;
+      padding: 8px 12px;
+      border-radius: var(--radius-small);
+      background: var(--color-text);
+      color: #ffffff;
+      font-size: 14px;
+      transition: opacity 160ms ease;
+    }
+
+    /* 轻量 hover 反馈，不改变按钮尺寸。 */
+    .share-button:hover {
+      opacity: 0.86;
+    }
+
+    /* 消息滚动区占据中间剩余高度。 */
+    .thread {
+      overflow-y: auto;
+      padding: 18px 18px 28px;
+      scroll-behavior: smooth;
+    }
+
+    /* 消息内容宽度限制，复刻 ChatGPT 中间窄列阅读体验。 */
+    .thread__inner {
+      display: grid;
+      gap: 26px;
+      width: min(100%, var(--content-width));
+      margin: 0 auto;
+    }
+
+    /* 每个 turn 是一轮对话，内部再按角色决定对齐方式。 */
+    .message {
+      display: grid;
+      gap: 8px;
+      animation: message-in 220ms ease both;
+    }
+
+    /* 用户消息靠右。 */
+    .message--user {
+      justify-items: end;
+    }
+
+    /* 助手消息靠左，占满阅读列宽。 */
+    .message--assistant {
+      justify-items: start;
+    }
+
+    /* 头像行用于助手消息，显示身份和时间。 */
+    .message-meta {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--color-muted);
+      font-size: 13px;
+    }
+
+    /* 助手头像使用图片节点，模拟应用里的真实头像资源。 */
+    .assistant-avatar {
+      width: 26px;
+      height: 26px;
+      border-radius: var(--radius-round);
+      object-fit: cover;
+      background: var(--color-assistant-mark);
+    }
+
+    /* 用户气泡保留原页面的浅灰底和圆角。 */
+    .user-bubble {
+      max-width: min(70%, 560px);
+      padding: 10px 14px;
+      border-radius: 22px;
+      background: var(--color-user-bubble);
+      line-height: 1.7;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    /* 助手正文不使用卡片，让阅读区更像 ChatGPT 的自然文本。 */
+    .assistant-content {
+      width: 100%;
+      max-width: 100%;
+      line-height: 1.75;
+      overflow-wrap: anywhere;
+    }
+
+    /* 段落之间保持清晰间距。 */
+    .assistant-content p {
+      margin: 0 0 12px;
+    }
+
+    /* 表格模拟概率分析类回复，体现原快照里的内容场景。 */
+    .result-table {
+      width: 100%;
+      margin: 14px 0;
+      border-collapse: collapse;
+      border: 1px solid var(--color-soft-border);
+      border-radius: var(--radius-small);
+      overflow: hidden;
+      font-size: 14px;
+    }
+
+    /* 表格单元格保持稳定高度。 */
+    .result-table th,
+    .result-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--color-soft-border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    /* 表头使用浅灰底提高扫描效率。 */
+    .result-table th {
+      background: #fafaf8;
+      font-weight: 650;
+    }
+
+    /* 最后一行不需要底边框。 */
+    .result-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    /* 代码块用于展示“可复制”的计算思路。 */
+    pre {
+      max-width: 100%;
+      margin: 14px 0 0;
+      padding: 14px;
+      overflow-x: auto;
+      border: 1px solid var(--color-soft-border);
+      border-radius: var(--radius-small);
+      background: #f7f7f5;
+      color: #222222;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    /* 底部输入区使用 sticky，保持类似 ChatGPT 的固定 composer。 */
+    .composer-wrap {
+      position: sticky;
+      bottom: 0;
+      z-index: 12;
+      padding: 12px 18px 16px;
+      background:
+        linear-gradient(to top, #ffffff 72%, rgb(255 255 255 / 0));
+    }
+
+    /* 输入器宽度与消息列一致。 */
+    .composer {
+      width: min(100%, var(--content-width));
+      margin: 0 auto;
+    }
+
+    /* 输入器表单本身是一个功能容器，所以可以保留边界和阴影。 */
+    .composer-surface {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+      padding: 10px;
+      border: 1px solid var(--color-border);
+      border-radius: 28px;
+      background: #ffffff;
+      box-shadow: var(--shadow-composer);
+    }
+
+    /* composer 小按钮固定尺寸，避免图标变化导致布局抖动。 */
+    .composer-icon-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-round);
+      background: transparent;
+      color: var(--color-muted);
+      transition: background 160ms ease, color 160ms ease;
+    }
+
+    /* composer 小按钮 hover 状态。 */
+    .composer-icon-button:hover {
+      background: var(--color-sidebar-hover);
+      color: var(--color-text);
+    }
+
+    /* 输入框自动增高，由 JS 改写 height。 */
+    .prompt-input {
+      width: 100%;
+      min-height: 36px;
+      max-height: 180px;
+      padding: 7px 2px;
+      overflow-y: auto;
+      resize: none;
+      border: 0;
+      outline: 0;
+      color: var(--color-text);
+      line-height: 1.55;
+    }
+
+    /* placeholder 使用柔和灰色。 */
+    .prompt-input::placeholder {
+      color: #9b9b95;
+    }
+
+    /* 发送按钮在可发送时变成深色圆按钮。 */
+    .send-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-round);
+      background: var(--color-text);
+      color: #ffffff;
+      transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    /* 禁用态用于空输入。 */
+    .send-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.35;
+    }
+
+    /* 可用态 hover 轻微上移。 */
+    .send-button:not(:disabled):hover {
+      transform: translateY(-1px);
+    }
+
+    /* composer 下方提示和状态信息。 */
+    .composer-help {
+      min-height: 18px;
+      margin: 8px 8px 0;
+      color: var(--color-muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    /* 错误状态用红色，但只用于提示文本，不干扰主流程。 */
+    .composer-help[data-tone="error"] {
+      color: var(--color-danger);
+    }
+
+    /* 屏幕阅读器专用文本，视觉隐藏但仍可被辅助技术读取。 */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* 新消息进入动画，让交互反馈更清晰。 */
+    @keyframes message-in {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* 窄屏布局：侧栏变成可覆盖抽屉，主区占满屏幕。 */
+    @media (max-width: 820px) {
+      .app-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: fixed;
+        z-index: 30;
+        width: min(82vw, var(--sidebar-width));
+        transform: translateX(-102%);
+        box-shadow: 20px 0 60px rgb(0 0 0 / 18%);
+        transition: transform 180ms ease;
+      }
+
+      .sidebar[data-open="true"] {
+        transform: translateX(0);
+      }
+
+      .mobile-menu-button {
+        display: inline-flex;
+      }
+
+      .topbar {
+        padding-inline: 10px;
+      }
+
+      .share-button {
+        display: none;
+      }
+
+      .thread {
+        padding-inline: 14px;
+      }
+
+      .composer-wrap {
+        padding-inline: 10px;
+      }
+
+      .user-bubble {
+        max-width: 88%;
+      }
+    }
+
+    /* 更窄屏幕继续减少输入器边距，防止横向溢出。 */
+    @media (max-width: 480px) {
+      :root {
+        --header-height: 54px;
+      }
+
+      .model-button {
+        padding-inline: 6px;
+        font-size: 14px;
+      }
+
+      .conversation-subtitle {
+        display: none;
+      }
+
+      .composer-surface {
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+
+      .composer-icon-button {
+        display: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- 应用根容器：左侧栏和右侧聊天区都放在这里。 -->
+  <div class="app-shell">
+    <!-- 左侧栏：提供新聊天、搜索和历史记录入口。 -->
+    <aside class="sidebar" id="sidebar" aria-label="聊天侧栏">
+      <!-- 品牌区域：使用 data URI 图片，避免本地打开时缺图。 -->
+      <div class="brand">
+        <img
+          class="brand__image"
+          alt="SimpChat 图标"
+          src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2310a37f'/%3E%3Cpath d='M18 34c0-9.2 7.4-16.6 16.6-16.6 6.1 0 11.4 3.2 14.3 8.1-2.7-2.1-6.1-3.3-9.8-3.3-9.2 0-16.6 7.4-16.6 16.6 0 3.1.8 6 2.3 8.5A16.5 16.5 0 0 1 18 34Z' fill='white' opacity='.94'/%3E%3Cpath d='M30 47.5c8.9-.8 16-7.8 16.9-16.8 1.9 2.6 3 5.8 3 9.3 0 8.7-7.1 15.8-15.8 15.8-3.4 0-6.6-1.1-9.2-2.9 1.7.4 3.4.6 5.1.6Z' fill='white' opacity='.62'/%3E%3C/svg%3E">
+        <div>
+          <div class="brand__name">SimpChat</div>
+          <div class="conversation-subtitle">本地静态复刻</div>
+        </div>
+      </div>
+
+      <!-- 主要侧栏操作。 -->
+      <button class="sidebar-action" type="button" id="new-chat-button" aria-label="新聊天">
+        <span aria-hidden="true">＋</span>
+        <span>新聊天</span>
+      </button>
+
+      <!-- 搜索入口当前只做展示，方便以后接入真实过滤。 -->
+      <button class="sidebar-action" type="button" aria-label="搜索聊天">
+        <span aria-hidden="true">⌕</span>
+        <span>搜索聊天</span>
+      </button>
+
+      <!-- 历史会话列表。 -->
+      <div class="sidebar-section-title">最近</div>
+      <ul class="history-list">
+        <li><span class="history-item" aria-current="page">骰子概率分析</span></li>
+        <li><span class="history-item">个人开发者接入 ChatGPT</span></li>
+        <li><span class="history-item">API 架构与 LangGraph 分析</span></li>
+        <li><span class="history-item">Quest3 局域网代理配置</span></li>
+        <li><span class="history-item">文件上传与检索方式</span></li>
+      </ul>
+
+      <!-- 底部说明。 -->
+      <p class="sidebar-footer">
+        页面只模拟前端交互，不会向任何 AI 服务发送内容。
+      </p>
+    </aside>
+
+    <!-- 右侧主聊天区。 -->
+    <main class="chat-main" aria-label="聊天主区域">
+      <!-- 顶部栏。 -->
+      <header class="topbar">
+        <button class="mobile-menu-button" id="mobile-menu-button" type="button" aria-label="打开侧栏">
+          ☰
+        </button>
+
+        <div class="conversation-title">
+          <button class="model-button" type="button" aria-label="选择模型">
+            SimpChat 5.4
+            <span aria-hidden="true">⌄</span>
+          </button>
+          <div class="conversation-subtitle">骰子概率分析</div>
+        </div>
+
+        <button class="share-button" type="button">分享</button>
+      </header>
+
+      <!-- 消息流区域。 -->
+      <section class="thread" id="thread" aria-live="polite">
+        <div class="thread__inner" id="message-list">
+          <!-- 用户消息：右侧灰色气泡。 -->
+          <article class="message message--user">
+            <h2 class="sr-only">你说：</h2>
+            <div class="user-bubble">
+              给我算一下这个骰子规则的成功概率：目标值是 15 或 16，有 1 个 12 面骰，再加 1 到 3 个 6 面骰；12 面骰的 12 是大成功，11 算 0，优势时 12 面骰投两个取高。
+            </div>
+          </article>
+
+          <!-- 助手消息：左侧自然文本和表格。 -->
+          <article class="message message--assistant">
+            <div class="message-meta">
+              <img
+                class="assistant-avatar"
+                alt="助手头像"
+                src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='20' fill='%2310a37f'/%3E%3Ccircle cx='32' cy='25' r='11' fill='white' opacity='.95'/%3E%3Cpath d='M14 54c2.6-10.2 9.5-15.3 18-15.3S47.4 43.8 50 54' fill='white' opacity='.78'/%3E%3C/svg%3E">
+              <span>SimpChat 说：</span>
+            </div>
+            <div class="assistant-content">
+              <p>我先按这版规则做一个展示表。这里的重点不是精确复现模型能力，而是复刻 ChatGPT 风格的消息阅读体验。</p>
+
+              <table class="result-table">
+                <thead>
+                  <tr>
+                    <th>情况</th>
+                    <th>目标 15</th>
+                    <th>目标 16</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>无优势 + 1 个 D6</td>
+                    <td>约 8.3%</td>
+                    <td>约 8.3%</td>
+                  </tr>
+                  <tr>
+                    <td>无优势 + 2 个 D6</td>
+                    <td>约 26.9%</td>
+                    <td>约 21.3%</td>
+                  </tr>
+                  <tr>
+                    <td>优势 + 3 个 D6</td>
+                    <td>明显更高</td>
+                    <td>仍比目标 15 难</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <p>原页面里缺的是“本地可运行的样式和行为”。只复制 DOM 会把线上样式、脚本、图标和用户数据一起带进来，但离开原站后这些依赖并不可靠。</p>
+
+              <pre><code>// 样式抽取思路：保留结构，重写本地样式。
+layout = sidebar + header + messageThread + composer
+userMessage = rightAlignedGrayBubble
+assistantMessage = readableMarkdownColumn</code></pre>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- 输入器区域：固定在底部。 -->
+      <footer class="composer-wrap">
+        <form class="composer" id="composer" autocomplete="off">
+          <div class="composer-surface">
+            <button class="composer-icon-button" type="button" aria-label="添加文件">
+              ＋
+            </button>
+
+            <label class="sr-only" for="prompt-input">输入消息</label>
+            <textarea
+              class="prompt-input"
+              id="prompt-input"
+              name="prompt"
+              rows="1"
+              placeholder="有问题，尽管问"></textarea>
+
+            <button class="send-button" id="send-button" type="submit" aria-label="发送消息" disabled>
+              ↑
+            </button>
+          </div>
+
+          <div class="composer-help" id="composer-help">
+            Enter 发送，Shift + Enter 换行。SimpChat 也可能会犯错，请核查重要信息。
+          </div>
+        </form>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    /*
+      脚本总览：
+      这段 JS 只负责本地交互，不连接后端。
+      主要功能包括：输入框自适应高度、空输入拦截、发送消息、生成模拟助手回复、移动端侧栏开关。
+    */
+
+    // 统一从 DOM 中读取必须存在的元素；如果选择器写错，立即抛出清晰错误，方便调试。
+    function getRequiredElement(selector) {
+      // querySelector 用 CSS 选择器查找页面元素。
+      const element = document.querySelector(selector);
+
+      // 如果没找到元素，说明 HTML 结构或选择器有问题，需要尽早报错。
+      if (!element) {
+        throw new Error(`页面缺少必要元素：${selector}`);
+      }
+
+      // 找到元素后返回给调用方继续使用。
+      return element;
+    }
+
+    // 缓存常用 DOM 节点，避免每次交互都重复查找。
+    const composer = getRequiredElement("#composer");
+    const promptInput = getRequiredElement("#prompt-input");
+    const sendButton = getRequiredElement("#send-button");
+    const messageList = getRequiredElement("#message-list");
+    const thread = getRequiredElement("#thread");
+    const helper = getRequiredElement("#composer-help");
+    const sidebar = getRequiredElement("#sidebar");
+    const mobileMenuButton = getRequiredElement("#mobile-menu-button");
+    const newChatButton = getRequiredElement("#new-chat-button");
+
+    // 设置底部提示文本；tone 用于区分普通提示和错误提示。
+    function setHelperText(text, tone = "normal") {
+      // textContent 会把文本当纯文本处理，避免把用户输入当 HTML 执行。
+      helper.textContent = text;
+
+      // data-tone 交给 CSS 控制颜色，逻辑层不直接写样式。
+      helper.dataset.tone = tone;
+    }
+
+    // 根据输入框内容决定发送按钮是否可用。
+    function updateSendButtonState() {
+      // trim 会去掉首尾空白，防止只输入空格也能发送。
+      const hasText = promptInput.value.trim().length > 0;
+
+      // 没有有效文本时禁用发送按钮。
+      sendButton.disabled = !hasText;
+    }
+
+    // 让 textarea 随内容增高，同时不超过 CSS 设置的 max-height。
+    function resizePromptInput() {
+      // 先重置高度，确保删除内容后输入框可以变矮。
+      promptInput.style.height = "auto";
+
+      // scrollHeight 是文本实际需要的高度。
+      promptInput.style.height = `${promptInput.scrollHeight}px`;
+    }
+
+    // 创建用户消息节点。
+    function createUserMessage(text) {
+      // article 表示一轮独立消息。
+      const article = document.createElement("article");
+
+      // className 复用已有 CSS，控制右对齐和动画。
+      article.className = "message message--user";
+
+      // innerHTML 只写固定模板，不拼接用户输入，避免 XSS。
+      article.innerHTML = '<h2 class="sr-only">你说：</h2><div class="user-bubble"></div>';
+
+      // 单独用 textContent 填充用户内容，保证用户输入不会被当成 HTML。
+      article.querySelector(".user-bubble").textContent = text;
+
+      // 返回完整消息节点，交给调用方插入页面。
+      return article;
+    }
+
+    // 根据用户输入生成一段本地模拟回复。
+    function buildAssistantReply(userText) {
+      // 取用户输入前 42 个字符，给回复一点上下文感。
+      const preview = userText.length > 42 ? `${userText.slice(0, 42)}...` : userText;
+
+      // 返回多段文本，后面会逐段渲染成 p 标签。
+      return [
+        `我收到的是：“${preview}”`,
+        "这是一个本地静态演示，所以不会真正调用模型；它只模拟 ChatGPT 风格的消息追加、滚动和输入器反馈。",
+        "如果以后要接入真实接口，可以把 buildAssistantReply 替换成 fetch 调用，并把错误处理放到统一的请求函数里。"
+      ];
+    }
+
+    // 创建助手消息节点。
+    function createAssistantMessage(paragraphs) {
+      // article 作为助手的一轮回复容器。
+      const article = document.createElement("article");
+
+      // 助手消息靠左，并保持自然文本列宽。
+      article.className = "message message--assistant";
+
+      // 写入固定结构：头像、身份、正文容器。
+      article.innerHTML = `
+        <div class="message-meta">
+          <img
+            class="assistant-avatar"
+            alt="助手头像"
+            src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='20' fill='%2310a37f'/%3E%3Ccircle cx='32' cy='25' r='11' fill='white' opacity='.95'/%3E%3Cpath d='M14 54c2.6-10.2 9.5-15.3 18-15.3S47.4 43.8 50 54' fill='white' opacity='.78'/%3E%3C/svg%3E">
+          <span>SimpChat 说：</span>
+        </div>
+        <div class="assistant-content"></div>
+      `;
+
+      // 找到正文容器，逐段插入文本。
+      const content = article.querySelector(".assistant-content");
+
+      // 每一段都用 p 标签，保证文本语义和间距清晰。
+      paragraphs.forEach((paragraph) => {
+        // 创建段落元素。
+        const node = document.createElement("p");
+
+        // 使用 textContent 防止文本被当成 HTML。
+        node.textContent = paragraph;
+
+        // 把段落追加到正文容器。
+        content.appendChild(node);
+      });
+
+      // 返回助手消息节点。
+      return article;
+    }
+
+    // 滚动到最新消息。
+    function scrollToLatestMessage() {
+      // requestAnimationFrame 等浏览器完成本轮 DOM 更新后再滚动，位置更准确。
+      requestAnimationFrame(() => {
+        thread.scrollTop = thread.scrollHeight;
+      });
+    }
+
+    // 处理发送表单。
+    function handleComposerSubmit(event) {
+      // 阻止 form 默认刷新页面。
+      event.preventDefault();
+
+      // 获取清理后的输入内容。
+      const text = promptInput.value.trim();
+
+      // 边界情况：空文本直接提示，不创建消息。
+      if (!text) {
+        setHelperText("请先输入内容，再发送消息。", "error");
+        updateSendButtonState();
+        return;
+      }
+
+      // 插入用户消息。
+      messageList.appendChild(createUserMessage(text));
+
+      // 清空输入框。
+      promptInput.value = "";
+
+      // 恢复输入框高度。
+      resizePromptInput();
+
+      // 禁用发送按钮。
+      updateSendButtonState();
+
+      // 恢复普通提示。
+      setHelperText("消息已发送。本页面当前使用本地模拟回复。");
+
+      // 插入助手模拟回复。
+      messageList.appendChild(createAssistantMessage(buildAssistantReply(text)));
+
+      // 滚动到底部。
+      scrollToLatestMessage();
+    }
+
+    // 处理输入框按键，支持 Enter 发送、Shift + Enter 换行。
+    function handlePromptKeydown(event) {
+      // isComposing 为 true 表示中文输入法正在组词，此时不要拦截 Enter。
+      if (event.isComposing) {
+        return;
+      }
+
+      // Enter 且没有按 Shift 时触发表单提交。
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        composer.requestSubmit();
+      }
+    }
+
+    // 打开或关闭移动端侧栏。
+    function toggleMobileSidebar() {
+      // 读取当前打开状态。
+      const isOpen = sidebar.dataset.open === "true";
+
+      // 写入相反状态，CSS 会根据 data-open 控制抽屉位移。
+      sidebar.dataset.open = String(!isOpen);
+
+      // 同步 aria-label，让辅助技术知道按钮下一步动作。
+      mobileMenuButton.setAttribute("aria-label", isOpen ? "打开侧栏" : "关闭侧栏");
+    }
+
+    // 新聊天按钮：清空消息并放入欢迎语。
+    function resetConversation() {
+      // 清空当前消息列表。
+      messageList.replaceChildren();
+
+      // 插入一条新的助手欢迎消息。
+      messageList.appendChild(createAssistantMessage([
+        "新的本地会话已创建。",
+        "你可以在底部输入框发送内容，页面会追加用户消息和模拟回复。"
+      ]));
+
+      // 在移动端点击新聊天后收起侧栏。
+      sidebar.dataset.open = "false";
+
+      // 恢复提示文案。
+      setHelperText("Enter 发送，Shift + Enter 换行。");
+
+      // 滚动到最新消息。
+      scrollToLatestMessage();
+    }
+
+    // 输入时同步按钮状态和输入框高度。
+    promptInput.addEventListener("input", () => {
+      resizePromptInput();
+      updateSendButtonState();
+      setHelperText("Enter 发送，Shift + Enter 换行。SimpChat 也可能会犯错，请核查重要信息。");
+    });
+
+    // 监听键盘发送快捷键。
+    promptInput.addEventListener("keydown", handlePromptKeydown);
+
+    // 监听表单提交。
+    composer.addEventListener("submit", handleComposerSubmit);
+
+    // 监听移动端侧栏按钮。
+    mobileMenuButton.addEventListener("click", toggleMobileSidebar);
+
+    // 监听新聊天按钮。
+    newChatButton.addEventListener("click", resetConversation);
+
+    // 页面加载后初始化一次高度和按钮状态。
+    resizePromptInput();
+    updateSendButtonState();
+  </script>
+</body>
+
+</html>
