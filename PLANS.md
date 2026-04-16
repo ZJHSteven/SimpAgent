@@ -12,7 +12,7 @@
 4. [已完成] 更新 `PROGRESS.md`，提交旧实验归档变更。
 5. [已完成] 查阅 Vite React 初始化方式，并用 CLI 在 `frontend/` 创建 React 项目。
 6. [已完成] 运行 `frontend` 的安装、构建与基础校验，确认脚手架可用。
-7. [进行中] 更新 `PROGRESS.md`，提交前端脚手架变更。
+7. [已完成] 更新 `PROGRESS.md`，提交前端脚手架变更。
 
 ## 验收标准
 - 根目录不再散落旧实验的 HTML、assets、tests、根级 npm 文件和测试产物。

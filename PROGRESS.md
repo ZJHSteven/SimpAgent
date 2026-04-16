@@ -3,7 +3,7 @@
 ## 当前结论（必须最新）
 - 现状：旧 ChatGPT 静态复刻实验已统一归档到 `chatgpt-temp/`，新的 Vite React 前端已初始化到 `frontend/`。
 - 已完成：`chatgpt-temp/` 旧 Playwright 测试 2 个用例通过；`frontend/` 已安装依赖，`npm run build` 与 `npm run lint` 均通过。
-- 正在做：提交 `frontend/` 脚手架变更，完成本轮目录整理。
+- 正在做：本轮目录整理已完成，当前没有进行中的整理任务。
 - 下一步：后续可从 `frontend/` 开始把旧静态复刻逐步组件化，并按正式 VI 前后端目标继续拆分模块。
 
 ## 关键决策与理由（防止“吃书”）
