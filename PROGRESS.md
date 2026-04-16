@@ -1,15 +1,19 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：已切换到 TS 后端首版纵向跑通任务；前端暂不处理。
+- 现状：TS 后端首版纵向跑通已完成；前端仍暂不处理。
 - 已完成：
     - [x] 明确后端采用 npm workspace：`apps/*` + `packages/*`。
     - [x] 明确 `agent-core` 为大核心包，API adapter、loop、pool、trace、前端事件类型都放在 core 内。
     - [x] 明确 3 个 runtime 包：Node 真实实现，Cloudflare Worker/Tauri 首版占位。
     - [x] 明确首版默认 human-in-loop 工具审批，策略支持 `ask | deny | always_approve`。
+    - [x] 新增根级 npm workspace、`packages/agent-core`、3 个 runtime 包、`apps/cli`、`apps/server`。
+    - [x] 实现 OpenAI-compatible Chat Completions payload 组装、DeepSeek `reasoning_content` 流式解析、工具调用组装。
+    - [x] 实现 Node 文件、shell、trace store、TOML 配置读取和 CLI/server 工具审批。
+    - [x] 已通过 `npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
 - 正在做：
-    - [/] 新增后端 monorepo 工程、核心包、runtime 包、CLI、HTTP/SSE 服务与测试。
-- 下一步：完成后端代码实现后执行 typecheck、build、lint、test 全量验证。
+    - [ ] 等待填入真实 `simpagent.toml` 后进行手工 DeepSeek/OpenAI-compatible smoke test。
+- 下一步：按需要扩展前端对接 SSE 事件，或继续补第二轮 agent loop（工具执行后再次请求模型）。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：首版不修改 `frontend/` 与 `chatgpt-temp/`。（原因：用户明确要求前端先不管，避免和前端未完成改动互相干扰。）
@@ -23,3 +27,4 @@
 - 坑2：`agent-core` 不能直接依赖 Node 文件、shell、数据库 API；这些能力必须通过 runtime 接口注入。
 - 坑3：DeepSeek thinking 流里 `reasoning_content` 和普通 `content` 需要分开转成 `thinking_delta` 与 `message_delta`。
 - 坑4：工具审批 deny 不是本地异常结束，而是要回填 tool result，让模型看到 `TOOL_EXECUTION_DENIED_BY_HUMAN`。
+- 坑5：当前首版工具执行后会回填 tool result 并落盘，但不会自动进行第二次模型请求；这是下一轮增强点。
