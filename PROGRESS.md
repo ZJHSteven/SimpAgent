@@ -1,14 +1,14 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：`tem.html` 已被重写为纯 HTML/CSS/JS 的本地静态聊天页面，不再依赖 ChatGPT 线上资源。
-- 已完成：已实现侧栏、顶部栏、消息流、底部 composer、输入框自适应、空输入拦截、Enter 发送、移动端侧栏、新聊天重置。
-- 正在做：Playwright 首次运行发现导入包名不匹配，正在修正测试文件导入方式。
-- 下一步：重新运行静态检查和 Playwright 桌面/移动测试。
+- 现状：用户反馈手工重绘的 composer、SVG 和配色与原 ChatGPT 差异明显，要求直接下载原资源并复用。
+- 已完成：已验证 `https://chatgpt.com/cdn/assets/style-hx6lsrxf.css` 和 `https://chatgpt.com/cdn/assets/sprites-core-a066ed1a.svg` 均可访问。
+- 正在做：准备把原始 CSS 和 SVG sprite 下载到本地，并让 `tem.html` 的 composer 复用真实资源。
+- 下一步：改造 composer 结构与测试，确保本地打开时图标、按钮和输入区域正常。
 
 ## 关键决策与理由（防止“吃书”）
-- 决策A：不保留原始 ChatGPT 全量快照。（原因：依赖线上 CDN、React hydration、实验脚本和用户态数据，本地打开容易缺资源或泄露无关信息。）
-- 决策B：采用纯 HTML/CSS/JS 单文件实现。（原因：当前项目没有构建系统，用户想要“大概复刻”，单文件最容易运行和学习。）
+- 决策A：仍不保留原始 ChatGPT 全量快照。（原因：全量快照包含大量 React 运行数据、用户态信息和第三方脚本，不适合作为干净模板。）
+- 决策B：保留纯 HTML/CSS/JS 主体，但下载并复用原始 CSS 与 SVG sprite。（原因：用户明确要求不要手工重绘图标和 composer 样式。）
 
 ## 常见坑 / 复现方法
 - 坑1：直接打开原始快照会缺少 `/cdn/assets/...` 等站点资源，导致样式或图标丢失。

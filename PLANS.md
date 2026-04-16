@@ -1,19 +1,21 @@
-# ExecPlan：复刻 ChatGPT 风格聊天页面
+# ExecPlan：本地化 ChatGPT 资源并复刻聊天页面
 
 ## 视觉结论
-- 视觉主张：使用浅色、低边框、柔和灰阶和少量绿色强调，复刻 ChatGPT 当前网页的克制聊天工作台感。
+- 视觉主张：优先复用原 ChatGPT 快照引用的 CSS 和 SVG sprite，避免手工重绘导致图标、配色和 composer 观感偏差。
 - 内容计划：左侧历史栏、顶部模型/标题栏、中间消息流、底部输入器、简单的本地交互反馈。
-- 交互主张：输入框自动增高、发送后追加用户消息与模拟回复、移动端侧栏自动收起为顶部入口。
+- 交互主张：composer 尽量贴近原 DOM 结构，同时保留本地输入、发送、空输入拦截和移动端侧栏。
 
 ## 执行步骤
-1. [已完成] 从 `tem.html` 中提取可复用结构特征：侧栏、消息宽度、用户气泡、助手正文、底部 composer。
-2. [已完成] 将臃肿的线上快照替换为本地可运行的静态页面，避免依赖 ChatGPT 的 CDN、React hydration 和实验配置。
-3. [已完成] 写入教学向中文注释，保持单文件直观可读，方便初学者从上到下阅读。
-4. [已完成] 增加轻量 JS：发送消息、空输入拦截、Enter/Shift+Enter 行为、textarea 高度自适应、错误提示。
-5. [进行中] 已补充 Playwright 测试文件，准备执行静态语法检查、文本断言、浏览器渲染和基础交互测试，覆盖桌面与移动视口。
+1. [已完成] 从原始快照确认核心资源地址：`/cdn/assets/style-hx6lsrxf.css` 和 `/cdn/assets/sprites-core-a066ed1a.svg`。
+2. [进行中] 下载原始 CSS 和 SVG sprite 到本地 `assets/chatgpt/`。
+3. [待执行] 改造 `tem.html`，让 composer 复用原 DOM 类名、按钮结构和真实 sprite 图标。
+4. [待执行] 保留必要的本地 JS 交互：输入、发送、空输入拦截、Enter/Shift+Enter、移动端侧栏。
+5. [待执行] 更新 Playwright 测试，验证真实图标资源加载、composer 结构、桌面/移动交互和横向溢出。
 
 ## 验收标准
 - `tem.html` 能直接用浏览器打开，不需要开发服务器。
+- ChatGPT 原始 CSS 和 SVG sprite 已本地化，不再依赖在线 `/cdn/assets/...`。
+- composer 的加号、进阶思考、听写、发送按钮使用真实 sprite `<use>` 图标。
 - 页面在桌面端显示左侧栏，在移动端不横向溢出。
 - 空输入不会发送，正常输入会追加消息并给出模拟回复。
 - HTML/CSS/JS 没有基础语法错误，Playwright 能完成可视化与交互测试。
