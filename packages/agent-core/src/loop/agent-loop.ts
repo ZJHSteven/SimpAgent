@@ -199,11 +199,11 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     }
   }
 
-  const trace: TraceRecord = {
+  const firstRequest = requests[0];
+  const traceWithoutFirstRequest = {
     threadId: input.threadId,
     turnId: input.turnId,
     createdAt,
-    ...(requests.at(0) === undefined ? {} : { request: requests.at(0) }),
     requests,
     responseEvents: responseEvents as never,
     toolApprovals: toolApprovals as never,
@@ -213,6 +213,13 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
       requestCount: requests.length
     }
   };
+  const trace: TraceRecord =
+    firstRequest === undefined
+      ? traceWithoutFirstRequest
+      : {
+          ...traceWithoutFirstRequest,
+          request: firstRequest
+        };
 
   await input.traceStore.saveTrace(trace);
   await input.onEvent({
