@@ -34,13 +34,13 @@
     */
     :root {
       --color-page: #ffffff;
-      --color-sidebar: #f7f7f5;
-      --color-sidebar-hover: #ececea;
+      --color-sidebar: #f9f9f9;
+      --color-sidebar-hover: #ececeb;
       --color-text: #1f1f1f;
       --color-muted: #6f6f6f;
       --color-border: #e3e3df;
       --color-soft-border: #eeeeeb;
-      --color-user-bubble: #dcf8c6; /* 浅绿色背景 */
+      --color-user-bubble: #f4f4f4; /* 官方提示淡灰色 */
       --color-assistant-mark: #10a37f;
       --color-focus: #0f8f70;
       --color-danger: #b42318;
@@ -251,11 +251,13 @@
       display: none;
     }
 
+
+
     .app-shell[data-sidebar-state="collapsed"] .sidebar-action,
     .app-shell[data-sidebar-state="collapsed"] .sidebar-profile {
-      justify-content: center;
+      justify-content: flex-start;
       width: 40px;
-      padding-inline: 0;
+      padding-inline: 4px;
     }
 
     /* 品牌图标直接引用本地下载的 sprite，不再手工重绘。 */
@@ -282,7 +284,7 @@
       gap: 10px;
       min-height: 40px;
       width: 100%;
-      padding: 8px 10px;
+      padding: 8px 6px;
       border-radius: var(--radius-small);
       background: transparent;
       color: var(--color-text);
@@ -476,44 +478,78 @@
       padding: 4px;
     }
 
-    /* 用户气泡保留原页面的浅灰底和圆角。 */
+    /* 用户气泡：对齐 ChatGPT 官方比例 */
     .user-bubble {
       max-width: min(70%, 560px);
-      padding: 10px 16px; /* 严格遵守 px-4 (16px) */
-      border-radius: 22px;
+      padding: 0.625rem 1.25rem; /* px-5 py-2.5 */
+      border-radius: 24px;
       background: var(--color-user-bubble);
-      line-height: 1.5; /* 严格遵守 leading-6 (24px approx) */
-      overflow-wrap: anywhere;
-      white-space: pre-wrap;
+      line-height: 1.55; 
+      overflow-wrap: break-word;
+      white-space: pre-wrap; /* 允许在 div 内原生处理换行和空格 */
       position: relative;
-      text-indent: 0; /* 消除意外缩进 */
       margin: 0;
+      font-size: 15px; /* ChatGPT 官方文字大小约 15px */
+      color: #0d0d0d;
     }
 
-    /* 消息作者角色容器，控制对齐和间距 */
-    [data-message-author-role="user"] {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 4px; /* 控制气泡和下方按钮的距离，之前是 mt-2 (8px) 太远了 */
+    /* 顶部栏样式补充 */
+    .topbar-new {
+      background-color: rgba(255, 255, 255, 0.85); /* 稍微增加不透明度 */
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--color-soft-border);
     }
-
-    .message--user {
-      align-items: flex-end;
-      margin-bottom: 24px;
+    .header-wordmark {
+      color: var(--color-text);
+      font-weight: 600;
+      letter-spacing: -0.01em;
     }
-
-    /* 消息操作栏样式：默认隐藏，hover 时显示。 */
-    .message-actions {
-      opacity: 0;
-      transition: opacity 200ms ease;
-      display: flex;
-      align-items: center;
-      margin-right: -4px; /* 稍微向右偏移，让按钮贴合气泡边缘 */
+    .topbar-new a,
+    .topbar-new button {
+      color: var(--color-text); /* 统一应用文字深色 */
     }
-
-    .message:hover .message-actions {
+    .topbar-new a svg,
+    .topbar-new button svg {
+      opacity: 0.8; /* 恢复更深的固有颜色 */
+      transition: opacity 100ms;
+    }
+    .topbar-new a:hover svg,
+    .topbar-new button:hover svg {
       opacity: 1;
+    }
+    .text-black\/30 { color: rgba(0,0,0,0.3); }
+
+    /* 消息条目垂直间距与布局 */
+    .message {
+      margin-bottom: 32px;
+      position: relative;
+    }
+
+    /* 用户消息动作按钮对齐与间距：贴近气泡 */
+    .message--user .message-actions {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px; /* 紧贴气泡 */
+      margin-right: 4px; /* 右侧微调 */
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 150ms ease, visibility 150ms ease;
+    }
+
+    /* hover 触发显示操作按钮 */
+    .message--user:hover .message-actions {
+      opacity: 1;
+      visibility: visible;
+    }
+    .message-actions button {
+      color: var(--color-muted);
+      border-radius: var(--radius-small);
+      transition: background-color 150ms;
+    }
+    .message-actions button:hover {
+      background-color: var(--color-sidebar-hover);
+      color: var(--color-text);
     }
 
 
@@ -575,14 +611,13 @@
       line-height: 1.55;
     }
 
-    /* 底部输入区使用 sticky，保持类似 ChatGPT 的固定 composer。 */
+    /* 底部输入区使用 sticky，保持类似 ChatGPT 的固定 composer。移除渐变色避免觉得背景脏。 */
     .composer-wrap {
       position: sticky;
       bottom: 0;
       z-index: 12;
       padding: 12px 18px 16px;
-      background:
-        linear-gradient(to top, #ffffff 72%, rgb(255 255 255 / 0));
+      background: #ffffff;
     }
 
     /* 输入器宽度与消息列一致。 */
@@ -912,7 +947,7 @@
     这些 symbol 都是从 assets/chatgpt/sprites-core-a066ed1a.svg 原样抽取出来的。
     直接打开 file:// 页面时，浏览器会阻止外部 svg#symbol 引用；内联后仍然使用原始图形，但不会被安全策略拦截。
   -->
-  <svg aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+  <svg aria-hidden="true" focusable="false" style="display:none;position:absolute;width:0;height:0;overflow:hidden">
     <symbol id="6be74c" viewBox="0 0 20 20"><path d="M9.335 16.5v-5.835H3.5a.665.665 0 1 1 0-1.33h5.835V3.5a.665.665 0 0 1 1.33 0v5.835H16.5l.134.014a.665.665 0 0 1 0 1.302l-.134.014h-5.835V16.5a.665.665 0 1 1-1.33 0"/></symbol>
     <symbol id="127a53" viewBox="0 0 20 20"><path d="M16.585 10a6.585 6.585 0 1 0-13.17 0 6.585 6.585 0 0 0 13.17 0m1.33 0a7.915 7.915 0 1 1-15.83 0 7.915 7.915 0 0 1 15.83 0"/><path d="M10 8.5a1.5 1.5 0 0 1 0 3c-1.5 0-5-1-5-1.5s3.5-1.5 5-1.5M12.083.005a.665.665 0 0 1 0 1.33H7.916a.665.665 0 0 1 0-1.33z"/></symbol>
     <symbol id="23ce94" viewBox="0 0 16 16"><path d="M11.115 3.915a.7.7 0 0 1 .97.97l-.09.11L8.99 8l3.005 3.005.09.11a.7.7 0 0 1-.97.97l-.11-.09L8 8.99l-3.005 3.005a.7.7 0 0 1-.99-.99L7.01 8 4.005 4.995l-.09-.11a.7.7 0 0 1 .97-.97l.11.09L8 7.01l3.005-3.005z"/></symbol>
@@ -927,31 +962,45 @@
     <symbol id="b140e7" viewBox="0 0 20 20"><path d="M7.53 3.78a.666.666 0 0 1 .836-.086l.105.085 5.75 5.75c.26.26.26.682 0 .942l-5.75 5.75a.666.666 0 0 1-.942-.942L12.81 10l-5.28-5.28-.085-.104a.666.666 0 0 1 .085-.837"/></symbol>
     <symbol id="6b0d8c" viewBox="0 0 20 20"><path d="M10 2.125a7.875 7.875 0 1 1 0 15.75 7.875 7.875 0 0 1 0-15.75m-2.113 8.5c.056 1.691.338 3.188.753 4.28.233.614.495 1.068.755 1.358s.465.362.605.362.346-.073.605-.362c.26-.29.522-.744.755-1.358.415-1.092.697-2.589.753-4.28zm-4.482 0a6.63 6.63 0 0 0 4.493 5.657 7 7 0 0 1-.427-.933c-.477-1.257-.777-2.91-.834-4.724zm9.958 0c-.057 1.814-.357 3.467-.834 4.724a7 7 0 0 1-.428.933 6.63 6.63 0 0 0 4.494-5.657zm-1.262-6.908c.157.285.301.6.428.934.477 1.257.777 2.91.834 4.724h3.232A6.63 6.63 0 0 0 12.1 3.717M10 3.375c-.14 0-.346.073-.605.362-.26.29-.522.744-.755 1.358-.415 1.092-.697 2.589-.753 4.28h4.226c-.056-1.691-.338-3.188-.753-4.28-.233-.614-.495-1.068-.755-1.358s-.465-.362-.605-.362m-2.102.342a6.63 6.63 0 0 0-4.493 5.658h3.232c.057-1.814.357-3.467.834-4.724q.191-.504.427-.934"/></symbol>
     <symbol id="a4763e" viewBox="0 0 20 20"><path d="M12.498 6.909a.665.665 0 0 1 1.088.766L9.627 13.3a.665.665 0 0 1-.982.117l-.054-.053-2.083-2.292-.08-.107a.666.666 0 0 1 .964-.877l.1.09 1.525 1.676z"/><path fill-rule="evenodd" d="M10.333 2.085a7.915 7.915 0 1 1 0 15.83 7.915 7.915 0 0 1 0-15.83m0 1.33a6.585 6.585 0 1 0 0 13.17 6.585 6.585 0 0 0 0-13.17" clip-rule="evenodd"/></symbol>
-    <!-- 复制图标 -->
     <symbol id="ce3544" viewBox="0 0 20 20"><path d="M12.668 10.667c0-.71 0-1.204-.031-1.588a2.4 2.4 0 0 0-.113-.615l-.055-.13a1.84 1.84 0 0 0-.676-.731l-.127-.072c-.158-.08-.37-.137-.745-.168-.384-.031-.877-.031-1.588-.031H6.5c-.711 0-1.204 0-1.588.031a2.4 2.4 0 0 0-.615.113l-.13.055a1.84 1.84 0 0 0-.731.676l-.07.127c-.081.158-.138.37-.169.745-.031.384-.032.877-.032 1.588V13.5c0 .711 0 1.204.032 1.588.031.376.088.587.168.745l.07.126c.177.288.43.522.732.676l.13.056c.144.052.333.089.615.112.384.031.877.032 1.588.032h2.833c.71 0 1.204 0 1.588-.032.376-.031.587-.088.745-.168l.127-.07c.287-.177.522-.43.676-.732l.055-.13c.052-.144.09-.333.113-.615.031-.384.031-.877.031-1.588zm1.33 1.998c.455-.002.803-.005 1.09-.028.376-.031.587-.088.745-.168l.126-.071c.288-.177.522-.43.676-.732l.056-.13a2.4 2.4 0 0 0 .112-.615c.031-.384.032-.877.032-1.588V6.5c0-.711 0-1.204-.032-1.588a2.4 2.4 0 0 0-.112-.615l-.056-.13a1.84 1.84 0 0 0-.676-.731l-.126-.07c-.158-.081-.37-.138-.745-.169-.384-.031-.877-.032-1.588-.032h-2.833c-.71 0-1.204.001-1.588.032-.282.023-.471.06-.615.112l-.13.056a1.84 1.84 0 0 0-.731.676l-.072.126c-.08.158-.137.37-.168.745-.023.287-.027.635-.029 1.09h1.999c.689 0 1.246 0 1.696.036.458.038.865.117 1.242.309l.217.122c.496.304.9.74 1.165 1.26l.067.143c.144.337.21.698.242 1.099.037.45.036 1.007.036 1.696zm4.167-3.332c0 .689 0 1.246-.036 1.696-.033.401-.098.762-.242 1.099l-.067.143c-.265.52-.67.956-1.165 1.26l-.219.122c-.376.192-.782.271-1.24.309-.337.027-.734.031-1.2.033-.003.467-.007.864-.034 1.201-.033.401-.098.762-.242 1.098l-.067.142c-.265.522-.669.958-1.165 1.262l-.217.122c-.377.192-.784.271-1.242.309-.45.037-1.007.036-1.696.036H6.5c-.69 0-1.246 0-1.696-.036-.4-.033-.762-.098-1.098-.242l-.143-.067a3.17 3.17 0 0 1-1.261-1.165l-.122-.219c-.192-.376-.271-.782-.309-1.24-.037-.45-.036-1.007-.036-1.696v-2.833c0-.689 0-1.246.036-1.696.038-.458.117-.865.309-1.242l.122-.217c.304-.496.74-.9 1.261-1.165l.143-.067c.336-.144.697-.21 1.098-.242.337-.027.733-.032 1.2-.034.002-.467.007-.863.034-1.2.037-.458.117-.864.309-1.24l.122-.22c.304-.495.74-.899 1.26-1.164l.143-.067c.337-.144.698-.21 1.099-.242.45-.037 1.007-.036 1.696-.036H13.5c.69 0 1.246 0 1.696.036.458.038.864.117 1.24.309l.22.122c.495.304.899.74 1.164 1.261l.067.143c.144.336.21.697.242 1.098.037.45.036 1.007.036 1.696z"/></symbol>
-    <!-- 编辑图标 -->
     <symbol id="6d87e1" viewBox="0 0 20 20"><path d="M11.331 3.568a3.61 3.61 0 0 1 4.973.128l.128.135a3.61 3.61 0 0 1 0 4.838l-.128.135-6.292 6.29c-.324.324-.558.561-.79.752l-.235.177q-.309.21-.65.36l-.23.093c-.181.066-.369.114-.585.159l-.765.135-2.394.399c-.142.024-.294.05-.422.06-.1.007-.233.01-.378-.026l-.149-.049a1.1 1.1 0 0 1-.522-.474l-.046-.094a1.1 1.1 0 0 1-.074-.526c.01-.129.035-.28.06-.423l.398-2.394.134-.764a4 4 0 0 1 .16-.586l.093-.23q.15-.342.36-.65l.176-.235c.19-.232.429-.466.752-.79l6.291-6.292zm-5.485 7.36c-.35.35-.533.535-.66.688l-.11.147a2.7 2.7 0 0 0-.24.433l-.062.155c-.04.11-.072.225-.106.394l-.127.717-.398 2.393-.001.002h.003l2.393-.399.717-.126c.169-.034.284-.065.395-.105l.153-.062q.228-.1.433-.241l.148-.11c.153-.126.338-.31.687-.66l4.988-4.988-3.226-3.226zm9.517-6.291a2.28 2.28 0 0 0-3.053-.157l-.173.157-.364.363L15 8.226l.363-.363.157-.174a2.28 2.28 0 0 0 0-2.878z"/></symbol>
-
+    <symbol id="630ca2" viewBox="0 0 20 20"><path d="M2.668 12.666V12.5a.665.665 0 0 1 1.33 0v.166c0 .711.001 1.205.033 1.588.03.376.087.587.167.745l.07.127c.177.288.43.522.732.676l.13.056c.144.051.333.089.615.112.384.031.877.031 1.588.031h5.333c.711 0 1.205 0 1.588-.031.376-.03.587-.088.745-.168l.127-.071c.288-.176.522-.43.676-.732l.056-.13c.051-.143.089-.333.112-.615.031-.383.031-.877.031-1.588V12.5a.665.665 0 0 1 1.33 0v.166c0 .69 0 1.246-.036 1.697-.033.4-.098.762-.242 1.098l-.066.143c-.266.52-.67.957-1.165 1.26l-.218.123c-.377.192-.783.27-1.241.308-.45.037-1.008.036-1.697.036H7.333c-.689 0-1.246.001-1.696-.036-.4-.033-.761-.097-1.098-.241l-.142-.067a3.17 3.17 0 0 1-1.262-1.165l-.122-.218c-.192-.377-.271-.783-.309-1.241-.036-.45-.036-1.008-.036-1.697m6.667-.166V4.94L7.137 7.137a.665.665 0 0 1-.94-.94L9.53 2.863l.101-.083a.666.666 0 0 1 .839.083l3.334 3.334a.666.666 0 0 1-.941.94L10.665 4.94v7.56a.666.666 0 0 1-1.33 0"/></symbol>
+    <symbol id="f6d0e2" viewBox="0 0 20 20"><path d="M15.498 8.502a1.498 1.498 0 1 1 0 2.996 1.498 1.498 0 0 1 0-2.996M4.498 8.502a1.499 1.499 0 1 1 0 2.998 1.499 1.499 0 0 1 0-2.998M10 8.502a1.498 1.498 0 1 1 0 2.996 1.498 1.498 0 0 1 0-2.996"></path></symbol>
+    <symbol id="ac6d36" viewBox="0 0 20 20"><path d="M14.086 8.75a5.335 5.335 0 1 0-10.67 0 5.335 5.335 0 0 0 10.67 0m1.33 0a6.64 6.64 0 0 1-1.512 4.225l.066.055 3 3 .086.104a.666.666 0 0 1-.922.922l-.104-.085-3-3-.055-.068a6.665 6.665 0 1 1 2.44-5.153"/></symbol>
+    <symbol id="003104" viewBox="0 0 20 20"><path d="M16.835 10c0-3.51-3.024-6.418-6.835-6.418S3.165 6.49 3.165 10c0 1.454.514 2.797 1.388 3.877.122.151.172.35.136.54-.095.508-.23 1.003-.384 1.487a13 13 0 0 0 1.823-.376l.126-.023a.67.67 0 0 1 .37.077 7.14 7.14 0 0 0 3.376.837c3.811 0 6.835-2.91 6.835-6.42m1.33 0c0 4.314-3.692 7.749-8.165 7.749a8.5 8.5 0 0 1-3.766-.873c-.92.242-1.865.393-2.86.455a.665.665 0 0 1-.661-.903l.207-.565c.162-.468.3-.933.402-1.402A7.45 7.45 0 0 1 1.835 10c0-4.315 3.692-7.748 8.165-7.748S18.165 5.685 18.165 10"/></symbol>
+    <symbol id="b140e7" viewBox="0 0 20 20"><path d="M7.53 3.78a.666.666 0 0 1 .836-.086l.105.085 5.75 5.75c.26.26.26.682 0 .942l-5.75 5.75a.666.666 0 0 1-.942-.942L12.81 10l-5.28-5.28-.085-.104a.666.666 0 0 1 .085-.837"/></symbol>
+    <symbol id="6b0d8c" viewBox="0 0 20 20"><path d="M10 2.125a7.875 7.875 0 1 1 0 15.75 7.875 7.875 0 0 1 0-15.75m-2.113 8.5c.056 1.691.338 3.188.753 4.28.233.614.495 1.068.755 1.358s.465.362.605.362.346-.073.605-.362c.26-.29.522-.744.755-1.358.415-1.092.697-2.589.753-4.28zm-4.482 0a6.63 6.63 0 0 0 4.493 5.657 7 7 0 0 1-.427-.933c-.477-1.257-.777-2.91-.834-4.724zm9.958 0c-.057 1.814-.357 3.467-.834 4.724a7 7 0 0 1-.428.933 6.63 6.63 0 0 0 4.494-5.657zm-1.262-6.908c.157.285.301.6.428.934.477 1.257.777 2.91.834 4.724h3.232A6.63 6.63 0 0 0 12.1 3.717M10 3.375c-.14 0-.346.073-.605.362-.26.29-.522.744-.755 1.358-.415 1.092-.697 2.589-.753 4.28h4.226c-.056-1.691-.338-3.188-.753-4.28-.233-.614-.495-1.068-.755-1.358s-.465-.362-.605-.362m-2.102.342a6.63 6.63 0 0 0-4.493 5.658h3.232c.057-1.814.357-3.467.834-4.724q.191-.504.427-.934"/></symbol>
+    <symbol id="a4763e" viewBox="0 0 20 20"><path d="M12.498 6.909a.665.665 0 0 1 1.088.766L9.627 13.3a.665.665 0 0 1-.982.117l-.054-.053-2.083-2.292-.08-.107a.666.666 0 0 1 .964-.877l.1.09 1.525 1.676z"/><path fill-rule="evenodd" d="M10.333 2.085a7.915 7.915 0 1 1 0 15.83 7.915 7.915 0 0 1 0-15.83m0 1.33a6.585 6.585 0 1 0 0 13.17 6.585 6.585 0 0 0 0-13.17" clip-rule="evenodd"/></symbol>
+    <symbol id="ce3544" viewBox="0 0 20 20"><path d="M12.668 10.667c0-.71 0-1.204-.031-1.588a2.4 2.4 0 0 0-.113-.615l-.055-.13a1.84 1.84 0 0 0-.676-.731l-.127-.072c-.158-.08-.37-.137-.745-.168-.384-.031-.877-.031-1.588-.031H6.5c-.711 0-1.204 0-1.588.031a2.4 2.4 0 0 0-.615.113l-.13.055a1.84 1.84 0 0 0-.731.676l-.07.127c-.081.158-.138.37-.169.745-.031.384-.032.877-.032 1.588V13.5c0 .711 0 1.204.032 1.588.031.376.088.587.168.745l.07.126c.177.288.43.522.732.676l.13.056c.144.052.333.089.615.112.384.031.877.032 1.588.032h2.833c.71 0 1.204 0 1.588-.032.376-.031.587-.088.745-.168l.127-.07c.287-.177.522-.43.676-.732l.055-.13c.052-.144.09-.333.113-.615.031-.384.031-.877.031-1.588zm1.33 1.998c.455-.002.803-.005 1.09-.028.376-.031.587-.088.745-.168l.126-.071c.288-.177.522-.43.676-.732l.056-.13a2.4 2.4 0 0 0 .112-.615c.031-.384.032-.877.032-1.588V6.5c0-.711 0-1.204-.032-1.588a2.4 2.4 0 0 0-.112-.615l-.056-.13a1.84 1.84 0 0 0-.676-.731l-.126-.07c-.158-.081-.37-.138-.745-.169-.384-.031-.877-.032-1.588-.032h-2.833c-.71 0-1.204.001-1.588.032-.282.023-.471.06-.615.112l-.13.056a1.84 1.84 0 0 0-.731.676l-.072.126c-.08.158-.137.37-.168.745-.023.287-.027.635-.029 1.09h1.999c.689 0 1.246 0 1.696.036.458.038.865.117 1.242.309l.217.122c.496.304.9.74 1.165 1.26l.067.143c.144.337.21.698.242 1.099.037.45.036 1.007.036 1.696zm4.167-3.332c0 .689 0 1.246-.036 1.696-.033.401-.098.762-.242 1.099l-.067.143c-.265.52-.67.956-1.165 1.26l-.219.122c-.376.192-.782.271-1.24.309-.337.027-.734.031-1.2.033-.003.467-.007.864-.034 1.201-.033.401-.098.762-.242 1.098l-.067.142c-.265.522-.669.958-1.165 1.262l-.217.122c-.377.192-.784.271-1.242.309-.45.037-1.007.036-1.696.036H6.5c-.69 0-1.246 0-1.696-.036-.4-.033-.762-.098-1.098-.242l-.143-.067a3.17 3.17 0 0 1-1.261-1.165l-.122-.219c-.192-.376-.271-.782-.309-1.24-.037-.45-.036-1.007-.036-1.696v-2.833c0-.689 0-1.246.036-1.696.038-.458.117-.865.309-1.242l.122-.217c.304-.496.74-.9 1.261-1.165l.143-.067c.336-.144.697-.21 1.098-.242.337-.027.733-.032 1.2-.034.002-.467.007-.863.034-1.2.037-.458.117-.864.309-1.24l.122-.22c.304-.495.74-.899 1.26-1.164l.143-.067c.337-.144.698-.21 1.099-.242.45-.037 1.007-.036 1.696-.036H13.5c.69 0 1.246 0 1.696.036.458.038.864.117 1.24.309l.22.122c.495.304.899.74 1.164 1.261l.067.143c.144.336.21.697.242 1.098.037.45.036 1.007.036 1.696z"/></symbol>
+    <symbol id="6d87e1" viewBox="0 0 20 20"><path d="M11.331 3.568a3.61 3.61 0 0 1 4.973.128l.128.135a3.61 3.61 0 0 1 0 4.838l-.128.135-6.292 6.29c-.324.324-.558.561-.79.752l-.235.177q-.309.21-.65.36l-.23.093c-.181.066-.369.114-.585.159l-.765.135-2.394.399c-.142.024-.294.05-.422.06-.1.007-.233.01-.378-.026l-.149-.049a1.1 1.1 0 0 1-.522-.474l-.046-.094a1.1 1.1 0 0 1-.074-.526c.01-.129.035-.28.06-.423l.398-2.394.134-.764a4 4 0 0 1 .16-.586l.093-.23q.15-.342.36-.65l.176-.235c.19-.232.429-.466.752-.79l6.291-6.292zm-5.485 7.36c-.35.35-.533.535-.66.688l-.11.147a2.7 2.7 0 0 0-.24.433l-.062.155c-.04.11-.072.225-.106.394l-.127.717-.398 2.393-.001.002h.003l2.393-.399.717-.126c.169-.034.284-.065.395-.105l.153-.062q.228-.1.433-.241l.148-.11c.153-.126.338-.31.687-.66l4.988-4.988-3.226-3.226zm9.517-6.291a2.28 2.28 0 0 0-3.053-.157l-.173.157-.364.363L15 8.226l.363-.363.157-.174a2.28 2.28 0 0 0 0-2.878z"/></symbol>
+    <symbol id="630ca2" viewBox="0 0 20 20"><path d="M2.668 12.666V12.5a.665.665 0 0 1 1.33 0v.166c0 .711.001 1.205.033 1.588.03.376.087.587.167.745l.07.127c.177.288.43.522.732.676l.13.056c.144.051.333.089.615.112.384.031.877.031 1.588.031h5.333c.711 0 1.205 0 1.588-.031.376-.03.587-.088.745-.168l.127-.071c.288-.176.522-.43.676-.732l.056-.13c.051-.143.089-.333.112-.615.031-.383.031-.877.031-1.588V12.5a.665.665 0 0 1 1.33 0v.166c0 .69 0 1.246-.036 1.697-.033.4-.098.762-.242 1.098l-.066.143c-.266.52-.67.957-1.165 1.26l-.218.123c-.377.192-.783.27-1.241.308-.45.037-1.008.036-1.697.036H7.333c-.689 0-1.246.001-1.696-.036-.4-.033-.761-.097-1.098-.241l-.142-.067a3.17 3.17 0 0 1-1.262-1.165l-.122-.218c-.192-.377-.271-.783-.309-1.241-.036-.45-.036-1.008-.036-1.697m6.667-.166V4.94L7.137 7.137a.665.665 0 0 1-.94-.94L9.53 2.863l.101-.083a.666.666 0 0 1 .839.083l3.334 3.334a.666.666 0 0 1-.941.94L10.665 4.94v7.56a.666.666 0 0 1-1.33 0"/></symbol>
   </svg>
+
+  <!-- 移动端侧栏遮罩层 -->
+  <div id="mobile-sidebar-overlay" class="md:hidden" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 20; transition: opacity 200ms ease; opacity: 0;"></div>
 
   <!-- 应用根容器：左侧栏和右侧聊天区都放在这里。 -->
   <div class="app-shell" id="app-shell" data-sidebar-state="expanded">
     <!-- 左侧栏：提供新聊天、搜索和历史记录入口。 -->
     <aside class="sidebar" id="sidebar" aria-label="聊天侧栏">
-      <div class="sidebar-rail-header">
+      <div class="sidebar-rail-header flex items-center justify-between min-h-[var(--header-height)]" style="padding-top: 4px;">
+        <!-- 该区域可保留可选的头部标题，这里保持空白并把按钮放到右边 -->
+        <div style="flex:1;"></div>
         <button
-          class="sidebar-toggle"
+          class="sidebar-toggle hover:bg-black/5"
+          style="display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: var(--radius-small); color: var(--color-muted); transition: background 160ms;"
           id="sidebar-toggle"
           type="button"
           aria-label="收起边栏"
           aria-expanded="true"
           aria-controls="sidebar">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="sidebar-toggle__main-icon">
-            <use href="#55180d" fill="currentColor"></use>
-          </svg>
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="sidebar-toggle__hover-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true">
             <use href="#836f7a" fill="currentColor"></use>
           </svg>
+        </button>
+        <!-- 移动端额外显示的叉叉按键 -->
+        <button class="md:hidden sidebar-close-button hover:bg-black/5" id="mobile-sidebar-close" style="display: none; width: 36px; height: 36px; align-items: center; justify-content: center; border-radius: 8px; margin-left: 8px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 8.586l4.95-4.95a1 1 0 0 1 1.414 1.414L11.414 10l4.95 4.95a1 1 0 0 1-1.414 1.414L10 11.414l-4.95 4.95a1 1 0 0 1-1.414-1.414L8.586 10 3.636 5.05A1 1 0 0 1 5.05 3.636L10 8.586z" clip-rule="evenodd" /></svg>
         </button>
       </div>
 
@@ -987,13 +1036,21 @@
             </span>
             <span class="sidebar-label">搜索聊天</span>
           </button>
+        </nav>
 
-          <button class="sidebar-action __menu-item hoverable" type="button" aria-label="最近聊天">
-            <span class="sidebar-action-icon" aria-hidden="true">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" class="icon">
-                <use href="#003104" fill="currentColor"></use>
-              </svg>
-            </span>
+        <!-- 最近聊天区块 -->
+        <div class="history-list">
+          <h3 class="sidebar-section-title">今天</h3>
+          <button class="sidebar-action" type="button">
+            <span class="sidebar-label" style="font-size: 13px; color: var(--color-text); font-weight: 400; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">规则与数值模拟</span>
+          </button>
+        </div>
+
+        <button class="sidebar-profile" type="button" aria-label="打开设置菜单">
+          <span class="sidebar-action-icon" aria-hidden="true" style="margin-right:8px; display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px;">
+             <!-- 设置图标，直接替换 -->
+             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/></svg>
+          </span>
             <span class="sidebar-label">最近聊天</span>
           </button>
         </nav>
@@ -1008,9 +1065,7 @@
           <li><span class="history-item">文件上传与检索方式</span></li>
         </ul>
 
-        <button class="sidebar-profile" type="button" aria-label="打开个人资料菜单">
-          <span class="sidebar-profile-avatar" aria-hidden="true">SZ</span>
-          <span class="sidebar-label">个人资料</span>
+          <span class="sidebar-label">设置</span>
         </button>
 
         <!-- 底部说明。 -->
@@ -1022,21 +1077,37 @@
 
     <!-- 右侧主聊天区。 -->
     <main class="chat-main" aria-label="聊天主区域">
-      <!-- 顶部栏。 -->
-      <header class="topbar">
-        <button class="mobile-menu-button" id="mobile-menu-button" type="button" aria-label="打开侧栏">
-          ☰
-        </button>
-
-        <div class="conversation-title">
-          <button class="model-button" type="button" aria-label="选择模型">
-            SimpChat 5.4
-            <span aria-hidden="true">⌄</span>
+      <!-- 顶部栏：重构对齐官方 DOM 结构。 -->
+      <header class="topbar-new flex items-center justify-between px-3 h-14 sticky top-0 bg-white/80 backdrop-blur-md z-20">
+        <!-- 左侧：打开边栏与模型选择 -->
+        <div class="flex flex-1 items-center gap-2">
+          <!-- 这里恢复正确的 ID 和你要求的侧栏切换 SVG（包含响应式的两个图标） -->
+          <button type="button" class="inline-flex h-10 w-10 items-center justify-center rounded-lg hover:bg-black/5 active:opacity-50" aria-label="打开侧栏" id="mobile-menu-button">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon max-md:hidden"><use href="#836f7a" fill="currentColor"></use></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon md:hidden"><use href="#85f94b" fill="currentColor"></use></svg>
           </button>
-          <div class="conversation-subtitle">骰子概率分析</div>
+          
+          <button type="button" class="group flex items-center gap-1.5 rounded-xl px-3 py-2 hover:bg-black/5 focus-visible:outline-none transition-colors">
+            <span class="header-wordmark text-lg leading-none">ChatGPT 4o</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" aria-hidden="true" class="text-black/30 mt-0.5"><use href="#ba3792" fill="currentColor"></use></svg>
+          </button>
         </div>
 
-        <button class="share-button" type="button">分享</button>
+        <!-- 右侧操作 -->
+        <div class="flex items-center justify-end gap-1">
+          <!-- 新聊天 -->
+          <a href="#" id="new-chat-button" class="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-black/5" aria-label="新聊天">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon"><use href="#3a5c87" fill="currentColor"></use></svg>
+          </a>
+          <!-- 分享按钮 -->
+          <button class="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-black/5" aria-label="分享对话">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon"><use href="#630ca2" fill="currentColor"></use></svg>
+          </button>
+          <!-- 对话选项 -->
+          <button class="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-black/5" aria-label="打开对话选项">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon"><use href="#f6d0e2" fill="currentColor"></use></svg>
+          </button>
+        </div>
       </header>
 
       <!-- 消息流区域。 -->
@@ -1046,27 +1117,26 @@
           <article class="message message--user">
             <h2 class="sr-only">你说：</h2>
             <div data-message-author-role="user" class="w-full relative flex flex-col items-end">
-              <!-- 用户消息气泡 -->
-              <div class="user-bubble user-message-bubble-color">
-                给我算一下这个骰子规则的成功概率：目标值是 15 或 16，有 1 个 12 面骰，再加 1 到 3 个 6 面骰；12 面骰的 12 是大成功，11 算 0，优势时 12 面骰投两个取高。
-              </div>
+              <!-- 用户消息气泡：使用 p 包装并保持单行源码 -->
+              <div class="user-bubble user-message-bubble-color"><div class="whitespace-pre-wrap">给我算一下这个骰子规则的成功概率：目标值是 15 或 16，有 1 个 12 面骰，再加 1 到 3 个 6 面骰；12 面骰的 12 是大成功，11 算 0，优势时 12 面骰投两个取高。</div></div>
 
               <!-- 消息操作栏 -->
               <div class="message-actions">
-              <button class="text-token-text-secondary hover:bg-token-bg-secondary rounded-lg" aria-label="复制消息" data-testid="copy-turn-action-button" data-state="closed">
-                <span class="flex items-center justify-center touch:w-10 h-8 w-8">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon">
-                    <use href="#ce3544" fill="currentColor"></use>
-                  </svg>
-                </span>
-              </button>
-              <button class="text-token-text-secondary hover:bg-token-bg-secondary rounded-lg" aria-label="编辑消息" data-state="closed">
-                <span class="flex items-center justify-center touch:w-10 h-8 w-8">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon">
-                    <use href="#6d87e1" fill="currentColor"></use>
-                  </svg>
-                </span>
-              </button>
+                <button class="text-token-text-secondary hover:bg-token-bg-secondary rounded-lg" aria-label="复制消息" data-testid="copy-turn-action-button" data-state="closed">
+                  <span class="flex items-center justify-center touch:w-10 h-8 w-8">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon">
+                      <use href="#ce3544" fill="currentColor"></use>
+                    </svg>
+                  </span>
+                </button>
+                <button class="text-token-text-secondary hover:bg-token-bg-secondary rounded-lg" aria-label="编辑消息" data-state="closed">
+                  <span class="flex items-center justify-center touch:w-10 h-8 w-8">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon">
+                      <use href="#6d87e1" fill="currentColor"></use>
+                    </svg>
+                  </span>
+                </button>
+              </div>
             </div>
           </article>
 
@@ -1354,6 +1424,8 @@ assistantMessage = readableMarkdownColumn</code></pre>
     const sidebar = getRequiredElement("#sidebar");
     const sidebarToggle = getRequiredElement("#sidebar-toggle");
     const mobileMenuButton = getRequiredElement("#mobile-menu-button");
+    const mobileSidebarClose = document.getElementById("mobile-sidebar-close");
+    const mobileOverlay = document.getElementById("mobile-sidebar-overlay");
     const newChatButton = getRequiredElement("#new-chat-button");
     const thoughtToggle = getRequiredElement("#thought-toggle");
     const thoughtPanel = getRequiredElement("#thought-panel");
@@ -1567,21 +1639,40 @@ assistantMessage = readableMarkdownColumn</code></pre>
     }
 
     // 打开或关闭移动端侧栏。
-    function toggleMobileSidebar() {
+    function toggleMobileSidebar(forceClose = false) {
       // 宽屏下顶部按钮也用于侧栏收起，不使用移动抽屉逻辑。
-      if (window.matchMedia("(min-width: 821px)").matches) {
+      if (window.matchMedia("(min-width: 821px)").matches && !forceClose) {
         toggleDesktopSidebar();
         return;
       }
 
       // 读取当前打开状态。
-      const isOpen = sidebar.dataset.open === "true";
+      const isOpen = forceClose ? true : (sidebar.dataset.open === "true");
+      const nextOpen = !isOpen;
 
       // 写入相反状态，CSS 会根据 data-open 控制抽屉位移。
-      sidebar.dataset.open = String(!isOpen);
+      sidebar.dataset.open = String(nextOpen);
 
       // 同步 aria-label，让辅助技术知道按钮下一步动作。
-      mobileMenuButton.setAttribute("aria-label", isOpen ? "打开侧栏" : "关闭侧栏");
+      mobileMenuButton.setAttribute("aria-label", nextOpen ? "关闭侧栏" : "打开侧栏");
+
+      if (mobileOverlay) {
+        if (nextOpen) {
+          mobileOverlay.style.display = "block";
+          mobileOverlay.offsetHeight; // force repaint
+          mobileOverlay.style.opacity = "1";
+        } else {
+          mobileOverlay.style.opacity = "0";
+          setTimeout(() => { if (sidebar.dataset.open === "false") mobileOverlay.style.display = "none"; }, 200);
+        }
+      }
+    }
+
+    if (mobileSidebarClose) {
+      mobileSidebarClose.addEventListener("click", () => toggleMobileSidebar(true));
+    }
+    if (mobileOverlay) {
+      mobileOverlay.addEventListener("click", () => toggleMobileSidebar(true));
     }
 
     // 打开或关闭右侧思考面板。
@@ -1600,10 +1691,7 @@ assistantMessage = readableMarkdownColumn</code></pre>
 
     // 新聊天按钮：清空消息并放入欢迎语。
     function resetConversation() {
-      // 清空当前消息列表。
       messageList.replaceChildren();
-
-      // 插入一条新的助手欢迎消息。
       messageList.appendChild(createAssistantMessage([
         "新的本地会话已创建。",
         "你可以在底部输入框发送内容，页面会追加用户消息和模拟回复。"
@@ -1611,6 +1699,10 @@ assistantMessage = readableMarkdownColumn</code></pre>
 
       // 在移动端点击新聊天后收起侧栏。
       sidebar.dataset.open = "false";
+      if (mobileOverlay) {
+        mobileOverlay.style.opacity = "0";
+        setTimeout(() => { if (sidebar.dataset.open === "false") mobileOverlay.style.display = "none"; }, 200);
+      }
 
       // 清空输入框，并恢复 placeholder。
       renderPromptPlaceholder();
