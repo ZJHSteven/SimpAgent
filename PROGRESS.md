@@ -10,10 +10,11 @@
     - [x] 新增根级 npm workspace、`packages/agent-core`、3 个 runtime 包、`apps/cli`、`apps/server`。
     - [x] 实现 OpenAI-compatible Chat Completions payload 组装、DeepSeek `reasoning_content` 流式解析、工具调用组装。
     - [x] 实现 Node 文件、shell、trace store、TOML 配置读取和 CLI/server 工具审批。
-    - [/] 正在补齐工具执行后继续模型循环的行为，并重新验证。
+    - [x] 已补齐工具执行后继续模型循环：assistant tool_calls -> tool result -> 下一次模型请求。
+    - [x] 已重新通过 `npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
 - 正在做：
     - [ ] 等待填入真实 `simpagent.toml` 后进行手工 DeepSeek/OpenAI-compatible smoke test。
-- 下一步：重新执行 typecheck、build、lint、test，确认工具回填后继续请求模型的循环可用。
+- 下一步：复制 `simpagent.example.toml` 为 `simpagent.toml`，填入真实模型配置后执行 CLI/server smoke test。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：首版不修改 `frontend/` 与 `chatgpt-temp/`。（原因：用户明确要求前端先不管，避免和前端未完成改动互相干扰。）

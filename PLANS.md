@@ -33,6 +33,7 @@
 
 ## 当前结果
 - 已完成根级 workspace、4 个 packages、2 个 apps、示例 TOML、Node runtime、占位 runtime、核心 loop、工具审批、trace store 与测试。
+- 已补齐完整工具循环：模型发起 tool call 后，系统先审批，执行或拒绝后追加 tool result，再继续请求模型生成最终回复。
 - 已通过：
   - `npm run typecheck`
   - `npm run build`
