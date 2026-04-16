@@ -450,7 +450,11 @@
     /* 原始 CSS 中可能有其它 placeholder 规则；这里保证脱离 React 后占位段落仍可见。 */
     .ProseMirror .placeholder {
       display: block !important;
+      min-height: 24px;
+      line-height: 1.55;
       margin: 0;
+      opacity: 1 !important;
+      visibility: visible !important;
     }
 
     /* placeholder 里的 br 只是为了让空编辑器有可点击高度，不需要显示额外空行。 */
