@@ -447,6 +447,12 @@
       pointer-events: none;
     }
 
+    /* 原始 CSS 中可能有其它 placeholder 规则；这里保证脱离 React 后占位段落仍可见。 */
+    .ProseMirror .placeholder {
+      display: block !important;
+      margin: 0;
+    }
+
     /* placeholder 里的 br 只是为了让空编辑器有可点击高度，不需要显示额外空行。 */
     .ProseMirror .placeholder .ProseMirror-trailingBreak {
       display: none;
@@ -563,6 +569,20 @@
 </head>
 
 <body>
+  <!--
+    本地内联 sprite：
+    这些 symbol 都是从 assets/chatgpt/sprites-core-a066ed1a.svg 原样抽取出来的。
+    直接打开 file:// 页面时，浏览器会阻止外部 svg#symbol 引用；内联后仍然使用原始图形，但不会被安全策略拦截。
+  -->
+  <svg aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+    <symbol id="6be74c" viewBox="0 0 20 20"><path d="M9.335 16.5v-5.835H3.5a.665.665 0 1 1 0-1.33h5.835V3.5a.665.665 0 0 1 1.33 0v5.835H16.5l.134.014a.665.665 0 0 1 0 1.302l-.134.014h-5.835V16.5a.665.665 0 1 1-1.33 0"/></symbol>
+    <symbol id="127a53" viewBox="0 0 20 20"><path d="M16.585 10a6.585 6.585 0 1 0-13.17 0 6.585 6.585 0 0 0 13.17 0m1.33 0a7.915 7.915 0 1 1-15.83 0 7.915 7.915 0 0 1 15.83 0"/><path d="M10 8.5a1.5 1.5 0 0 1 0 3c-1.5 0-5-1-5-1.5s3.5-1.5 5-1.5M12.083.005a.665.665 0 0 1 0 1.33H7.916a.665.665 0 0 1 0-1.33z"/></symbol>
+    <symbol id="23ce94" viewBox="0 0 16 16"><path d="M11.115 3.915a.7.7 0 0 1 .97.97l-.09.11L8.99 8l3.005 3.005.09.11a.7.7 0 0 1-.97.97l-.11-.09L8 8.99l-3.005 3.005a.7.7 0 0 1-.99-.99L7.01 8 4.005 4.995l-.09-.11a.7.7 0 0 1 .97-.97l.11.09L8 7.01l3.005-3.005z"/></symbol>
+    <symbol id="ba3792" viewBox="0 0 16 16"><path d="M12.134 5.944a.666.666 0 0 1 .922.922l-.085.105-4.5 4.5a.666.666 0 0 1-.942 0l-4.5-4.5-.085-.105a.666.666 0 0 1 .922-.922l.105.085L8 10.06l4.03-4.03z"/></symbol>
+    <symbol id="29f921" viewBox="0 0 20 20"><path d="M15.78 10.196a.665.665 0 0 1 .449.827l-.08.25a6.5 6.5 0 0 1-5.485 4.357l.001 1.205h1.418l.134.014a.665.665 0 0 1 0 1.302l-.134.014H7.916a.665.665 0 0 1 0-1.33h1.42l-.002-1.205a6.5 6.5 0 0 1-5.484-4.357l-.08-.25-.026-.132a.665.665 0 0 1 1.25-.371l.051.124.064.198a5.17 5.17 0 0 0 9.844-.198l.052-.124a.664.664 0 0 1 .776-.324m-3.529-4.779a2.252 2.252 0 1 0-4.503 0v3.75a2.252 2.252 0 0 0 4.503 0zm1.33 3.75a3.581 3.581 0 0 1-7.163 0v-3.75a3.582 3.582 0 0 1 7.163 0z"/></symbol>
+    <symbol id="01bab7" viewBox="0 0 20 20"><path d="M9 16V6.414L5.707 9.707a1 1 0 1 1-1.414-1.414l5-5 .076-.068a1 1 0 0 1 1.338.068l5 5 .068.076a1 1 0 0 1-1.406 1.406l-.076-.068L11 6.414V16a1 1 0 1 1-2 0"/></symbol>
+  </svg>
+
   <!-- 应用根容器：左侧栏和右侧聊天区都放在这里。 -->
   <div class="app-shell">
     <!-- 左侧栏：提供新聊天、搜索和历史记录入口。 -->
@@ -570,7 +590,7 @@
       <!-- 品牌区域：图标来自本地下载的 ChatGPT sprite。 -->
       <div class="brand">
         <svg class="brand__image" aria-hidden="true">
-          <use href="assets/chatgpt/sprites-core-a066ed1a.svg#6be74c"></use>
+          <use href="#6be74c"></use>
         </svg>
         <div>
           <div class="brand__name">SimpChat</div>
@@ -640,7 +660,7 @@
           <article class="message message--assistant">
             <div class="message-meta">
               <svg class="assistant-avatar" aria-hidden="true">
-                <use href="assets/chatgpt/sprites-core-a066ed1a.svg#127a53"></use>
+                <use href="#127a53"></use>
               </svg>
               <span>SimpChat 说：</span>
             </div>
@@ -709,7 +729,7 @@ assistantMessage = readableMarkdownColumn</code></pre>
                   aria-expanded="false"
                   data-state="closed">
                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon">
-                    <use href="assets/chatgpt/sprites-core-a066ed1a.svg#6be74c" fill="currentColor"></use>
+                    <use href="#6be74c" fill="currentColor"></use>
                   </svg>
                 </button>
               </span>
@@ -748,7 +768,7 @@ assistantMessage = readableMarkdownColumn</code></pre>
                   <div class="__composer-pill-composite group relative" data-tone="accent">
                     <button type="button" class="__composer-pill-remove" aria-label="进阶思考，点击以重试">
                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" aria-hidden="true" class="icon-sm" inert="">
-                        <use href="assets/chatgpt/sprites-core-a066ed1a.svg#23ce94" fill="currentColor"></use>
+                        <use href="#23ce94" fill="currentColor"></use>
                       </svg>
                     </button>
                     <button
@@ -760,12 +780,12 @@ assistantMessage = readableMarkdownColumn</code></pre>
                       data-state="closed">
                       <div class="__composer-pill-icon" inert="">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true">
-                          <use href="assets/chatgpt/sprites-core-a066ed1a.svg#127a53" fill="currentColor"></use>
+                          <use href="#127a53" fill="currentColor"></use>
                         </svg>
                       </div>
                       <span class="max-w-40 truncate [[data-collapse-labels]_&amp;]:sr-only">进阶思考</span>
                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" aria-hidden="true" class="icon-sm -me-0.5 h-3.5 w-3.5" inert="">
-                        <use href="assets/chatgpt/sprites-core-a066ed1a.svg#ba3792" fill="currentColor"></use>
+                        <use href="#ba3792" fill="currentColor"></use>
                       </svg>
                     </button>
                   </div>
@@ -778,7 +798,7 @@ assistantMessage = readableMarkdownColumn</code></pre>
                 <span data-state="closed">
                   <button aria-label="开始听写" type="button" class="composer-btn h-9 min-h-9 w-9 min-w-9">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-label="" class="icon" font-size="inherit">
-                      <use href="assets/chatgpt/sprites-core-a066ed1a.svg#29f921" fill="currentColor"></use>
+                      <use href="#29f921" fill="currentColor"></use>
                     </svg>
                   </button>
                 </span>
@@ -790,7 +810,7 @@ assistantMessage = readableMarkdownColumn</code></pre>
                     class="composer-submit-btn composer-submit-button-color h-9 w-9"
                     disabled>
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon">
-                      <use href="assets/chatgpt/sprites-core-a066ed1a.svg#01bab7" fill="currentColor"></use>
+                      <use href="#01bab7" fill="currentColor"></use>
                     </svg>
                   </button>
                 </div>
@@ -943,7 +963,7 @@ assistantMessage = readableMarkdownColumn</code></pre>
       article.innerHTML = `
         <div class="message-meta">
           <svg class="assistant-avatar" aria-hidden="true">
-            <use href="assets/chatgpt/sprites-core-a066ed1a.svg#127a53"></use>
+            <use href="#127a53"></use>
           </svg>
           <span>SimpChat 说：</span>
         </div>

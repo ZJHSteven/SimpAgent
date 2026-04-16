@@ -59,9 +59,9 @@ async function expectNoHorizontalOverflow(page) {
   expect(metrics.bodyWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
 }
 
-// 检查页面中的 SVG use 是否指向本地下载的 ChatGPT sprite。
+// 检查页面中的 SVG use 是否指向从本地 sprite 抽取出的内联 symbol。
 async function expectSpriteIconsLoaded(page) {
-  // 读取所有 use[href]，确认不再使用手工 data SVG。
+  // 读取所有 use[href]，确认不再使用手工 data SVG 或会被 file:// 拦截的外部 sprite。
   const hrefs = await page.evaluate(() =>
     Array.from(document.querySelectorAll("use")).map((use) => use.getAttribute("href")),
   );
@@ -72,14 +72,14 @@ async function expectSpriteIconsLoaded(page) {
   // 每个关键 symbol 都必须至少出现一次。
   for (const id of expectedIds) {
     expect(
-      hrefs.some((href) => href === `assets/chatgpt/sprites-core-a066ed1a.svg#${id}`),
-      `应该引用本地 sprite symbol: ${id}`,
+      hrefs.some((href) => href === `#${id}`),
+      `应该引用内联原始 symbol: ${id}`,
     ).toBe(true);
   }
 
-  // 所有 sprite 引用都应该来自本地 assets/chatgpt 目录。
+  // 所有 sprite 引用都应该指向当前 HTML 内联 symbol，避免 file:// 安全拦截。
   for (const href of hrefs) {
-    expect(href, "SVG use 应该引用本地 sprite 文件").toMatch(/^assets\/chatgpt\/sprites-core-a066ed1a\.svg#/);
+    expect(href, "SVG use 应该引用内联 symbol").toMatch(/^#/);
   }
 }
 

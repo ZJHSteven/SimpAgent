@@ -3,8 +3,8 @@
 ## 当前结论（必须最新）
 - 现状：已将原 ChatGPT CSS 与 SVG sprite 下载到 `assets/chatgpt/`，并让 composer 复用真实类名和真实 symbol 图标。
 - 已完成：`tem.html` 已切换为 contenteditable 的 ProseMirror 风格输入区，包含加号、进阶思考、听写、发送按钮等原 DOM 结构。
-- 正在做：已通过 `npm install` 安装 Playwright 测试依赖并生成 `package-lock.json`。
-- 下一步：提交锁文件后重新运行静态检查和 Playwright 桌面/移动测试。
+- 正在做：Playwright 发现 file:// 会拦截外部 `svg#symbol`，已改为把下载 sprite 中需要的原始 symbol 内联进 `tem.html`。
+- 下一步：重新运行静态检查和 Playwright 桌面/移动测试，确认 composer 图标和交互均正常。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：仍不保留原始 ChatGPT 全量快照。（原因：全量快照包含大量 React 运行数据、用户态信息和第三方脚本，不适合作为干净模板。）
