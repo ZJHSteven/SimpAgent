@@ -10,7 +10,8 @@
  */
 
 // 引入 Playwright Test 的 test 和 expect，用于组织用例和断言结果。
-const { test, expect } = require("@playwright/test");
+// 这里使用 playwright/test，是为了匹配 `npx playwright test` 临时安装的包结构。
+const { test, expect } = require("playwright/test");
 
 // 引入 path 模块，用于把本地文件路径转换成稳定的绝对路径。
 const path = require("path");
