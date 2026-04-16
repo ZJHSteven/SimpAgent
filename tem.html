@@ -563,12 +563,22 @@
 
     /* 输入主区域本地微调：修复刷新后 placeholder 行把上半区撑得过高的问题。 */
     .composer-primary {
+      height: 44px !important;
       min-height: 44px !important;
-      align-items: center;
+      max-height: 132px;
+      align-items: center !important;
     }
 
     .composer-primary .wcDTda_prosemirror-parent {
-      max-height: 132px;
+      flex: 0 1 auto !important;
+      height: 24px !important;
+      min-height: 24px !important;
+      max-height: 132px !important;
+    }
+
+    .composer-primary:focus-within,
+    .composer-primary:focus-within .wcDTda_prosemirror-parent {
+      height: auto !important;
     }
 
     /* 原始 ProseMirror 输入区需要一点本地兜底，保证脱离 React 后仍可编辑。 */
