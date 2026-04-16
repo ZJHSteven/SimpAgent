@@ -250,10 +250,12 @@
       display: flex;
       justify-content: center;
       width: 40px;
+      min-height: 40px; /* 缩略图模式回复 40px 确保完美居中圆形按钮 */
       padding: 0;
       margin-left: auto;
       margin-right: auto;
     }
+
 
 
     /* 品牌图标直接引用本地下载的 sprite，不再手工重绘。 */
@@ -299,22 +301,27 @@
 
     /* 分组标题用于历史会话列表。 */
     .sidebar-section-title {
-      margin: 12px 10px 4px; /* 压缩分类间距 */
+      margin: 14px 10px 0px; /* 底部间距降至 0，彻底消除裂缝 */
       color: var(--color-muted);
       font-size: 12px;
-      font-weight: 600;
-      line-height: 1.5;
+      font-weight: 650;
+      line-height: 1.2;
     }
+
+
+
 
 
     /* 历史条目使用列表语义，方便屏幕阅读器理解。 */
     .history-list {
-      display: grid;
-      gap: 2px;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
       margin: 0;
       padding: 0;
       list-style: none;
     }
+
 
     /* 单条历史会话做单行截断，复刻原页面的紧凑历史感。 */
     .history-item {
@@ -881,27 +888,26 @@
         grid-template-columns: 1fr;
       }
 
-      .app-shell[data-sidebar-state="collapsed"],
-      .app-shell[data-sidebar-state="expanded"] {
-        grid-template-columns: 1fr;
-      }
-
-      .sidebar {
-        position: fixed;
-        z-index: 30;
-        width: min(82vw, var(--sidebar-width));
+      /* 手机端屏蔽所有 data-sidebar-state 导致的缩窄逻辑，强制只有隐藏和全屏 */
+      .app-shell[data-sidebar-state="collapsed"] .sidebar,
+      .app-shell[data-sidebar-state="expanded"] .sidebar {
+        width: min(82vw, var(--sidebar-width)) !important;
         transform: translateX(-102%);
+        position: fixed;
+        z-index: 50;
         box-shadow: 20px 0 60px rgb(0 0 0 / 18%);
-        transition: transform 180ms ease;
       }
 
       .sidebar[data-open="true"] {
-        transform: translateX(0);
+        transform: translateX(0) !important;
       }
 
-      .mobile-menu-button {
-        display: inline-flex;
+      /* 在手机端隐藏侧栏内部顶部的 Rail 切换区域，手机由顶栏按钮控制 */
+      .sidebar-rail-header {
+        display: none !important;
       }
+    }
+
 
       .topbar {
         padding-inline: 10px;
@@ -1053,22 +1059,21 @@
         <div class="history-list flex-1 overflow-y-auto">
           <!-- 今天 -->
           <h3 class="sidebar-section-title">今天</h3>
-          <nav class="sidebar-menu" aria-label="今天聊天记录">
+          <div class="sidebar-menu">
             <button class="sidebar-action" type="button">
               <span class="sidebar-label ellipsis">规则与数值模拟</span>
             </button>
-
-          </nav>
+          </div>
 
           <!-- 最近 -->
           <div class="sidebar-section-title">最近</div>
-          <ul class="sidebar-menu list-none p-0 m-0">
-            <li><button class="sidebar-action" type="button"><span class="sidebar-label">骰子概率分析</span></button></li>
-            <li><button class="sidebar-action" type="button"><span class="sidebar-label">个人开发者接入 ChatGPT</span></button></li>
-            <li><button class="sidebar-action" type="button"><span class="sidebar-label">API 架构与 LangGraph 分析</span></button></li>
-            <li><button class="sidebar-action" type="button"><span class="sidebar-label">Quest3 局域网代理配置</span></button></li>
-            <li><button class="sidebar-action" type="button"><span class="sidebar-label">文件上传与检索方式</span></button></li>
-          </ul>
+          <div class="sidebar-menu">
+            <button class="sidebar-action" type="button"><span class="sidebar-label ellipsis">骰子概率分析</span></button>
+            <button class="sidebar-action" type="button"><span class="sidebar-label ellipsis">个人开发者接入 ChatGPT</span></button>
+            <button class="sidebar-action" type="button"><span class="sidebar-label ellipsis">API 架构与 LangGraph 分析</span></button>
+            <button class="sidebar-action" type="button"><span class="sidebar-label ellipsis">Quest3 局域网代理配置</span></button>
+            <button class="sidebar-action" type="button"><span class="sidebar-label ellipsis">文件上传与检索方式</span></button>
+          </div>
         </div>
 
         <!-- 底部设置区域 -->
@@ -1095,10 +1100,11 @@
         <!-- 左侧：打开边栏与模型选择 -->
         <div class="flex flex-1 items-center gap-2">
           <!-- 这里恢复正确的 ID 和你要求的侧栏切换 SVG（包含响应式的两个图标） -->
-          <button type="button" class="inline-flex h-10 w-10 items-center justify-center rounded-lg hover:bg-black/5 active:opacity-50" aria-label="打开侧栏" id="mobile-menu-button">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon max-md:hidden"><use href="#38e54b" fill="currentColor"></use></svg>
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon md:hidden"><use href="#38e54b" fill="currentColor"></use></svg>
+          <!-- 这里改为仅在移动端显示，PC端隐藏 -->
+          <button type="button" class="inline-flex h-10 w-10 items-center justify-center rounded-lg hover:bg-black/5 active:opacity-50 md:hidden" aria-label="打开侧栏" id="mobile-menu-button" onclick="toggleMobileSidebar()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon"><use href="#38e54b" fill="currentColor"></use></svg>
           </button>
+
 
           
           <button type="button" class="group flex items-center gap-1.5 rounded-xl px-3 py-2 hover:bg-black/5 focus-visible:outline-none transition-colors">
