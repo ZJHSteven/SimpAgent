@@ -24,7 +24,7 @@ export class JsonFileTraceStore implements TraceStore {
 
     const parsed = JSON.parse(raw) as ThreadFile;
     return {
-      thread: parsed.thread,
+      ...(parsed.thread === undefined ? {} : { thread: parsed.thread }),
       traces: parsed.traces ?? []
     };
   }
@@ -38,7 +38,7 @@ export class JsonFileTraceStore implements TraceStore {
   async saveTrace(trace: TraceRecord): Promise<void> {
     const current = await this.readThreadFile(trace.threadId);
     await this.writeThreadFile(trace.threadId, {
-      thread: current.thread,
+      ...(current.thread === undefined ? {} : { thread: current.thread }),
       traces: [...current.traces, trace]
     });
   }
@@ -72,4 +72,3 @@ export class JsonFileTraceStore implements TraceStore {
     return threads;
   }
 }
-

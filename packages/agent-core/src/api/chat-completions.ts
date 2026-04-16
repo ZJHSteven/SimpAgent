@@ -31,17 +31,22 @@ function isPlainObject(value: JsonValue | undefined): value is JsonObject {
 }
 
 function toWireMessages(messages: readonly ContextMessage[]): WireMessage[] {
-  return messages
-    .filter((message) => message.role !== "thinking")
-    .map((message) => {
-      const role = message.role === "tool" ? "tool" : message.role;
-      return {
-        role,
-        content: message.content,
-        ...(message.toolCallId === undefined ? {} : { tool_call_id: message.toolCallId }),
-        ...(message.name === undefined ? {} : { name: message.name })
-      };
+  const wireMessages: WireMessage[] = [];
+
+  for (const message of messages) {
+    if (message.role === "thinking") {
+      continue;
+    }
+
+    wireMessages.push({
+      role: message.role,
+      content: message.content,
+      ...(message.toolCallId === undefined ? {} : { tool_call_id: message.toolCallId }),
+      ...(message.name === undefined ? {} : { name: message.name })
     });
+  }
+
+  return wireMessages;
 }
 
 function mergeExtra(base: JsonObject | undefined, override: JsonObject | undefined): JsonObject {
@@ -53,7 +58,7 @@ function mergeExtra(base: JsonObject | undefined, override: JsonObject | undefin
 
 export function buildChatCompletionsRequest(input: ChatCompletionAdapterInput): ObservableHttpRequest {
   const extra = mergeExtra(input.strategy.extra, input.extra);
-  const body: JsonObject = {
+  const body: Record<string, JsonValue> = {
     model: input.strategy.model,
     messages: toWireMessages(input.messages) as unknown as JsonValue,
     stream: input.stream,
@@ -176,10 +181,9 @@ export async function sendChatCompletionsRequest(input: {
   return {
     request,
     status: response.status,
-    requestId: response.headers.get("x-request-id") ?? undefined,
+    ...(response.headers.get("x-request-id") === null ? {} : { requestId: response.headers.get("x-request-id") as string }),
     ...(firstEvent === undefined ? {} : { firstTokenMs: completedAt - startedAt }),
     totalMs: completedAt - startedAt,
     events
   };
 }
-

@@ -69,7 +69,10 @@ async function main(): Promise<void> {
 
       if (method === "POST" && url.pathname === "/threads") {
         const body = await readJson<{ title?: string }>(request);
-        const thread = pool.createThread({ agentId: "agent_default", title: body.title });
+        const thread = pool.createThread({
+          agentId: "agent_default",
+          ...(body.title === undefined ? {} : { title: body.title })
+        });
         await traceStore.saveThread(thread.id, thread as unknown as never);
         sendJson(response, 201, thread);
         return;
@@ -94,7 +97,7 @@ async function main(): Promise<void> {
         const thread = pool.forkThread({
           sourceThreadId: forkMatch[1],
           fromMessageId: body.fromMessageId,
-          title: body.title
+          ...(body.title === undefined ? {} : { title: body.title })
         });
         await traceStore.saveThread(thread.id, thread as unknown as never);
         sendJson(response, 201, thread);
@@ -188,7 +191,7 @@ async function main(): Promise<void> {
         const body = await readJson<{ decision: "approve" | "deny"; reason?: string }>(request);
         const ok = approvalRuntime.resolve(approvalMatch[2], {
           decision: body.decision,
-          reason: body.reason
+          ...(body.reason === undefined ? {} : { reason: body.reason })
         });
         sendJson(response, ok ? 200 : 404, { ok });
         return;
@@ -214,4 +217,3 @@ main().catch((error: unknown) => {
   process.stderr.write(`[fatal] ${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
 });
-

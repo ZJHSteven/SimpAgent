@@ -58,10 +58,10 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
       turnId: input.turnId
     })
   ];
-  const responseEvents: TraceRecord["responseEvents"] = [];
-  const toolApprovals: TraceRecord["toolApprovals"] = [];
-  const toolResults: TraceRecord["toolResults"] = [];
-  const errors: TraceRecord["errors"] = [];
+  const responseEvents: unknown[] = [];
+  const toolApprovals: unknown[] = [];
+  const toolResults: unknown[] = [];
+  const errors: unknown[] = [];
 
   await input.onEvent({
     type: "run_started",
@@ -194,10 +194,10 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     turnId: input.turnId,
     createdAt,
     request: adapterResponse.request,
-    responseEvents,
-    toolApprovals,
-    toolResults,
-    errors,
+    responseEvents: responseEvents as never,
+    toolApprovals: toolApprovals as never,
+    toolResults: toolResults as never,
+    errors: errors as never,
     metrics: {
       status: adapterResponse.status,
       totalMs: adapterResponse.totalMs,
@@ -224,4 +224,3 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     trace
   };
 }
-
