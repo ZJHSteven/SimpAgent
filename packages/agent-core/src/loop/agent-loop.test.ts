@@ -84,7 +84,8 @@ describe("agent loop human-in-loop", () => {
     });
 
     expect(fileRuntime.readTextFile).not.toHaveBeenCalled();
-    expect(result.messages.at(-1)?.content).toContain("TOOL_EXECUTION_DENIED_BY_HUMAN");
+    expect(result.messages.some((message) => String(message.content).includes("TOOL_EXECUTION_DENIED_BY_HUMAN"))).toBe(true);
+    expect(result.messages.at(-1)?.content).toBe("已拒绝执行工具。");
     expect(fetchFn).toHaveBeenCalledTimes(2);
     expect(events).toContainEqual(
       expect.objectContaining({

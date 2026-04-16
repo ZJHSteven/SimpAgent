@@ -203,7 +203,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     threadId: input.threadId,
     turnId: input.turnId,
     createdAt,
-    request: requests.at(0),
+    ...(requests.at(0) === undefined ? {} : { request: requests.at(0) }),
     requests,
     responseEvents: responseEvents as never,
     toolApprovals: toolApprovals as never,
