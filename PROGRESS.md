@@ -1,10 +1,10 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：已将原 ChatGPT CSS 与 SVG sprite 下载到 `assets/chatgpt/`，并让 composer 复用真实类名和真实 symbol 图标。
-- 已完成：`tem.html` 已切换为 contenteditable 的 ProseMirror 风格输入区，包含加号、进阶思考、听写、发送按钮等原 DOM 结构。
-- 正在做：Playwright 已通过移动端用例，桌面端只剩 placeholder 空段落可见性问题，已补充最小高度与可见性兜底样式。
-- 下一步：重新运行静态检查和 Playwright 桌面/移动测试，确认 composer 图标和交互均正常。
+- 现状：composer 底栏基本可用，但用户指出刷新后 placeholder 区域偏高，侧栏过宽且宽屏不能收起，消息流缺少“思考”按钮与思考详情面板。
+- 已完成：已确认侧栏与思考所需 symbol（55180d、836f7a、3a5c87、ac6d36、003104、b140e7、6b0d8c、a4763e）都存在于本地 sprite。
+- 正在做：先完善静态 HTML 页面复刻，不做 shadcn 组件抽取。
+- 下一步：修 composer 初始高度、改造侧栏、补思考按钮与思考面板，并更新 Playwright 测试。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：仍不保留原始 ChatGPT 全量快照。（原因：全量快照包含大量 React 运行数据、用户态信息和第三方脚本，不适合作为干净模板。）
