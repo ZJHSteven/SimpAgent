@@ -48,7 +48,9 @@
       --sidebar-width: 232px;
       --sidebar-collapsed-width: 56px;
       --thought-panel-width: 360px;
+      --sidebar-header-height: 48px;
       --header-height: 58px;
+
       --content-width: 760px;
       --radius-small: 8px;
       --radius-round: 999px;
@@ -123,16 +125,19 @@
       overflow-y: auto;
       border-right: 1px solid var(--color-border);
       background: var(--color-sidebar);
+      font-size: 14px;
       transition: width 180ms ease, padding 180ms ease;
     }
+
 
     /* 侧栏顶部 rail 按钮区域。 */
     .sidebar-rail-header {
       display: flex;
       align-items: center;
       justify-content: flex-start;
-      min-height: var(--header-height);
+      min-height: var(--sidebar-header-height);
     }
+
 
     /* 收起/展开按钮复用原始 sprite，hover 时显示第二个边栏图标。 */
     .sidebar-toggle {
@@ -171,9 +176,10 @@
 
     .sidebar-menu {
       display: grid;
-      gap: 2px;
-      margin-top: 8px;
+      gap: 1px;
+      margin: 0;
     }
+
 
     .sidebar-action-icon {
       display: inline-flex;
@@ -262,25 +268,27 @@
 
     /* 品牌名保持克制，不做营销型大标题。 */
     .brand__name {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 650;
       line-height: 1.2;
     }
+
 
     /* 侧栏按钮是主要导航入口，保持高度稳定，避免 hover 时跳动。 */
     .sidebar-action {
       display: flex;
       align-items: center;
       gap: 10px;
-      min-height: 40px;
+      min-height: 38px;
       width: 100%;
-      padding: 8px 10px; /* 统一 Padding 以确保对齐 */
+      padding: 6px 10px; /* 进一步压缩 Padding */
       border-radius: var(--radius-small);
       background: transparent;
       color: var(--color-text);
       text-align: left;
       transition: background 160ms ease;
     }
+
 
 
     /* hover 只改变背景和轻微位移，不改变尺寸。 */
@@ -291,11 +299,13 @@
 
     /* 分组标题用于历史会话列表。 */
     .sidebar-section-title {
-      margin: 18px 8px 8px;
+      margin: 12px 10px 4px; /* 压缩分类间距 */
       color: var(--color-muted);
       font-size: 12px;
       font-weight: 600;
+      line-height: 1.5;
     }
+
 
     /* 历史条目使用列表语义，方便屏幕阅读器理解。 */
     .history-list {
@@ -1045,8 +1055,9 @@
           <h3 class="sidebar-section-title">今天</h3>
           <nav class="sidebar-menu" aria-label="今天聊天记录">
             <button class="sidebar-action" type="button">
-              <span class="sidebar-label" style="font-size: 13px; color: var(--color-text); font-weight: 400; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">规则与数值模拟</span>
+              <span class="sidebar-label ellipsis">规则与数值模拟</span>
             </button>
+
           </nav>
 
           <!-- 最近 -->
