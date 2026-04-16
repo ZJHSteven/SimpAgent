@@ -1,23 +1,25 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：精修 ChatGPT 静态原型，已解决侧边栏/思考面板由于DOM未闭合/缺少对应ID导致的全局JS事件失效，修复了用户消息气泡文本的内边距间距问题。
+- 现状：已切换到 TS 后端首版纵向跑通任务；前端暂不处理。
 - 已完成：
-    - [x] 注入所有缺失的 SVG symbol 库，修复所有顶部按钮和消息栏操作的图标。
-    - [x] 修复顶部栏缺少 `id="new-chat-button"` 导致的 JS 初始化脚本全局崩溃（恢复了所有交互面板如侧栏、思考栏打开能力）。
-    - [x] 使用 `whitespace-pre-wrap` 的 `div` 替换原来的 `<p>` ，精准贴合官方抓取的 DOM 间距和段落边距。
-    - [x] 去除了顶部栏三个图标强制的 0.6 透明度，保持一致性的视觉深色。
-- 正在做：测试各项新修复的效果是否满足需求，等待开启组件化重构。
-- 下一步：将静态成果迁移至 React 组件化的 `frontend` 目录。
-
+    - [x] 明确后端采用 npm workspace：`apps/*` + `packages/*`。
+    - [x] 明确 `agent-core` 为大核心包，API adapter、loop、pool、trace、前端事件类型都放在 core 内。
+    - [x] 明确 3 个 runtime 包：Node 真实实现，Cloudflare Worker/Tauri 首版占位。
+    - [x] 明确首版默认 human-in-loop 工具审批，策略支持 `ask | deny | always_approve`。
+- 正在做：
+    - [/] 新增后端 monorepo 工程、核心包、runtime 包、CLI、HTTP/SSE 服务与测试。
+- 下一步：完成后端代码实现后执行 typecheck、build、lint、test 全量验证。
 
 ## 关键决策与理由（防止“吃书”）
-- 决策A：旧 ChatGPT 复刻实验统一命名为 `chatgpt-temp/`。（原因：这是临时测试实验，不应继续散落在正式项目根目录。）
-- 决策B：新正式前端目录使用 `frontend/`。（原因：语义清晰，便于后续与后端或其他服务目录并列维护。）
-- 决策C：根目录保留 `.gitignore`、`PLANS.md`、`PROGRESS.md`。（原因：这些属于仓库级管理文件，不应放入旧实验归档目录。）
-- 决策D：Vite React 初始化命令使用 `npm create vite@latest frontend -- --template react`。（原因：Context7 查询到 Vite 官方文档仍推荐 npm 7+ 使用额外 `--` 传递模板参数。）
+- 决策A：首版不修改 `frontend/` 与 `chatgpt-temp/`。（原因：用户明确要求前端先不管，避免和前端未完成改动互相干扰。）
+- 决策B：`agent-core` 是大核心包。（原因：API adapter、agent loop、pool、trace、前端事件协议都属于 agent 内存态核心；runtime 只负责环境能力注入。）
+- 决策C：真实运行配置使用 `simpagent.toml`，示例配置使用 `simpagent.example.toml`。（原因：用户希望 TOML，真实 API key 不进 git。）
+- 决策D：HTTP 流式输出首版使用 SSE。（原因：比 WebSocket 更简单，足以支持 token、thinking、tool approval、tool result、trace 与 done 事件。）
+- 决策E：工具权限首版默认 `ask`。（原因：每次工具调用前暂停并让 CLI/前端确认，拒绝时把特定错误回填给模型。）
 
 ## 常见坑 / 复现方法
-- 坑1：移动旧实验后，测试工作目录会变化；需要从 `chatgpt-temp/` 执行测试，避免相对路径失效。
-- 坑2：直接删除根级 npm 文件会丢失旧 Playwright 测试依赖锁定；应随旧实验一起移动。
-- 坑3：根目录执行 `rg --files -uu` 会扫出 `.git/` 和移动后的依赖目录；盘点源码时应显式排除 `.git/`、`node_modules/` 与测试产物。
+- 坑1：根目录已有前端与临时实验的未提交文件；后端提交应只 add 本次涉及文件，避免误提交无关前端临时文件。
+- 坑2：`agent-core` 不能直接依赖 Node 文件、shell、数据库 API；这些能力必须通过 runtime 接口注入。
+- 坑3：DeepSeek thinking 流里 `reasoning_content` 和普通 `content` 需要分开转成 `thinking_delta` 与 `message_delta`。
+- 坑4：工具审批 deny 不是本地异常结束，而是要回填 tool result，让模型看到 `TOOL_EXECUTION_DENIED_BY_HUMAN`。

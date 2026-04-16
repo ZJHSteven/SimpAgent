@@ -1,21 +1,32 @@
-# ExecPlan：整理实验目录并初始化 Vite 前端
+# ExecPlan：SimpAgent TS 后端首版纵向跑通
 
 ## 当前目标
-- 把根目录里临时复刻 ChatGPT 网页产生的 HTML、资源、测试和 npm 文件统一收进 `chatgpt-temp/`。
-- 根目录仅保留项目管理与编辑器相关文件，例如 `.git`、`.vscode`、`.gitignore`、`PLANS.md`、`PROGRESS.md`。
-- 使用 Vite CLI 初始化新的 React 前端项目到 `frontend/`，作为后续正式前后端整合的起点。
+- 新增 TypeScript npm monorepo 后端，不修改 `frontend/` 与 `chatgpt-temp/`。
+- 建立根级 workspace：`apps/*` 放可运行产物，`packages/*` 放核心与 runtime 包。
+- 首版跑通 CLI 与 HTTP/SSE 服务，支持 OpenAI-compatible Chat Completions、DeepSeek/OpenAI provider、Node runtime、trace 落盘与 human-in-loop 工具审批。
 
 ## 执行步骤
-1. [已完成] 记录本次目录整理计划，明确两次提交边界。
-2. [已完成] 创建 `chatgpt-temp/`，迁移 `tem.html`、`assets/`、`tests/`、`package.json`、`package-lock.json` 等旧实验文件。
-3. [已完成] 在 `chatgpt-temp/` 内运行旧 Playwright 测试，确认相对路径和测试入口仍可用。
-4. [已完成] 更新 `PROGRESS.md`，提交旧实验归档变更。
-5. [已完成] 查阅 Vite React 初始化方式，并用 CLI 在 `frontend/` 创建 React 项目。
-6. [已完成] 运行 `frontend` 的安装、构建与基础校验，确认脚手架可用。
-7. [已完成] 更新 `PROGRESS.md`，提交前端脚手架变更。
+1. [/] **仓库级工程化**
+   - 新增根级 `package.json`、`tsconfig.base.json`、`vitest.config.ts`。
+   - 更新 `.gitignore`，忽略 `simpagent.toml`、`.simpagent/`、`dist/` 等本地运行产物。
+   - 新增 `simpagent.example.toml`，真实密钥只放本地 `simpagent.toml`。
+2. [ ] **实现 `packages/agent-core`**
+   - 定义 context message、tool、trace、thread、runtime 抽象、SSE 前端事件类型。
+   - 实现 Chat Completions adapter、OpenAI/DeepSeek extra 映射、SSE chunk parser。
+   - 实现 agent loop、agent pool、tool approval 暂停/继续/拒绝流程。
+3. [ ] **实现 runtime 包**
+   - `runtime-node` 实现 TOML 配置读取、文件工具、shell 工具、JSON trace store。
+   - `runtime-cloudflare-worker` 与 `runtime-tauri` 保留明确 unsupported 占位。
+4. [ ] **实现应用入口**
+   - `apps/cli` 支持终端执行一次 agent turn，并在工具调用前询问用户。
+   - `apps/server` 提供 REST + SSE：thread、run、tool approval、fork。
+5. [ ] **测试与验收**
+   - 单元测试覆盖 adapter、stream parser、loop approval、tools、trace store。
+   - 集成测试覆盖 mock CLI turn 与 HTTP/SSE approval 流程。
+   - 执行 `npm install`、`npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
 
 ## 验收标准
-- 根目录不再散落旧实验的 HTML、assets、tests、根级 npm 文件和测试产物。
-- `chatgpt-temp/` 中保留旧静态实验的可运行结构，旧测试可以从该目录执行。
-- `frontend/` 是独立 Vite React 项目，至少通过一次构建验证。
-- `PROGRESS.md` 记录最新目录状态和下一步。
+- 不需要真实前端即可通过 CLI 或 HTTP/SSE 跑通一次 mock agent 任务。
+- 默认工具策略为 `ask`：工具调用会暂停，approve 后执行，deny 后回填 `TOOL_EXECUTION_DENIED_BY_HUMAN`。
+- Node runtime 能落盘 `.simpagent/threads/{threadId}.json`，其中包含 turn、请求体、响应片段、工具审批、工具结果与错误。
+- OpenAI/DeepSeek Chat Completions payload 与流式解析有测试覆盖。
