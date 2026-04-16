@@ -3,7 +3,7 @@
  * 这个 Playwright 测试文件用于验证 tem.html 这个本地静态聊天页面是否真的可用。
  *
  * 测试范围：
- * 1. 桌面端基础渲染：标题、侧栏、输入器和图片都要存在。
+ * 1. 桌面端基础渲染：标题、侧栏、输入器和本地 sprite 图标都要存在。
  * 2. 输入边界：空输入不发送，Shift + Enter 只换行，Enter 正常发送。
  * 3. 移动端布局：侧栏可以打开，新聊天可以重置内容，页面不能横向溢出。
  * 4. 异常监听：浏览器控制台不能出现 error，页面不能抛 pageerror。
@@ -59,26 +59,27 @@ async function expectNoHorizontalOverflow(page) {
   expect(metrics.bodyWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
 }
 
-// 检查页面中的图片已经加载完成，确保视觉节点不是空白。
-async function expectImagesLoaded(page) {
-  // 在浏览器中检查每个 img 的加载状态和自然宽高。
-  const images = await page.evaluate(() =>
-    Array.from(document.images).map((image) => ({
-      alt: image.alt,
-      complete: image.complete,
-      naturalWidth: image.naturalWidth,
-      naturalHeight: image.naturalHeight,
-    })),
+// 检查页面中的 SVG use 是否指向本地下载的 ChatGPT sprite。
+async function expectSpriteIconsLoaded(page) {
+  // 读取所有 use[href]，确认不再使用手工 data SVG。
+  const hrefs = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("use")).map((use) => use.getAttribute("href")),
   );
 
-  // 页面至少应该包含品牌图和助手头像。
-  expect(images.length).toBeGreaterThanOrEqual(2);
+  // composer 里这几个 id 来自用户贴出的原始 DOM 片段。
+  const expectedIds = ["6be74c", "127a53", "23ce94", "ba3792", "29f921", "01bab7"];
 
-  // 每一张图片都必须完成加载，并且有实际像素尺寸。
-  for (const image of images) {
-    expect(image.complete, `${image.alt} 应该完成加载`).toBe(true);
-    expect(image.naturalWidth, `${image.alt} 应该有宽度`).toBeGreaterThan(0);
-    expect(image.naturalHeight, `${image.alt} 应该有高度`).toBeGreaterThan(0);
+  // 每个关键 symbol 都必须至少出现一次。
+  for (const id of expectedIds) {
+    expect(
+      hrefs.some((href) => href === `assets/chatgpt/sprites-core-a066ed1a.svg#${id}`),
+      `应该引用本地 sprite symbol: ${id}`,
+    ).toBe(true);
+  }
+
+  // 所有 sprite 引用都应该来自本地 assets/chatgpt 目录。
+  for (const href of hrefs) {
+    expect(href, "SVG use 应该引用本地 sprite 文件").toMatch(/^assets\/chatgpt\/sprites-core-a066ed1a\.svg#/);
   }
 }
 
@@ -99,37 +100,40 @@ test("桌面端可以渲染核心聊天界面并完成发送流程", async ({ pa
   // 顶部模型按钮应该可见。
   await expect(page.getByRole("button", { name: "选择模型" })).toBeVisible();
 
-  // 输入框应该有预期占位文本。
-  await expect(page.getByPlaceholder("有问题，尽管问")).toBeVisible();
+  // 输入框应该使用 ChatGPT 式 contenteditable textbox。
+  const editor = page.getByRole("textbox", { name: "与 ChatGPT 聊天" });
+  await expect(editor).toBeVisible();
 
-  // 页面图片应该正常加载。
-  await expectImagesLoaded(page);
+  // 页面图标应该引用本地下载的 sprite。
+  await expectSpriteIconsLoaded(page);
 
   // 桌面端不应横向溢出。
   await expectNoHorizontalOverflow(page);
 
   // 空输入按 Enter 应提示错误，且不会新增用户气泡。
-  await page.getByPlaceholder("有问题，尽管问").press("Enter");
+  await editor.click();
+  await editor.press("Enter");
   await expect(page.locator("#composer-help")).toContainText("请先输入内容");
 
   // 记录发送前的用户消息数量。
   const userBubbleCountBefore = await page.locator(".user-bubble").count();
 
   // Shift + Enter 应该换行，不应发送。
-  await page.getByPlaceholder("有问题，尽管问").fill("第一行");
-  await page.getByPlaceholder("有问题，尽管问").press("Shift+Enter");
-  await page.getByPlaceholder("有问题，尽管问").type("第二行");
-  await expect(page.getByPlaceholder("有问题，尽管问")).toHaveValue("第一行\n第二行");
+  await editor.fill("第一行");
+  await editor.press("Shift+Enter");
+  await editor.type("第二行");
+  await expect(editor).toContainText("第一行");
+  await expect(editor).toContainText("第二行");
   await expect(page.locator(".user-bubble")).toHaveCount(userBubbleCountBefore);
 
   // Enter 应该发送消息，并追加一条本地模拟助手回复。
-  await page.getByPlaceholder("有问题，尽管问").press("Enter");
+  await editor.press("Enter");
   await expect(page.locator(".user-bubble")).toHaveCount(userBubbleCountBefore + 1);
   await expect(page.locator(".assistant-content").last()).toContainText("本地静态演示");
 
   // 发送后输入框应该被清空，发送按钮应该重新禁用。
-  await expect(page.getByPlaceholder("有问题，尽管问")).toHaveValue("");
-  await expect(page.getByLabel("发送消息")).toBeDisabled();
+  await expect(page.locator(".ProseMirror .placeholder")).toBeVisible();
+  await expect(page.getByLabel("发送提示")).toBeDisabled();
 
   // 页面运行过程中不应该有浏览器错误。
   expect(errors).toEqual([]);

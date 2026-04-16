@@ -1,10 +1,10 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：用户反馈手工重绘的 composer、SVG 和配色与原 ChatGPT 差异明显，要求直接下载原资源并复用。
-- 已完成：已验证 `https://chatgpt.com/cdn/assets/style-hx6lsrxf.css` 和 `https://chatgpt.com/cdn/assets/sprites-core-a066ed1a.svg` 均可访问。
-- 正在做：准备把原始 CSS 和 SVG sprite 下载到本地，并让 `tem.html` 的 composer 复用真实资源。
-- 下一步：改造 composer 结构与测试，确保本地打开时图标、按钮和输入区域正常。
+- 现状：已将原 ChatGPT CSS 与 SVG sprite 下载到 `assets/chatgpt/`，并让 composer 复用真实类名和真实 symbol 图标。
+- 已完成：`tem.html` 已切换为 contenteditable 的 ProseMirror 风格输入区，包含加号、进阶思考、听写、发送按钮等原 DOM 结构。
+- 正在做：已更新 Playwright 测试以检查本地 sprite 引用和 contenteditable 输入流程。
+- 下一步：运行静态检查和 Playwright 桌面/移动测试，修复渲染或交互问题。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：仍不保留原始 ChatGPT 全量快照。（原因：全量快照包含大量 React 运行数据、用户态信息和第三方脚本，不适合作为干净模板。）

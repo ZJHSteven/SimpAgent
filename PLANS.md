@@ -7,10 +7,10 @@
 
 ## 执行步骤
 1. [已完成] 从原始快照确认核心资源地址：`/cdn/assets/style-hx6lsrxf.css` 和 `/cdn/assets/sprites-core-a066ed1a.svg`。
-2. [进行中] 下载原始 CSS 和 SVG sprite 到本地 `assets/chatgpt/`。
-3. [待执行] 改造 `tem.html`，让 composer 复用原 DOM 类名、按钮结构和真实 sprite 图标。
-4. [待执行] 保留必要的本地 JS 交互：输入、发送、空输入拦截、Enter/Shift+Enter、移动端侧栏。
-5. [待执行] 更新 Playwright 测试，验证真实图标资源加载、composer 结构、桌面/移动交互和横向溢出。
+2. [已完成] 下载原始 CSS 和 SVG sprite 到本地 `assets/chatgpt/`。
+3. [已完成] 改造 `tem.html`，让 composer 复用原 DOM 类名、按钮结构和真实 sprite 图标。
+4. [已完成] 保留必要的本地 JS 交互：输入、发送、空输入拦截、Enter/Shift+Enter、移动端侧栏。
+5. [进行中] 更新 Playwright 测试，验证真实图标资源加载、composer 结构、桌面/移动交互和横向溢出。
 
 ## 验收标准
 - `tem.html` 能直接用浏览器打开，不需要开发服务器。

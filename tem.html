@@ -20,6 +20,13 @@
   <!-- 浏览器标签页标题。 -->
   <title>SimpChat - 本地聊天界面复刻</title>
 
+  <!--
+    原始资源：
+    这是从原 ChatGPT 快照里的 /cdn/assets/style-hx6lsrxf.css 下载到本地后的文件。
+    它包含 composer-btn、__composer-pill、composer-submit-btn 等真实类名的样式。
+  -->
+  <link rel="stylesheet" href="assets/chatgpt/style-hx6lsrxf.css">
+
   <style>
     /*
       全局设计变量：
@@ -117,13 +124,14 @@
       padding: 6px 8px;
     }
 
-    /* 这里用 img 元素承载本地 data 图片，满足真实图片节点需求，也避免外网图片失效。 */
+    /* 品牌图标直接引用本地下载的 sprite，不再手工重绘。 */
     .brand__image {
       width: 28px;
       height: 28px;
       border-radius: var(--radius-round);
-      object-fit: cover;
       background: #0f8f70;
+      color: #ffffff;
+      padding: 4px;
     }
 
     /* 品牌名保持克制，不做营销型大标题。 */
@@ -324,13 +332,14 @@
       font-size: 13px;
     }
 
-    /* 助手头像使用图片节点，模拟应用里的真实头像资源。 */
+    /* 助手头像也使用本地 sprite，避免自绘 SVG 观感不一致。 */
     .assistant-avatar {
       width: 26px;
       height: 26px;
       border-radius: var(--radius-round);
-      object-fit: cover;
       background: var(--color-assistant-mark);
+      color: #ffffff;
+      padding: 4px;
     }
 
     /* 用户气泡保留原页面的浅灰底和圆角。 */
@@ -418,79 +427,34 @@
       margin: 0 auto;
     }
 
-    /* 输入器表单本身是一个功能容器，所以可以保留边界和阴影。 */
-    .composer-surface {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      gap: 10px;
-      align-items: end;
-      padding: 10px;
-      border: 1px solid var(--color-border);
-      border-radius: 28px;
-      background: #ffffff;
-      box-shadow: var(--shadow-composer);
-    }
-
-    /* composer 小按钮固定尺寸，避免图标变化导致布局抖动。 */
-    .composer-icon-button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 36px;
-      height: 36px;
-      border-radius: var(--radius-round);
-      background: transparent;
-      color: var(--color-muted);
-      transition: background 160ms ease, color 160ms ease;
-    }
-
-    /* composer 小按钮 hover 状态。 */
-    .composer-icon-button:hover {
-      background: var(--color-sidebar-hover);
-      color: var(--color-text);
-    }
-
-    /* 输入框自动增高，由 JS 改写 height。 */
-    .prompt-input {
+    /* 本地 composer 外层：宽度仍跟消息列对齐。 */
+    .composer-surface-local {
       width: 100%;
-      min-height: 36px;
-      max-height: 180px;
-      padding: 7px 2px;
-      overflow-y: auto;
-      resize: none;
-      border: 0;
+    }
+
+    /* 原始 ProseMirror 输入区需要一点本地兜底，保证脱离 React 后仍可编辑。 */
+    .ProseMirror {
+      min-height: 24px;
       outline: 0;
-      color: var(--color-text);
-      line-height: 1.55;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
     }
 
-    /* placeholder 使用柔和灰色。 */
-    .prompt-input::placeholder {
-      color: #9b9b95;
+    /* 原页面 placeholder 是 p[data-placeholder]，这里用 CSS 还原占位文字。 */
+    .ProseMirror .placeholder::before {
+      color: var(--text-tertiary, #8d8d86);
+      content: attr(data-placeholder);
+      pointer-events: none;
     }
 
-    /* 发送按钮在可发送时变成深色圆按钮。 */
-    .send-button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 36px;
-      height: 36px;
-      border-radius: var(--radius-round);
-      background: var(--color-text);
-      color: #ffffff;
-      transition: opacity 160ms ease, transform 160ms ease;
+    /* placeholder 里的 br 只是为了让空编辑器有可点击高度，不需要显示额外空行。 */
+    .ProseMirror .placeholder .ProseMirror-trailingBreak {
+      display: none;
     }
 
-    /* 禁用态用于空输入。 */
-    .send-button:disabled {
-      cursor: not-allowed;
-      opacity: 0.35;
-    }
-
-    /* 可用态 hover 轻微上移。 */
-    .send-button:not(:disabled):hover {
-      transform: translateY(-1px);
+    /* fallback textarea 只用于 JS 同步值，不参与视觉显示。 */
+    .wcDTda_fallbackTextarea {
+      display: none;
     }
 
     /* composer 下方提示和状态信息。 */
@@ -591,11 +555,7 @@
         display: none;
       }
 
-      .composer-surface {
-        grid-template-columns: minmax(0, 1fr) auto;
-      }
-
-      .composer-icon-button {
+      .composer-surface-local [data-testid="composer-footer-actions"] {
         display: none;
       }
     }
@@ -607,12 +567,11 @@
   <div class="app-shell">
     <!-- 左侧栏：提供新聊天、搜索和历史记录入口。 -->
     <aside class="sidebar" id="sidebar" aria-label="聊天侧栏">
-      <!-- 品牌区域：使用 data URI 图片，避免本地打开时缺图。 -->
+      <!-- 品牌区域：图标来自本地下载的 ChatGPT sprite。 -->
       <div class="brand">
-        <img
-          class="brand__image"
-          alt="SimpChat 图标"
-          src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2310a37f'/%3E%3Cpath d='M18 34c0-9.2 7.4-16.6 16.6-16.6 6.1 0 11.4 3.2 14.3 8.1-2.7-2.1-6.1-3.3-9.8-3.3-9.2 0-16.6 7.4-16.6 16.6 0 3.1.8 6 2.3 8.5A16.5 16.5 0 0 1 18 34Z' fill='white' opacity='.94'/%3E%3Cpath d='M30 47.5c8.9-.8 16-7.8 16.9-16.8 1.9 2.6 3 5.8 3 9.3 0 8.7-7.1 15.8-15.8 15.8-3.4 0-6.6-1.1-9.2-2.9 1.7.4 3.4.6 5.1.6Z' fill='white' opacity='.62'/%3E%3C/svg%3E">
+        <svg class="brand__image" aria-hidden="true">
+          <use href="assets/chatgpt/sprites-core-a066ed1a.svg#6be74c"></use>
+        </svg>
         <div>
           <div class="brand__name">SimpChat</div>
           <div class="conversation-subtitle">本地静态复刻</div>
@@ -680,10 +639,9 @@
           <!-- 助手消息：左侧自然文本和表格。 -->
           <article class="message message--assistant">
             <div class="message-meta">
-              <img
-                class="assistant-avatar"
-                alt="助手头像"
-                src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='20' fill='%2310a37f'/%3E%3Ccircle cx='32' cy='25' r='11' fill='white' opacity='.95'/%3E%3Cpath d='M14 54c2.6-10.2 9.5-15.3 18-15.3S47.4 43.8 50 54' fill='white' opacity='.78'/%3E%3C/svg%3E">
+              <svg class="assistant-avatar" aria-hidden="true">
+                <use href="assets/chatgpt/sprites-core-a066ed1a.svg#127a53"></use>
+              </svg>
               <span>SimpChat 说：</span>
             </div>
             <div class="assistant-content">
@@ -730,22 +688,114 @@ assistantMessage = readableMarkdownColumn</code></pre>
       <!-- 输入器区域：固定在底部。 -->
       <footer class="composer-wrap">
         <form class="composer" id="composer" autocomplete="off">
-          <div class="composer-surface">
-            <button class="composer-icon-button" type="button" aria-label="添加文件">
-              ＋
-            </button>
+          <!--
+            composer 结构：
+            这里尽量贴近你贴出来的 ChatGPT DOM：leading / primary / footer / trailing 四个区域，
+            按钮类名和 SVG symbol id 都使用原页面资源，不再自行画图标。
+          -->
+          <div
+            class="composer-surface-local bg-token-bg-primary dark:bg-token-bg-elevated-primary corner-superellipse/1.1 cursor-text overflow-clip bg-clip-padding p-2.5 contain-inline-size motion-safe:transition-colors motion-safe:duration-200 motion-safe:ease-in-out grid grid-cols-[auto_1fr_auto] [grid-template-areas:'header_header_header'_'leading_primary_trailing'_'._footer_.'] group-data-expanded/composer:[grid-template-areas:'header_header_header'_'primary_primary_primary'_'leading_footer_trailing'] shadow-short-composer"
+            data-composer-surface="true"
+            style="border-radius: 28px;">
+            <div class="[grid-area:leading]" style="transform: none; transform-origin: 50% 50% 0px;">
+              <span class="flex" data-state="closed">
+                <button
+                  type="button"
+                  class="composer-btn"
+                  data-testid="composer-plus-btn"
+                  aria-label="添加文件等"
+                  id="composer-plus-btn"
+                  aria-haspopup="menu"
+                  aria-expanded="false"
+                  data-state="closed">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon">
+                    <use href="assets/chatgpt/sprites-core-a066ed1a.svg#6be74c" fill="currentColor"></use>
+                  </svg>
+                </button>
+              </span>
+            </div>
 
-            <label class="sr-only" for="prompt-input">输入消息</label>
-            <textarea
-              class="prompt-input"
-              id="prompt-input"
-              name="prompt"
-              rows="1"
-              placeholder="有问题，尽管问"></textarea>
+            <div
+              class="-my-2.5 flex min-h-14 items-center overflow-x-hidden px-1.5 [grid-area:primary] group-data-expanded/composer:mb-0 group-data-expanded/composer:px-2.5"
+              style="transform: none; transform-origin: 50% 50% 0px;">
+              <div class="wcDTda_prosemirror-parent text-token-text-primary max-h-[max(30svh,5rem)] max-h-52 min-h-[var(--deep-research-composer-extra-height,unset)] flex-1 overflow-auto [scrollbar-width:thin] firefox vertical-scroll-fade-mask">
+                <textarea
+                  class="wcDTda_fallbackTextarea"
+                  name="prompt-textarea"
+                  placeholder="有问题，尽管问"
+                  aria-label="与 ChatGPT 聊天"
+                  data-virtualkeyboard="true"></textarea>
+                <div
+                  contenteditable="true"
+                  translate="no"
+                  class="ProseMirror"
+                  id="prompt-textarea"
+                  data-virtualkeyboard="true"
+                  role="textbox"
+                  aria-multiline="true"
+                  aria-label="与 ChatGPT 聊天">
+                  <p data-placeholder="有问题，尽管问" class="placeholder"><br class="ProseMirror-trailingBreak"></p>
+                </div>
+              </div>
+            </div>
 
-            <button class="send-button" id="send-button" type="submit" aria-label="发送消息" disabled>
-              ↑
-            </button>
+            <div
+              data-testid="composer-footer-actions"
+              class="-m-1 max-w-full overflow-x-auto p-1 [grid-area:footer] [scrollbar-width:none]"
+              style="transform: none; transform-origin: 50% 50% 0px;">
+              <div class="flex min-w-fit items-center cant-hover:px-1.5 cant-hover:gap-1.5">
+                <div>
+                  <div class="__composer-pill-composite group relative" data-tone="accent">
+                    <button type="button" class="__composer-pill-remove" aria-label="进阶思考，点击以重试">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" aria-hidden="true" class="icon-sm" inert="">
+                        <use href="assets/chatgpt/sprites-core-a066ed1a.svg#23ce94" fill="currentColor"></use>
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      class="__composer-pill group/pill"
+                      data-tone="accent"
+                      aria-haspopup="menu"
+                      aria-expanded="false"
+                      data-state="closed">
+                      <div class="__composer-pill-icon" inert="">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true">
+                          <use href="assets/chatgpt/sprites-core-a066ed1a.svg#127a53" fill="currentColor"></use>
+                        </svg>
+                      </div>
+                      <span class="max-w-40 truncate [[data-collapse-labels]_&amp;]:sr-only">进阶思考</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" aria-hidden="true" class="icon-sm -me-0.5 h-3.5 w-3.5" inert="">
+                        <use href="assets/chatgpt/sprites-core-a066ed1a.svg#ba3792" fill="currentColor"></use>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 [grid-area:trailing]" style="transform: none; transform-origin: 50% 50% 0px;">
+              <div class="ms-auto flex items-center gap-1.5">
+                <span data-state="closed">
+                  <button aria-label="开始听写" type="button" class="composer-btn h-9 min-h-9 w-9 min-w-9">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-label="" class="icon" font-size="inherit">
+                      <use href="assets/chatgpt/sprites-core-a066ed1a.svg#29f921" fill="currentColor"></use>
+                    </svg>
+                  </button>
+                </span>
+                <div>
+                  <button
+                    id="composer-submit-button"
+                    aria-label="发送提示"
+                    data-testid="send-button"
+                    class="composer-submit-btn composer-submit-button-color h-9 w-9"
+                    disabled>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true" class="icon">
+                      <use href="assets/chatgpt/sprites-core-a066ed1a.svg#01bab7" fill="currentColor"></use>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="composer-help" id="composer-help">
@@ -779,8 +829,9 @@ assistantMessage = readableMarkdownColumn</code></pre>
 
     // 缓存常用 DOM 节点，避免每次交互都重复查找。
     const composer = getRequiredElement("#composer");
-    const promptInput = getRequiredElement("#prompt-input");
-    const sendButton = getRequiredElement("#send-button");
+    const promptEditor = getRequiredElement("#prompt-textarea");
+    const promptFallback = getRequiredElement('textarea[name="prompt-textarea"]');
+    const sendButton = getRequiredElement("#composer-submit-button");
     const messageList = getRequiredElement("#message-list");
     const thread = getRequiredElement("#thread");
     const helper = getRequiredElement("#composer-help");
@@ -797,22 +848,56 @@ assistantMessage = readableMarkdownColumn</code></pre>
       helper.dataset.tone = tone;
     }
 
+    // 判断 ProseMirror 编辑区当前是否处于 placeholder 状态。
+    function isPromptPlaceholderVisible() {
+      // 原页面用 p.placeholder 显示占位内容，这里沿用这个结构。
+      return Boolean(promptEditor.querySelector(".placeholder"));
+    }
+
+    // 读取 contenteditable 中的纯文本。
+    function getPromptText() {
+      // placeholder 状态不应该被当成真实输入。
+      if (isPromptPlaceholderVisible()) {
+        return "";
+      }
+
+      // innerText 能保留用户用 Shift + Enter 输入的换行。
+      return promptEditor.innerText.replace(/\u00a0/g, " ").trim();
+    }
+
+    // 把编辑器恢复到原 ChatGPT 风格的 placeholder DOM。
+    function renderPromptPlaceholder() {
+      // 固定模板来自原页面结构，不拼接用户输入。
+      promptEditor.innerHTML = '<p data-placeholder="有问题，尽管问" class="placeholder"><br class="ProseMirror-trailingBreak"></p>';
+
+      // fallback textarea 只保存纯文本值，这里同步清空。
+      promptFallback.value = "";
+    }
+
+    // 用户开始输入时移除 placeholder 节点。
+    function clearPromptPlaceholderIfNeeded() {
+      // 如果当前没有 placeholder，就不需要处理。
+      if (!isPromptPlaceholderVisible()) {
+        return;
+      }
+
+      // 清空编辑器后，浏览器会把后续输入放进真正的 contenteditable 区域。
+      promptEditor.textContent = "";
+    }
+
+    // 同步 contenteditable 的值到隐藏 textarea，方便以后接入表单或后端。
+    function syncPromptFallback() {
+      // 统一使用 getPromptText，避免把 placeholder 文案同步进去。
+      promptFallback.value = getPromptText();
+    }
+
     // 根据输入框内容决定发送按钮是否可用。
     function updateSendButtonState() {
       // trim 会去掉首尾空白，防止只输入空格也能发送。
-      const hasText = promptInput.value.trim().length > 0;
+      const hasText = getPromptText().length > 0;
 
       // 没有有效文本时禁用发送按钮。
       sendButton.disabled = !hasText;
-    }
-
-    // 让 textarea 随内容增高，同时不超过 CSS 设置的 max-height。
-    function resizePromptInput() {
-      // 先重置高度，确保删除内容后输入框可以变矮。
-      promptInput.style.height = "auto";
-
-      // scrollHeight 是文本实际需要的高度。
-      promptInput.style.height = `${promptInput.scrollHeight}px`;
     }
 
     // 创建用户消息节点。
@@ -857,10 +942,9 @@ assistantMessage = readableMarkdownColumn</code></pre>
       // 写入固定结构：头像、身份、正文容器。
       article.innerHTML = `
         <div class="message-meta">
-          <img
-            class="assistant-avatar"
-            alt="助手头像"
-            src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='20' fill='%2310a37f'/%3E%3Ccircle cx='32' cy='25' r='11' fill='white' opacity='.95'/%3E%3Cpath d='M14 54c2.6-10.2 9.5-15.3 18-15.3S47.4 43.8 50 54' fill='white' opacity='.78'/%3E%3C/svg%3E">
+          <svg class="assistant-avatar" aria-hidden="true">
+            <use href="assets/chatgpt/sprites-core-a066ed1a.svg#127a53"></use>
+          </svg>
           <span>SimpChat 说：</span>
         </div>
         <div class="assistant-content"></div>
@@ -899,7 +983,7 @@ assistantMessage = readableMarkdownColumn</code></pre>
       event.preventDefault();
 
       // 获取清理后的输入内容。
-      const text = promptInput.value.trim();
+      const text = getPromptText();
 
       // 边界情况：空文本直接提示，不创建消息。
       if (!text) {
@@ -911,11 +995,8 @@ assistantMessage = readableMarkdownColumn</code></pre>
       // 插入用户消息。
       messageList.appendChild(createUserMessage(text));
 
-      // 清空输入框。
-      promptInput.value = "";
-
-      // 恢复输入框高度。
-      resizePromptInput();
+      // 清空输入框，并恢复原页面式 placeholder。
+      renderPromptPlaceholder();
 
       // 禁用发送按钮。
       updateSendButtonState();
@@ -970,6 +1051,12 @@ assistantMessage = readableMarkdownColumn</code></pre>
       // 在移动端点击新聊天后收起侧栏。
       sidebar.dataset.open = "false";
 
+      // 清空输入框，并恢复 placeholder。
+      renderPromptPlaceholder();
+
+      // 同步按钮状态。
+      updateSendButtonState();
+
       // 恢复提示文案。
       setHelperText("Enter 发送，Shift + Enter 换行。");
 
@@ -977,15 +1064,25 @@ assistantMessage = readableMarkdownColumn</code></pre>
       scrollToLatestMessage();
     }
 
-    // 输入时同步按钮状态和输入框高度。
-    promptInput.addEventListener("input", () => {
-      resizePromptInput();
+    // 聚焦时移除 placeholder，让 contenteditable 可以直接输入。
+    promptEditor.addEventListener("focus", clearPromptPlaceholderIfNeeded);
+
+    // 失焦时如果没有内容，就恢复 placeholder。
+    promptEditor.addEventListener("blur", () => {
+      if (!getPromptText()) {
+        renderPromptPlaceholder();
+      }
+    });
+
+    // 输入时同步按钮状态和隐藏 textarea。
+    promptEditor.addEventListener("input", () => {
+      syncPromptFallback();
       updateSendButtonState();
       setHelperText("Enter 发送，Shift + Enter 换行。SimpChat 也可能会犯错，请核查重要信息。");
     });
 
     // 监听键盘发送快捷键。
-    promptInput.addEventListener("keydown", handlePromptKeydown);
+    promptEditor.addEventListener("keydown", handlePromptKeydown);
 
     // 监听表单提交。
     composer.addEventListener("submit", handleComposerSubmit);
@@ -996,8 +1093,8 @@ assistantMessage = readableMarkdownColumn</code></pre>
     // 监听新聊天按钮。
     newChatButton.addEventListener("click", resetConversation);
 
-    // 页面加载后初始化一次高度和按钮状态。
-    resizePromptInput();
+    // 页面加载后初始化一次按钮状态。
+    syncPromptFallback();
     updateSendButtonState();
   </script>
 </body>
