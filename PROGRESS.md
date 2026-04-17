@@ -24,9 +24,10 @@
     - [x] 已移除根级 TypeScript 配置中的弃用 `baseUrl`，并将 `paths` 目标改为显式 `./` 相对路径。
     - [x] 已启用 `forceConsistentCasingInFileNames`，提前发现跨操作系统大小写不一致的导入路径。
     - [x] 已为 `packages/runtime-node`、`apps/cli`、`apps/server` 显式声明 `types: ["node"]`，适配 TypeScript 6 不再默认加载全部 `@types/*` 的行为。
+    - [x] 已完成配置迁移回归：`npm run typecheck`、`npm run build`、`npm run lint`、`npm test`、`npx -p typescript@6 tsc -b ... --pretty false` 全部通过。
 - 正在做：
-    - [ ] 验证 TypeScript 配置迁移后的 typecheck/build/test 是否全部通过。
-- 下一步：完成根项目回归验证；若通过，再继续人工对照 React 页面并按需裁剪兼容 CSS。
+    - [ ] 等待人工查看 React 页面视觉效果，后续可裁剪 ChatGPT 兼容 CSS。
+- 下一步：继续人工对照 React 页面；若视觉确认稳定，再逐步清理兼容 CSS 中未使用的规则和字体路径警告。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`chatgpt-temp/tem.html` 保留为视觉和行为参考，不删除。（原因：迁移需要可回看原始 DOM、样式和交互。）
