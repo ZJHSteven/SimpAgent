@@ -977,10 +977,12 @@
   padding: 0;
 }
 
-/* 受控 textarea 继承了全局 :focus-visible 后，会在圆角 composer 内被裁切成上下两条蓝线。
-   这里去掉内部输入框自己的焦点环，把焦点反馈交给外层 composer 容器。 */
+/* 受控 textarea 同时带着 ProseMirror 兼容类。
+   旧版只清掉 outline，但 ChatGPT 兼容 CSS 还会在 focus 时给 ProseMirror 加蓝色 box-shadow。
+   这个 box-shadow 在圆角 composer 的 overflow 裁切下会露成“上粗下细两条蓝线”，所以这里必须同时清掉。 */
 .composer-textarea:focus,
 .composer-textarea:focus-visible {
+  box-shadow: none !important;
   outline: none;
 }
 
@@ -991,13 +993,6 @@
 
 .composer-surface-local {
   border-radius: 28px;
-}
-
-/* 外层焦点反馈比 textarea outline 更接近 ChatGPT 输入器：不会出现上下横线，也保留键盘可见焦点。 */
-.composer-surface-local:focus-within {
-  box-shadow:
-    var(--shadow-composer),
-    inset 0 0 0 1px rgb(15 143 112 / 28%);
 }
 
 @media (max-width: 820px) {

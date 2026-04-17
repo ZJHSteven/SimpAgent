@@ -37,3 +37,14 @@
 - 已通过 `frontend` 的 `npm run lint`、`npm run build`、`npm run test:e2e`。
 - 已通过根项目 `npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
 - React 版 Playwright 测试会在桌面和移动用例中保存截图产物，用于人工视觉复核。
+
+## 输入框 focus 样式返工计划
+1. [x] **复现与定位**
+   - 用真实 Chromium 聚焦并输入文本，读取 composer 和 textarea 的 computed style。
+   - 确认绿色外圈来自上一版 `.composer-surface-local:focus-within`，蓝色横线来自 `textarea.ProseMirror` 的 focus `box-shadow`。
+2. [x] **样式修复**
+   - 删除外层 composer focus 时新增的绿色内描边，保留原本的 composer 阴影。
+   - 在 `.composer-textarea:focus` / `.composer-textarea:focus-visible` 同时清掉 `outline` 和 `box-shadow`。
+3. [ ] **回归测试**
+   - 扩展 Playwright 桌面用例，断言 focus 输入后 textarea 没有蓝色 `box-shadow`，外层 composer 没有绿色描边。
+   - 运行 `frontend` 的 lint、build、E2E，并补一次真实浏览器 computed style 复查。
