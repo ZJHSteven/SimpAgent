@@ -17,19 +17,19 @@
     "sourceMap": true,
     "composite": true,
     "rootDir": ".",
-    "baseUrl": ".",
+    "forceConsistentCasingInFileNames": true,
     "paths": {
       "@simpagent/agent-core": [
-        "packages/agent-core/src/index.ts"
+        "./packages/agent-core/src/index.ts"
       ],
       "@simpagent/runtime-node": [
-        "packages/runtime-node/src/index.ts"
+        "./packages/runtime-node/src/index.ts"
       ],
       "@simpagent/runtime-cloudflare-worker": [
-        "packages/runtime-cloudflare-worker/src/index.ts"
+        "./packages/runtime-cloudflare-worker/src/index.ts"
       ],
       "@simpagent/runtime-tauri": [
-        "packages/runtime-tauri/src/index.ts"
+        "./packages/runtime-tauri/src/index.ts"
       ]
     }
   }
