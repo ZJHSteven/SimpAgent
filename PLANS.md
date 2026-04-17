@@ -45,6 +45,12 @@
 2. [x] **样式修复**
    - 删除外层 composer focus 时新增的绿色内描边，保留原本的 composer 阴影。
    - 在 `.composer-textarea:focus` / `.composer-textarea:focus-visible` 同时清掉 `outline` 和 `box-shadow`。
-3. [ ] **回归测试**
+3. [x] **回归测试**
    - 扩展 Playwright 桌面用例，断言 focus 输入后 textarea 没有蓝色 `box-shadow`，外层 composer 没有绿色描边。
    - 运行 `frontend` 的 lint、build、E2E，并补一次真实浏览器 computed style 复查。
+
+## 输入框 focus 样式返工结果
+- 已通过 `frontend` 的 `npm run lint`。
+- 已通过 `frontend` 的 `npm run build`；输出仍包含既有兼容 CSS 字体路径与 `::scroll-button` 警告，和本次修复无关。
+- 已通过 `frontend` 的 `npm run test:e2e`，3 个 Chromium 用例全部通过。
+- 已用真实 Chromium 复查 computed style：focus 并输入文字后 `#prompt-textarea` 的 `box-shadow` 为 `none`，`.composer-surface-local` 的阴影与未聚焦时一致，没有绿色 focus 内描边。

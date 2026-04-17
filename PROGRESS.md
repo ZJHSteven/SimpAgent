@@ -22,8 +22,8 @@
     - [x] 已完成根项目回归：`npm run typecheck`、`npm run build`、`npm run lint`、`npm test` 全部通过。
     - [x] 已重新定位并修复 React 受控 `textarea` 聚焦视觉问题：两条蓝线来自兼容 CSS 的 ProseMirror focus `box-shadow`，绿色外圈来自上一版新增的 `.composer-surface-local:focus-within` 内描边。
 - 正在做：
-    - [ ] 运行前端 lint、build、Playwright 回归，并用真实浏览器复查 focus 后 computed style。
-- 下一步：完成本次输入框 focus 样式回归验证；若视觉确认稳定，再逐步清理兼容 CSS 中未使用的规则和字体路径警告。
+    - [ ] 等待人工查看 React 页面视觉效果，后续可裁剪 ChatGPT 兼容 CSS。
+- 下一步：继续人工对照页面；若视觉确认稳定，再逐步清理兼容 CSS 中未使用的规则和字体路径警告。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`chatgpt-temp/tem.html` 保留为视觉和行为参考，不删除。（原因：迁移需要可回看原始 DOM、样式和交互。）
@@ -40,3 +40,4 @@
 - 坑5：React 组件拆分不能只把整段 HTML 塞进 `App.jsx`；状态、布局、聊天流、输入器、面板需要分层。
 - 坑6：ChatGPT 兼容 CSS 很大，Vite build 会提示部分 `/cdn/assets/*.woff*` 运行时路径未解析，以及 `::scroll-button` 伪元素兼容警告；当前不阻断构建，后续裁剪兼容 CSS 时可清理。
 - 坑7：输入框上下蓝线不是 `outline`，而是 `textarea.ProseMirror` focus 后继承的蓝色 `box-shadow`；只断言 `outline-style: none` 会漏测。
+- 复测记录：`frontend` 的 `npm run lint`、`npm run build`、`npm run test:e2e` 均通过；真实 Chromium computed style 复查显示 focus 输入后 `editorBoxShadow: "none"`，外层 composer 阴影与未聚焦时一致。
