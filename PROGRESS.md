@@ -15,9 +15,12 @@
     - [x] 已迁移 `tem.html` 内联 CSS 与 ChatGPT 兼容 CSS，并生成 `frontend/public/icons.svg`。
     - [x] 已把输入器改为 React 受控 `textarea`，保留 composer 外观结构。
     - [x] 已通过 `frontend` 的 `npm run lint` 与 `npm run build`。
+    - [x] 已为 `frontend` 增加 Playwright 配置、`test:e2e` 脚本和桌面/移动端/中文输入法组合态测试。
+    - [x] 已修复 Playwright 暴露的侧栏过渡断言、移动遮罩层级、表格重复 key 和组合态测试问题。
+    - [x] 已通过 `frontend` 的 `npm run test:e2e`（3 个用例全部通过）。
 - 正在做：
-    - [ ] 为 React 前端补充 Playwright 行为测试和截图验证。
-- 下一步：添加桌面/移动端 E2E 测试，覆盖发送、新聊天、侧栏、思考面板、图标和无横向溢出。
+    - [ ] 做最终完整验证与收尾提交。
+- 下一步：再次执行 `npm run lint`、`npm run build`、`npm run test:e2e`，确认最终状态稳定。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`chatgpt-temp/tem.html` 保留为视觉和行为参考，不删除。（原因：迁移需要可回看原始 DOM、样式和交互。）

@@ -13,6 +13,9 @@ export function ComposerInput({ value, onChange, onSubmit }) {
   // textareaRef 只用于自动高度，不用于绕过 React 改文本。
   const textareaRef = useRef(null)
 
+  // isComposingRef 记录中文输入法是否正在组词，避免 Enter 被误当作发送。
+  const isComposingRef = useRef(false)
+
   useLayoutEffect(() => {
     if (!textareaRef.current) {
       return
@@ -24,7 +27,7 @@ export function ComposerInput({ value, onChange, onSubmit }) {
 
   function handleKeyDown(event) {
     // 中文输入法正在组词时，Enter 通常用于确认候选词，不能提交表单。
-    if (event.isComposing) {
+    if (event.isComposing || isComposingRef.current) {
       return
     }
 
@@ -50,6 +53,12 @@ export function ComposerInput({ value, onChange, onSubmit }) {
           ref={textareaRef}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={handleKeyDown}
+          onCompositionStart={() => {
+            isComposingRef.current = true
+          }}
+          onCompositionEnd={() => {
+            isComposingRef.current = false
+          }}
         ></textarea>
       </div>
     </div>

@@ -21,10 +21,10 @@ export function ResultTable({ table }) {
         </tr>
       </thead>
       <tbody>
-        {table.rows.map((row) => (
-          <tr key={row.join('|')}>
-            {row.map((cell) => (
-              <td key={cell}>{cell}</td>
+        {table.rows.map((row, rowIndex) => (
+          <tr key={`${rowIndex}-${row.join('|')}`}>
+            {row.map((cell, cellIndex) => (
+              <td key={`${rowIndex}-${cellIndex}-${cell}`}>{cell}</td>
             ))}
           </tr>
         ))}

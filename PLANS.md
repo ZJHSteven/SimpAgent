@@ -21,7 +21,7 @@
    - 保留 `composer`、`composer-primary`、`composer-surface-local` 等外观结构。
    - 用受控 `textarea` 作为真实输入源。
    - 支持空输入拦截、Enter 发送、Shift+Enter 换行、中文输入法组合态不误发送。
-5. [ ] **测试与验收**
+5. [x] **测试与验收**
    - 增加 `frontend` Playwright E2E 测试。
    - 执行 `npm run build`、`npm run lint`、Playwright 行为测试和截图验证。
 
@@ -33,6 +33,6 @@
 - Vite 生产构建和 ESLint 通过。
 
 ## 当前结果
-- 已完成计划确认、React 页面迁移、样式兼容迁移、SVG sprite 迁移和受控输入器实现。
+- 已完成计划确认、React 页面迁移、样式兼容迁移、SVG sprite 迁移、受控输入器实现和 Playwright 测试补充。
 - 已通过 `frontend` 的 `npm run lint` 与 `npm run build`。
-- 正在补充前端 Playwright 行为与视觉回归测试。
+- 正在运行完整前端行为与视觉截图验证。
