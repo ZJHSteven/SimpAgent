@@ -9,9 +9,15 @@
     - [x] 明确样式采用兼容层优先：先保留关键 class、变量、DOM 层级和 ChatGPT 兼容 CSS，不做一次性纯原子类重写。
     - [x] 明确输入器最终使用 React 受控 `textarea`，外观继续模拟当前 ProseMirror 风格 composer。
     - [x] 已更新 `PLANS.md` 记录前端迁移 ExecPlan。
+    - [x] 已将 Vite 默认页面替换为 SimpChat React 页面。
+    - [x] 已拆分 `layout`、`chat`、`composer`、`ui` 组件，避免把整页塞进 `App.jsx`。
+    - [x] 已把消息、历史记录、思考步骤改成数据驱动渲染。
+    - [x] 已迁移 `tem.html` 内联 CSS 与 ChatGPT 兼容 CSS，并生成 `frontend/public/icons.svg`。
+    - [x] 已把输入器改为 React 受控 `textarea`，保留 composer 外观结构。
+    - [x] 已通过 `frontend` 的 `npm run lint` 与 `npm run build`。
 - 正在做：
-    - [ ] 迁移 `frontend/` React 页面、组件、样式、图标和测试。
-- 下一步：替换 Vite 默认页面，拆分组件，并把现有静态页行为改为 React state 驱动。
+    - [ ] 为 React 前端补充 Playwright 行为测试和截图验证。
+- 下一步：添加桌面/移动端 E2E 测试，覆盖发送、新聊天、侧栏、思考面板、图标和无横向溢出。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`chatgpt-temp/tem.html` 保留为视觉和行为参考，不删除。（原因：迁移需要可回看原始 DOM、样式和交互。）
@@ -26,3 +32,4 @@
 - 坑3：移动端侧栏按钮之前重复绑定 click，React 版只能绑定一次。
 - 坑4：SVG sprite 放到 Vite `public` 后，引用路径应使用 `/icons.svg#id`。
 - 坑5：React 组件拆分不能只把整段 HTML 塞进 `App.jsx`；状态、布局、聊天流、输入器、面板需要分层。
+- 坑6：ChatGPT 兼容 CSS 很大，Vite build 会提示部分 `/cdn/assets/*.woff*` 运行时路径未解析，以及 `::scroll-button` 伪元素兼容警告；当前不阻断构建，后续裁剪兼容 CSS 时可清理。

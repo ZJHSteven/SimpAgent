@@ -1,111 +1,993 @@
-:root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+/*
+ * 文件作用：
+ * 这个文件保存 SimpChat React 页面全局样式。
+ *
+ * 迁移说明：
+ * 1. chatgpt-compat.css 是从临时 HTML 依赖的 ChatGPT 样式复制而来，先作为兼容层保留。
+ * 2. 下方主体样式来自 chatgpt-temp/tem.html 的内联 <style>，尽量保持视觉不变。
+ * 3. 文件末尾补充 React 受控 textarea 和移动遮罩的少量适配样式。
+ */
+@import './styles/chatgpt-compat.css';
+/*
+      全局设计变量：
+      把常用颜色、尺寸、阴影集中放在 :root，后续想调整整体风格时只改这里即可。
+    */
+    :root {
+      --color-page: #ffffff;
+      --color-sidebar: #f9f9f9;
+      --color-sidebar-hover: #ececeb;
+      --color-text: #1f1f1f;
+      --color-muted: #6f6f6f;
+      --color-border: #e3e3df;
+      --color-soft-border: #eeeeeb;
+      --color-user-bubble: #f4f4f4; /* 官方提示淡灰色 */
+      --color-assistant-mark: #10a37f;
+      --color-focus: #0f8f70;
+      --color-danger: #b42318;
+      --shadow-composer: 0 16px 40px rgb(0 0 0 / 10%);
+      --sidebar-width: 232px;
+      --sidebar-collapsed-width: 56px;
+      --thought-panel-width: 360px;
+      --sidebar-header-height: 48px;
+      --header-height: 58px;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+      --content-width: 760px;
+      --radius-small: 8px;
+      --radius-round: 999px;
+      font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        "Microsoft YaHei",
+        sans-serif;
+    }
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+    /* 使用 border-box 可以让 width 包含 padding 和 border，布局更直观。 */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
+    /* 页面主体占满视口，并禁止整页出现横向滚动。 */
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow-x: hidden;
+      background: var(--color-page);
+      color: var(--color-text);
+    }
+
+    /* button 默认继承字体，避免不同浏览器出现明显不一致。 */
+    button,
+    textarea {
+      font: inherit;
+    }
+
+    /* 按钮统一去掉浏览器默认边框，用自定义样式表达可点击区域。 */
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    /* 键盘用户需要明显焦点环，鼠标用户也能理解当前聚焦位置。 */
+    :focus-visible {
+      outline: 2px solid var(--color-focus);
+      outline-offset: 2px;
+    }
+
+    /* 整个应用的两列骨架：左侧边栏固定宽度，右侧聊天区自适应。 */
+    .app-shell {
+      display: grid;
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+      min-height: 100vh;
+      transition: grid-template-columns 180ms ease;
+    }
+
+    /* 宽屏收起侧栏时保留窄 rail，不把侧栏完全移出屏幕。 */
+    .app-shell[data-sidebar-state="collapsed"] {
+      grid-template-columns: var(--sidebar-collapsed-width) minmax(0, 1fr);
+    }
+
+
+    /* 左侧栏模拟 ChatGPT 的历史列表区域。 */
+    .sidebar {
+      position: sticky;
+      top: 0;
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      min-width: 0;
+      height: 100vh;
+      padding: 12px;
+      overflow-y: auto;
+      border-right: 1px solid var(--color-border);
+      background: var(--color-sidebar);
+      font-size: 14px;
+      transition: width 180ms ease, padding 180ms ease;
+    }
+
+
+    /* 侧栏顶部 rail 按钮区域。 */
+    .sidebar-rail-header {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: var(--sidebar-header-height);
+    }
+
+
+    /* 收起/展开按钮复用原始 sprite，hover 时显示第二个边栏图标。 */
+    .sidebar-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      margin-inline: 2px;
+      border-radius: var(--radius-small);
+      background: transparent;
+      color: var(--color-text);
+    }
+
+    .sidebar-toggle:hover {
+      background: var(--color-sidebar-hover);
+    }
+
+    /* 侧栏顶部品牌区：包含一个图片头像和文本。 */
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 44px;
+      padding: 6px 8px;
+    }
+
+    .sidebar-body {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    .sidebar-menu {
+      display: grid;
+      gap: 1px;
+      margin: 0;
+    }
+
+
+    .sidebar-action-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      flex: 0 0 auto;
+    }
+
+    .sidebar-shortcut {
+      margin-left: auto;
+      color: var(--color-muted);
+      font-size: 11px;
+      opacity: 0;
+      transition: opacity 120ms ease;
+    }
+
+    .sidebar-action:hover .sidebar-shortcut {
+      opacity: 1;
+    }
+
+    .sidebar-profile {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 42px;
+      margin-top: auto;
+    }
+
+    .sidebar-profile:hover {
+      background: var(--color-sidebar-hover);
+    }
+
+
+
+    .sidebar-profile-avatar {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: var(--radius-round);
+      background: #d9d9d4;
+      color: #444;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .app-shell[data-sidebar-state="collapsed"] .sidebar {
+      width: var(--sidebar-collapsed-width);
+      max-width: var(--sidebar-collapsed-width);
+      padding-inline: 8px;
+      overflow-x: hidden;
+    }
+
+    .app-shell[data-sidebar-state="collapsed"] .brand,
+    .app-shell[data-sidebar-state="collapsed"] .sidebar-section-title,
+    .app-shell[data-sidebar-state="collapsed"] .history-list,
+    .app-shell[data-sidebar-state="collapsed"] .sidebar-footer,
+    .app-shell[data-sidebar-state="collapsed"] .sidebar-label,
+    .app-shell[data-sidebar-state="collapsed"] .sidebar-shortcut {
+      display: none;
+    }
+
+    .app-shell[data-sidebar-state="collapsed"] .sidebar-action,
+    .app-shell[data-sidebar-state="collapsed"] .sidebar-profile {
+      display: flex;
+      justify-content: center;
+      width: 40px;
+      min-height: 40px; /* 缩略图模式回复 40px 确保完美居中圆形按钮 */
+      padding: 0;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+
+
+    /* 品牌图标直接引用本地下载的 sprite，不再手工重绘。 */
+    .brand__image {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-round);
+      background: #0f8f70;
+      color: #ffffff;
+      padding: 4px;
+    }
+
+    /* 品牌名保持克制，不做营销型大标题。 */
+    .brand__name {
+      font-size: 14px;
+      font-weight: 650;
+      line-height: 1.2;
+    }
+
+
+    /* 侧栏按钮是主要导航入口，保持高度稳定，避免 hover 时跳动。 */
+    .sidebar-action {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 38px;
+      width: 100%;
+      padding: 6px 10px; /* 进一步压缩 Padding */
+      border-radius: var(--radius-small);
+      background: transparent;
+      color: var(--color-text);
+      text-align: left;
+      transition: background 160ms ease;
+    }
+
+
+
+    /* hover 只改变背景和轻微位移，不改变尺寸。 */
+    .sidebar-action:hover {
+      background: var(--color-sidebar-hover);
+      transform: translateX(1px);
+    }
+
+    /* 分组标题用于历史会话列表。 */
+    .sidebar-section-title {
+      margin: 14px 10px 0px; /* 底部间距降至 0，彻底消除裂缝 */
+      color: var(--color-muted);
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.2;
+    }
+
+
+
+
+
+    /* 历史条目使用列表语义，方便屏幕阅读器理解。 */
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+
+    /* 单条历史会话做单行截断，复刻原页面的紧凑历史感。 */
+    .history-item {
+      display: block;
+      overflow: hidden;
+      padding: 8px 10px;
+      border-radius: var(--radius-small);
+      color: var(--color-text);
+      font-size: 14px;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* 当前会话用更明显背景标识。 */
+    .history-item[aria-current="page"],
+    .history-item:hover {
+      background: var(--color-sidebar-hover);
+    }
+
+    /* 侧栏底部说明，承载轻量状态信息。 */
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 12px 8px 4px;
+      color: var(--color-muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    /* 右侧聊天区是主工作区。 */
+    .chat-main {
+      display: grid;
+      grid-template-rows: var(--header-height) minmax(0, 1fr) auto;
+      min-width: 0;
+      min-height: 100vh;
+      background: var(--color-page);
+    }
+
+    /* 顶部栏固定在聊天区上方，模拟 ChatGPT 的模型/会话控制栏。 */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-width: 0;
+      padding: 10px 18px;
+      background: rgb(255 255 255 / 92%);
+      border-bottom: 1px solid transparent;
+      backdrop-filter: blur(12px);
+    }
+
+    /* 移动端菜单按钮默认隐藏，窄屏再显示。 */
+    .mobile-menu-button {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius-small);
+      background: transparent;
+      color: var(--color-text);
+    }
+
+    /* 顶部标题区域允许截断，避免长标题撑破布局。 */
+    .conversation-title {
+      min-width: 0;
+    }
+
+    /* 模型名按钮复刻“ChatGPT 5.4”那类顶部入口。 */
+    .model-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+      padding: 8px 10px;
+      border-radius: var(--radius-small);
+      background: transparent;
+      color: var(--color-text);
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    /* 模型按钮 hover 只给一点灰底。 */
+    .model-button:hover {
+      background: var(--color-sidebar-hover);
+    }
+
+    /* 会话副标题用于说明当前是本地复刻。 */
+    .conversation-subtitle {
+      margin-top: 2px;
+      color: var(--color-muted);
+      font-size: 12px;
+    }
+
+    /* 分享按钮采用圆角矩形，和原页面的操作按钮接近。 */
+    .share-button {
+      flex: 0 0 auto;
+      padding: 8px 12px;
+      border-radius: var(--radius-small);
+      background: var(--color-text);
+      color: #ffffff;
+      font-size: 14px;
+      transition: opacity 160ms ease;
+    }
+
+    /* 轻量 hover 反馈，不改变按钮尺寸。 */
+    .share-button:hover {
+      opacity: 0.86;
+    }
+
+    /* 消息滚动区占据中间剩余高度。 */
+    .thread {
+      overflow-y: auto;
+      padding: 18px 18px 28px;
+      scroll-behavior: smooth;
+    }
+
+    /* 消息内容宽度限制，复刻 ChatGPT 中间窄列阅读体验。 */
+    .thread__inner {
+      display: grid;
+      gap: 26px;
+      width: min(100%, var(--content-width));
+      margin: 0 auto;
+    }
+
+    /* 每个 turn 是一轮对话，内部再按角色决定对齐方式。 */
+    .message {
+      display: grid;
+      gap: 8px;
+      animation: message-in 220ms ease both;
+    }
+
+    /* 用户消息靠右。 */
+    .message--user {
+      justify-items: end;
+    }
+
+    /* 助手消息靠左，占满阅读列宽。 */
+    .message--assistant {
+      justify-items: start;
+    }
+
+    /* 头像行用于助手消息，显示身份和时间。 */
+    .message-meta {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--color-muted);
+      font-size: 13px;
+    }
+
+    /* 助手头像也使用本地 sprite，避免自绘 SVG 观感不一致。 */
+    .assistant-avatar {
+      width: 26px;
+      height: 26px;
+      border-radius: var(--radius-round);
+      background: var(--color-assistant-mark);
+      color: #ffffff;
+      padding: 4px;
+    }
+
+    /* 用户气泡：对齐 ChatGPT 官方比例 */
+    .user-bubble {
+      max-width: min(70%, 560px);
+      padding: 0.625rem 1.25rem; /* px-5 py-2.5 */
+      border-radius: 24px;
+      background: var(--color-user-bubble);
+      line-height: 1.55; 
+      overflow-wrap: break-word;
+      white-space: pre-wrap; /* 允许在 div 内原生处理换行和空格 */
+      position: relative;
+      margin: 0;
+      font-size: 15px; /* ChatGPT 官方文字大小约 15px */
+      color: #0d0d0d;
+    }
+
+    .user-bubble p {
+      margin: 0;
+    }
+
+    /* 顶部栏样式补充 */
+    .topbar-new {
+      background-color: rgba(255, 255, 255, 0.85); /* 稍微增加不透明度 */
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--color-soft-border);
+    }
+    .header-wordmark {
+      color: var(--color-text);
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .topbar-new a,
+    .topbar-new button {
+      color: var(--color-text); /* 统一应用文字深色 */
+    }
+    .topbar-new a svg,
+    .topbar-new button svg {
+      opacity: 0.8; /* 恢复更深的固有颜色 */
+      transition: opacity 100ms;
+    }
+    .topbar-new a:hover svg,
+    .topbar-new button:hover svg {
+      opacity: 1;
+    }
+    .text-black\/30 { color: rgba(0,0,0,0.3); }
+
+    /* 消息条目垂直间距与布局 */
+    .message {
+      margin-bottom: 32px;
+      position: relative;
+    }
+
+    /* 用户消息动作按钮对齐与间距：贴近气泡 */
+    .message--user .message-actions {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px; /* 紧贴气泡 */
+      margin-right: 4px; /* 右侧微调 */
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 150ms ease, visibility 150ms ease;
+    }
+
+    /* hover 触发显示操作按钮 */
+    .message--user:hover .message-actions {
+      opacity: 1;
+      visibility: visible;
+    }
+    .message-actions button {
+      color: var(--color-muted);
+      border-radius: var(--radius-small);
+      transition: background-color 150ms;
+    }
+    .message-actions button:hover {
+      background-color: var(--color-sidebar-hover);
+      color: var(--color-text);
+    }
+
+
+    /* 助手正文不使用卡片，让阅读区更像 ChatGPT 的自然文本。 */
+    .assistant-content {
+      width: 100%;
+      max-width: 100%;
+      line-height: 1.75;
+      overflow-wrap: anywhere;
+    }
+
+    /* 段落之间保持清晰间距。 */
+    .assistant-content p {
+      margin: 0 0 12px;
+    }
+
+    /* 表格模拟概率分析类回复，体现原快照里的内容场景。 */
+    .result-table {
+      width: 100%;
+      margin: 14px 0;
+      border-collapse: collapse;
+      border: 1px solid var(--color-soft-border);
+      border-radius: var(--radius-small);
+      overflow: hidden;
+      font-size: 14px;
+    }
+
+    /* 表格单元格保持稳定高度。 */
+    .result-table th,
+    .result-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--color-soft-border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    /* 表头使用浅灰底提高扫描效率。 */
+    .result-table th {
+      background: #fafaf8;
+      font-weight: 650;
+    }
+
+    /* 最后一行不需要底边框。 */
+    .result-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    /* 代码块用于展示“可复制”的计算思路。 */
+    pre {
+      max-width: 100%;
+      margin: 14px 0 0;
+      padding: 14px;
+      overflow-x: auto;
+      border: 1px solid var(--color-soft-border);
+      border-radius: var(--radius-small);
+      background: #f7f7f5;
+      color: #222222;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    /* 底部输入区使用 sticky，保持类似 ChatGPT 的固定 composer。移除渐变色避免觉得背景脏。 */
+    .composer-wrap {
+      position: sticky;
+      bottom: 0;
+      z-index: 12;
+      padding: 12px 18px 16px;
+      background: #ffffff;
+    }
+
+    /* 输入器宽度与消息列一致。 */
+    .composer {
+      width: min(100%, var(--content-width));
+      margin: 0 auto;
+    }
+
+    /* 本地 composer 外层：宽度仍跟消息列对齐。 */
+    .composer-surface-local {
+      width: 100%;
+    }
+
+    /* 原始 ProseMirror 输入区需要一点本地兜底，保证脱离 React 后仍可编辑。 */
+    .ProseMirror {
+      display: block !important;
+      width: 100%;
+      min-height: 24px !important;
+      outline: 0;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    /* 空编辑器也必须保留点击高度，否则清掉 placeholder 后会变成不可见空盒子。 */
+    .ProseMirror:empty::before {
+      display: block;
+      min-height: 24px;
+      content: "";
+    }
+
+    /* 原页面 placeholder 是 p[data-placeholder]，这里用 CSS 还原占位文字。 */
+    .ProseMirror .placeholder::before {
+      color: var(--text-tertiary, #8d8d86);
+      content: attr(data-placeholder);
+      pointer-events: none;
+    }
+
+    /* 原始 CSS 中可能有其它 placeholder 规则；这里保证脱离 React 后占位段落仍可见。 */
+    .ProseMirror .placeholder {
+      display: block !important;
+      min-height: 24px;
+      line-height: 1.55;
+      margin: 0;
+      opacity: 1 !important;
+      visibility: visible !important;
+    }
+
+    /* placeholder 里的 br 只是为了让空编辑器有可点击高度，不需要显示额外空行。 */
+    .ProseMirror .placeholder .ProseMirror-trailingBreak {
+      display: none;
+    }
+
+    /* fallback textarea 只用于 JS 同步值，不参与视觉显示。 */
+    .wcDTda_fallbackTextarea {
+      display: none;
+    }
+
+    /* “已思考”按钮使用 ChatGPT 式轻量文本按钮。 */
+    .thought-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      width: fit-content;
+      margin-top: 2px;
+      padding: 4px 0;
+      border-radius: var(--radius-small);
+      background: transparent;
+      color: var(--color-muted);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .thought-toggle:hover {
+      color: var(--color-text);
+    }
+
+    .thought-toggle svg {
+      width: 16px;
+      height: 16px;
+      transition: transform 160ms ease;
+    }
+
+    .thought-toggle[aria-expanded="true"] svg {
+      transform: rotate(90deg);
+    }
+
+    /* 思考详情侧栏，模拟 ChatGPT 右侧思考抽屉。 */
+    .thought-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      z-index: 24;
+      display: flex;
+      flex-direction: column;
+      width: min(var(--thought-panel-width), 92vw);
+      height: 100vh;
+      padding: 14px 10px;
+      border-left: 1px solid var(--color-border);
+      background: var(--color-page);
+      box-shadow: -24px 0 60px rgb(0 0 0 / 10%);
+      transform: translateX(104%);
+      transition: transform 180ms ease;
+    }
+
+    .thought-panel[data-open="true"] {
+      transform: translateX(0);
+    }
+
+    .thought-panel__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 8px 14px;
+    }
+
+    .thought-panel__title {
+      margin: 0;
+      color: var(--color-muted);
+      font-size: 16px;
+      font-weight: 650;
+    }
+
+    .thought-panel__close {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-small);
+      background: transparent;
+      color: var(--color-muted);
+    }
+
+    .thought-panel__close:hover {
+      background: var(--color-sidebar-hover);
+      color: var(--color-text);
+    }
+
+    .thought-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 0 8px 18px;
+    }
+
+    .thought-step {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr);
+      gap: 10px;
+      color: var(--color-muted);
+    }
+
+    .thought-step__rail {
+      display: flex;
+      align-items: center;
+      flex-direction: column;
+    }
+
+    .thought-step__icon {
+      width: 15px;
+      height: 20px;
+      color: var(--color-muted);
+    }
+
+    .thought-step__line {
+      width: 1px;
+      flex: 1;
+      min-height: 30px;
+      border-radius: var(--radius-round);
+      background: #d9d9d4;
+    }
+
+    .thought-step__body {
+      min-width: 0;
+      margin-bottom: 12px;
+    }
+
+    .thought-step__title {
+      color: var(--color-text);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .thought-step__text {
+      margin: 6px 0 0;
+      color: var(--color-muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .source-pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .source-pill {
+      display: inline-flex;
+      align-items: center;
+      max-width: 100%;
+      height: 25px;
+      padding: 0 10px;
+      border-radius: var(--radius-round);
+      background: #f4f4f4;
+      color: var(--color-muted);
+      font-size: 12px;
+      text-decoration: none;
+    }
+
+    .source-pill:hover {
+      background: #1f1f1f;
+      color: #ffffff;
+    }
+
+    /* composer 下方提示和状态信息。 */
+    .composer-help {
+      min-height: 18px;
+      margin: 8px 8px 0;
+      color: var(--color-muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    /* 错误状态用红色，但只用于提示文本，不干扰主流程。 */
+    .composer-help[data-tone="error"] {
+      color: var(--color-danger);
+    }
+
+    /* 屏幕阅读器专用文本，视觉隐藏但仍可被辅助技术读取。 */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* 新消息进入动画，让交互反馈更清晰。 */
+    @keyframes message-in {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* 窄屏布局：侧栏变成可覆盖抽屉，主区占满屏幕。 */
+    @media (max-width: 820px) {
+      .app-shell,
+      .app-shell[data-sidebar-state="collapsed"],
+      .app-shell[data-sidebar-state="expanded"] {
+        /* 在窄屏模式下，无论侧栏状态如何，容器都必须是单列，否则会出现侧边留白 */
+        grid-template-columns: 1fr !important;
+      }
+
+      /* 手机端屏蔽所有 data-sidebar-state 导致的缩窄逻辑，强制只有隐藏和全屏 */
+      .sidebar {
+        width: min(82vw, var(--sidebar-width)) !important;
+        transform: translateX(-102%);
+        position: fixed;
+        z-index: 50;
+        box-shadow: 20px 0 60px rgb(0 0 0 / 18%);
+      }
+
+
+      .sidebar[data-open="true"] {
+        transform: translateX(0) !important;
+      }
+
+      /* 在手机端隐藏侧栏内部顶部的 Rail 切换区域，手机由顶栏按钮控制 */
+      .sidebar-rail-header {
+        display: none !important;
+      }
+
+      .topbar {
+        padding-inline: 10px;
+      }
+
+      .share-button {
+        display: none;
+      }
+
+      .thread {
+        padding-inline: 14px;
+      }
+
+      .composer-wrap {
+        padding-inline: 10px;
+      }
+
+      .user-bubble {
+        max-width: 88%;
+      }
+    }
+
+    /* 更窄屏幕继续减少输入器边距，防止横向溢出。 */
+    @media (max-width: 480px) {
+      :root {
+        --header-height: 54px;
+      }
+
+      .model-button {
+        padding-inline: 6px;
+        font-size: 14px;
+      }
+
+      .conversation-subtitle {
+        display: none;
+      }
+
+      .composer-surface-local [data-testid="composer-footer-actions"] {
+        display: none;
+      }
+    }
+/* React 版移动遮罩：旧页面用 JS 写 style.display/opacity，这里改成 data-open 驱动。 */
+#mobile-sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+#mobile-sidebar-overlay[data-open="true"] {
+  display: block;
+  opacity: 1;
+}
+
+/* React 版侧栏头部用 class 替代旧 HTML 中的 style="flex:1"。 */
+.sidebar-rail-spacer {
+  flex: 1;
+}
+
+/* React 版移动关闭按钮不再用内联 style，而是由 CSS 控制尺寸和布局。 */
+.sidebar-close-button {
+  display: none;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  border-radius: 8px;
+  color: var(--color-muted);
+  background: transparent;
+}
+
+/* React 版 composer 使用真正受控 textarea，但继续复用 ProseMirror 外观类。 */
+.composer-textarea {
+  resize: none;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  line-height: 1.55;
+  max-height: 208px;
+  padding: 0;
+}
+
+.composer-textarea::placeholder {
+  color: var(--text-tertiary, #8d8d86);
+  opacity: 1;
+}
+
+.composer-surface-local {
+  border-radius: 28px;
+}
+
+@media (max-width: 820px) {
+  .sidebar-close-button {
+    display: inline-flex;
   }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
-
-body {
-  margin: 0;
-}
-
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-}
-
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
-}
-
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
 }

@@ -9,15 +9,15 @@
 1. [x] **计划与进度基线**
    - 用本文件记录前端迁移 ExecPlan。
    - 更新 `PROGRESS.md`，避免后续上下文过长时遗忘当前目标。
-2. [ ] **React 页面迁移**
+2. [x] **React 页面迁移**
    - 替换 Vite 默认 `App.jsx` 页面。
    - 拆分 `layout`、`chat`、`composer`、`ui` 组件。
    - 把消息、历史、思考步骤和本地模拟回复改成数据驱动渲染。
-3. [ ] **样式与图标迁移**
+3. [x] **样式与图标迁移**
    - 把 `tem.html` 的内联 CSS 迁入 `frontend/src/index.css`。
    - 复制 ChatGPT 兼容 CSS 到 `frontend/src/styles/chatgpt-compat.css` 并从入口引入。
    - 把页面使用的 SVG symbol 合并到 `frontend/public/icons.svg`，React 统一通过 `/icons.svg#id` 引用。
-4. [ ] **受控输入器**
+4. [x] **受控输入器**
    - 保留 `composer`、`composer-primary`、`composer-surface-local` 等外观结构。
    - 用受控 `textarea` 作为真实输入源。
    - 支持空输入拦截、Enter 发送、Shift+Enter 换行、中文输入法组合态不误发送。
@@ -33,5 +33,6 @@
 - Vite 生产构建和 ESLint 通过。
 
 ## 当前结果
-- 已完成计划确认。
-- 正在迁移 React 前端实现。
+- 已完成计划确认、React 页面迁移、样式兼容迁移、SVG sprite 迁移和受控输入器实现。
+- 已通过 `frontend` 的 `npm run lint` 与 `npm run build`。
+- 正在补充前端 Playwright 行为与视觉回归测试。
