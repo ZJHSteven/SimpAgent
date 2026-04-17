@@ -34,5 +34,6 @@
 
 ## 当前结果
 - 已完成计划确认、React 页面迁移、样式兼容迁移、SVG sprite 迁移、受控输入器实现和 Playwright 测试补充。
-- 已通过 `frontend` 的 `npm run lint` 与 `npm run build`。
-- 正在运行完整前端行为与视觉截图验证。
+- 已通过 `frontend` 的 `npm run lint`、`npm run build`、`npm run test:e2e`。
+- 已通过根项目 `npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
+- React 版 Playwright 测试会在桌面和移动用例中保存截图产物，用于人工视觉复核。
