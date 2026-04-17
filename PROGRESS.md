@@ -1,33 +1,28 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：TS 后端首版纵向跑通已完成；前端仍暂不处理。
+- 现状：TS 后端首版纵向跑通已完成；当前任务切换为把 `chatgpt-temp/tem.html` 无感知迁移到 `frontend/` React 静态界面。
 - 已完成：
-    - [x] 明确后端采用 npm workspace：`apps/*` + `packages/*`。
-    - [x] 明确 `agent-core` 为大核心包，API adapter、loop、pool、trace、前端事件类型都放在 core 内。
-    - [x] 明确 3 个 runtime 包：Node 真实实现，Cloudflare Worker/Tauri 首版占位。
-    - [x] 明确首版默认 human-in-loop 工具审批，策略支持 `ask | deny | always_approve`。
-    - [x] 新增根级 npm workspace、`packages/agent-core`、3 个 runtime 包、`apps/cli`、`apps/server`。
-    - [x] 实现 OpenAI-compatible Chat Completions payload 组装、DeepSeek `reasoning_content` 流式解析、工具调用组装。
-    - [x] 实现 Node 文件、shell、trace store、TOML 配置读取和 CLI/server 工具审批。
-    - [x] 已补齐工具执行后继续模型循环：assistant tool_calls -> tool result -> 下一次模型请求。
-    - [x] 已重新通过 `npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
-    - [x] 已为 `packages/agent-core` 与三个 runtime（`runtime-node`/`runtime-cloudflare-worker`/`runtime-tauri`）下全部 `src/*.ts` 文件补齐教学向中文注释（文件头、类型/函数说明、关键逻辑注释）。
-    - [x] 注释补齐后再次通过 `npm run typecheck` 与 `npm test`（3 个测试文件、9 个测试全部通过）。
+    - [x] 后端 monorepo、agent-core、runtime、CLI/server 与测试已完成并通过历史验收。
+    - [x] 明确本轮前端迁移目标：视觉尽量不变，底层改成 React 组件化和状态驱动。
+    - [x] 明确迁移时修复两个现有故障：模型按钮缺少可访问名称、移动端侧栏按钮重复触发。
+    - [x] 明确样式采用兼容层优先：先保留关键 class、变量、DOM 层级和 ChatGPT 兼容 CSS，不做一次性纯原子类重写。
+    - [x] 明确输入器最终使用 React 受控 `textarea`，外观继续模拟当前 ProseMirror 风格 composer。
+    - [x] 已更新 `PLANS.md` 记录前端迁移 ExecPlan。
 - 正在做：
-    - [ ] 等待填入真实 `simpagent.toml` 后进行手工 DeepSeek/OpenAI-compatible smoke test。
-- 下一步：复制 `simpagent.example.toml` 为 `simpagent.toml`，填入真实模型配置后执行 CLI/server smoke test。
+    - [ ] 迁移 `frontend/` React 页面、组件、样式、图标和测试。
+- 下一步：替换 Vite 默认页面，拆分组件，并把现有静态页行为改为 React state 驱动。
 
 ## 关键决策与理由（防止“吃书”）
-- 决策A：首版不修改 `frontend/` 与 `chatgpt-temp/`。（原因：用户明确要求前端先不管，避免和前端未完成改动互相干扰。）
-- 决策B：`agent-core` 是大核心包。（原因：API adapter、agent loop、pool、trace、前端事件协议都属于 agent 内存态核心；runtime 只负责环境能力注入。）
-- 决策C：真实运行配置使用 `simpagent.toml`，示例配置使用 `simpagent.example.toml`。（原因：用户希望 TOML，真实 API key 不进 git。）
-- 决策D：HTTP 流式输出首版使用 SSE。（原因：比 WebSocket 更简单，足以支持 token、thinking、tool approval、tool result、trace 与 done 事件。）
-- 决策E：工具权限首版默认 `ask`。（原因：每次工具调用前暂停并让 CLI/前端确认，拒绝时把特定错误回填给模型。）
+- 决策A：`chatgpt-temp/tem.html` 保留为视觉和行为参考，不删除。（原因：迁移需要可回看原始 DOM、样式和交互。）
+- 决策B：本轮不接入真实 AI 后端，只保留本地模拟回复。（原因：用户当前目标是技术栈迁移和静态界面可用性。）
+- 决策C：`frontend/` 暂不强行加入根 npm workspace。（原因：当前前端已有独立 `package.json` 和 lockfile，先降低迁移范围。）
+- 决策D：输入框用受控 `textarea` 承载真实文本。（原因：`contenteditable` 很容易绕过 React 状态管理，长期不可控。）
+- 决策E：样式先做兼容迁移，再考虑清理。（原因：无感知迁移的第一优先级是视觉稳定。）
 
 ## 常见坑 / 复现方法
-- 坑1：根目录已有前端与临时实验的未提交文件；后端提交应只 add 本次涉及文件，避免误提交无关前端临时文件。
-- 坑2：`agent-core` 不能直接依赖 Node 文件、shell、数据库 API；这些能力必须通过 runtime 接口注入。
-- 坑3：DeepSeek thinking 流里 `reasoning_content` 和普通 `content` 需要分开转成 `thinking_delta` 与 `message_delta`。
-- 坑4：工具审批 deny 不是本地异常结束，而是要回填 tool result，让模型看到 `TOOL_EXECUTION_DENIED_BY_HUMAN`。
-- 坑5：工具执行后必须追加 assistant tool_calls 消息和 tool result 消息，再继续下一次模型请求；否则 OpenAI-compatible 工具循环不完整。
+- 坑1：当前工作区已有未跟踪文件 `chatgpt-temp/extract_svg.py` 与 `chatgpt-temp/extracted_symbols.txt`；本轮不要误删或误提交无关文件。
+- 坑2：现有 `chatgpt-temp` Playwright 测试迁移前已失败，不能把失败当成 React 迁移新增问题。
+- 坑3：移动端侧栏按钮之前重复绑定 click，React 版只能绑定一次。
+- 坑4：SVG sprite 放到 Vite `public` 后，引用路径应使用 `/icons.svg#id`。
+- 坑5：React 组件拆分不能只把整段 HTML 塞进 `App.jsx`；状态、布局、聊天流、输入器、面板需要分层。

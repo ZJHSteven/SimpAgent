@@ -1,42 +1,37 @@
-# ExecPlan：SimpAgent TS 后端首版纵向跑通
+# ExecPlan：SimpChat 静态页无感知迁移到 React
 
 ## 当前目标
-- 新增 TypeScript npm monorepo 后端，不修改 `frontend/` 与 `chatgpt-temp/`。
-- 建立根级 workspace：`apps/*` 放可运行产物，`packages/*` 放核心与 runtime 包。
-- 首版跑通 CLI 与 HTTP/SSE 服务，支持 OpenAI-compatible Chat Completions、DeepSeek/OpenAI provider、Node runtime、trace 落盘与 human-in-loop 工具审批。
+- 将 `chatgpt-temp/tem.html` 的本地 SimpChat 静态聊天界面迁移到 `frontend/` Vite React 应用。
+- 保持用户视觉感知尽量不变，只把底层实现改成 React 组件化、状态驱动、可继续扩展的结构。
+- 修复迁移前已确认的明显故障：模型按钮缺少 `aria-label="选择模型"`，移动端侧栏按钮重复绑定导致点一次开关两次。
 
 ## 执行步骤
-1. [x] **仓库级工程化**
-   - 新增根级 `package.json`、`tsconfig.base.json`、`vitest.config.ts`。
-   - 更新 `.gitignore`，忽略 `simpagent.toml`、`.simpagent/`、`dist/` 等本地运行产物。
-   - 新增 `simpagent.example.toml`，真实密钥只放本地 `simpagent.toml`。
-2. [x] **实现 `packages/agent-core`**
-   - 定义 context message、tool、trace、thread、runtime 抽象、SSE 前端事件类型。
-   - 实现 Chat Completions adapter、OpenAI/DeepSeek extra 映射、SSE chunk parser。
-   - 实现 agent loop、agent pool、tool approval 暂停/继续/拒绝流程。
-3. [x] **实现 runtime 包**
-   - `runtime-node` 实现 TOML 配置读取、文件工具、shell 工具、JSON trace store。
-   - `runtime-cloudflare-worker` 与 `runtime-tauri` 保留明确 unsupported 占位。
-4. [x] **实现应用入口**
-   - `apps/cli` 支持终端执行一次 agent turn，并在工具调用前询问用户。
-   - `apps/server` 提供 REST + SSE：thread、run、tool approval、fork。
-5. [x] **测试与验收**
-   - 单元测试覆盖 adapter、stream parser、loop approval、tools、trace store。
-   - 集成测试覆盖 mock CLI turn 与 HTTP/SSE approval 流程。
-   - 已执行 `npm install`、`npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
+1. [x] **计划与进度基线**
+   - 用本文件记录前端迁移 ExecPlan。
+   - 更新 `PROGRESS.md`，避免后续上下文过长时遗忘当前目标。
+2. [ ] **React 页面迁移**
+   - 替换 Vite 默认 `App.jsx` 页面。
+   - 拆分 `layout`、`chat`、`composer`、`ui` 组件。
+   - 把消息、历史、思考步骤和本地模拟回复改成数据驱动渲染。
+3. [ ] **样式与图标迁移**
+   - 把 `tem.html` 的内联 CSS 迁入 `frontend/src/index.css`。
+   - 复制 ChatGPT 兼容 CSS 到 `frontend/src/styles/chatgpt-compat.css` 并从入口引入。
+   - 把页面使用的 SVG symbol 合并到 `frontend/public/icons.svg`，React 统一通过 `/icons.svg#id` 引用。
+4. [ ] **受控输入器**
+   - 保留 `composer`、`composer-primary`、`composer-surface-local` 等外观结构。
+   - 用受控 `textarea` 作为真实输入源。
+   - 支持空输入拦截、Enter 发送、Shift+Enter 换行、中文输入法组合态不误发送。
+5. [ ] **测试与验收**
+   - 增加 `frontend` Playwright E2E 测试。
+   - 执行 `npm run build`、`npm run lint`、Playwright 行为测试和截图验证。
 
 ## 验收标准
-- 不需要真实前端即可通过 CLI 或 HTTP/SSE 跑通一次 mock agent 任务。
-- 默认工具策略为 `ask`：工具调用会暂停，approve 后执行，deny 后回填 `TOOL_EXECUTION_DENIED_BY_HUMAN`。
-- Node runtime 能落盘 `.simpagent/threads/{threadId}.json`，其中包含 turn、请求体、响应片段、工具审批、工具结果与错误。
-- OpenAI/DeepSeek Chat Completions payload 与流式解析有测试覆盖。
+- React 前端打开后视觉上与 `tem.html` 保持一致，差异只来自故障修复和浏览器渲染细节。
+- 不再使用 `document.createElement`、`innerHTML`、`appendChild`、`replaceChildren`、手写 `addEventListener` 管理业务交互。
+- 侧栏、移动遮罩、思考面板、消息列表、输入框和帮助提示都由 React state 驱动。
+- 桌面端和移动端 E2E 行为测试通过，页面无横向溢出。
+- Vite 生产构建和 ESLint 通过。
 
 ## 当前结果
-- 已完成根级 workspace、4 个 packages、2 个 apps、示例 TOML、Node runtime、占位 runtime、核心 loop、工具审批、trace store 与测试。
-- 已补齐完整工具循环：模型发起 tool call 后，系统先审批，执行或拒绝后追加 tool result，再继续请求模型生成最终回复。
-- 已通过：
-  - `npm run typecheck`
-  - `npm run build`
-  - `npm run lint`
-  - `npm test`
-- 后续可在本地复制 `simpagent.example.toml` 为 `simpagent.toml`，填入真实 DeepSeek/OpenAI-compatible 配置后运行 `npm run cli -- "你的任务"` 或 `npm run server`。
+- 已完成计划确认。
+- 正在迁移 React 前端实现。
