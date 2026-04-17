@@ -1,3 +1,7 @@
+/**
+ * 本文件实现内存态 AgentPool。
+ * 职责：管理 agent 注册、thread 生命周期、消息替换与分支 fork。
+ */
 import type { IdGenerator, RuntimeClock } from "../types/common.js";
 import type { ContextMessage } from "../types/messages.js";
 import type { AgentDefinition, ThreadState } from "../types/thread.js";
@@ -12,6 +16,7 @@ export class AgentPool {
   ) {}
 
   registerAgent(agent: AgentDefinition): void {
+    // 重复 id 时以最后一次注册覆盖，便于热更新场景替换定义。
     this.agents.set(agent.id, agent);
   }
 
@@ -26,6 +31,7 @@ export class AgentPool {
   }
 
   createThread(input: { readonly agentId: string; readonly title?: string }): ThreadState {
+    // 先校验 agent 存在，避免创建悬空 thread。
     this.getAgent(input.agentId);
 
     const now = this.clock.now();

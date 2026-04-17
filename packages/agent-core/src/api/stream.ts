@@ -1,3 +1,9 @@
+/**
+ * 本文件负责把厂商返回的 SSE 文本流解析为统一 AdapterStreamEvent 事件。
+ * 关键点：
+ * 1) DeepSeek/OpenAI-compatible 的增量字段并不完全一致，这里做兼容归一。
+ * 2) 工具调用是“分片到达”的，需要保留 index 与 arguments 增量。
+ */
 import type { AdapterStreamEvent } from "../types/api.js";
 
 interface MutableToolDelta {
@@ -6,6 +12,9 @@ interface MutableToolDelta {
   argumentsDelta?: string;
 }
 
+/**
+ * 解析单个 data payload（不含 "data:" 前缀）。
+ */
 function parseChunkPayload(payload: string): AdapterStreamEvent[] {
   if (payload === "[DONE]") {
     return [{ type: "done" }];
@@ -31,6 +40,7 @@ function parseChunkPayload(payload: string): AdapterStreamEvent[] {
   const events: AdapterStreamEvent[] = [];
 
   for (const choice of parsed.choices ?? []) {
+    // 每个 choice 里拿增量对象，缺省时回退为空对象，避免大量可选链分支。
     const delta = choice.delta ?? {};
 
     if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) {
@@ -42,6 +52,7 @@ function parseChunkPayload(payload: string): AdapterStreamEvent[] {
     }
 
     for (const toolCall of delta.tool_calls ?? []) {
+      // 这里先组装可变对象，最后一次性 spread 到事件，避免写出大量 undefined 字段。
       const mutable: MutableToolDelta = {};
 
       if (toolCall.id !== undefined) {
@@ -67,11 +78,15 @@ function parseChunkPayload(payload: string): AdapterStreamEvent[] {
   return events;
 }
 
+/**
+ * 解析完整 SSE 文本（可包含多个 event block）。
+ */
 export function parseSseText(text: string): AdapterStreamEvent[] {
   const events: AdapterStreamEvent[] = [];
   const blocks = text.split(/\r?\n\r?\n/);
 
   for (const block of blocks) {
+    // 一个 block 可能有多行 data，需要拼接后再做 JSON 解析。
     const dataLines = block
       .split(/\r?\n/)
       .filter((line) => line.startsWith("data:"))
@@ -87,6 +102,12 @@ export function parseSseText(text: string): AdapterStreamEvent[] {
   return events;
 }
 
+/**
+ * 从 Response.body 流式读取并持续解析 SSE。
+ * 做法：
+ * - 按双换行切 block
+ * - 保留最后一个不完整块到 buffer，等待下一批字节
+ */
 export async function readSseStream(response: Response): Promise<readonly AdapterStreamEvent[]> {
   if (response.body === null) {
     return [];
@@ -109,6 +130,7 @@ export async function readSseStream(response: Response): Promise<readonly Adapte
     buffer = parts.pop() ?? "";
 
     for (const part of parts) {
+      // parseSseText 期望完整 block，这里补上分隔换行。
       events.push(...parseSseText(`${part}\n\n`));
     }
   }

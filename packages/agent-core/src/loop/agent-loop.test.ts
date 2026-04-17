@@ -1,3 +1,9 @@
+/**
+ * 本测试聚焦“human-in-loop 拒绝工具”路径：
+ * - 验证 deny 策略下不会触发工具执行
+ * - 验证会回填固定拒绝错误给模型
+ * - 验证模型可继续产生最终文本回复
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   IncrementalIdGenerator,
@@ -29,6 +35,7 @@ function createMockTraceStore(): TraceStore & { traces: TraceRecord[] } {
 
 describe("agent loop human-in-loop", () => {
   it("approvalPolicy=deny 时不会执行工具，并回填固定拒绝错误", async () => {
+    // 第一轮：模型只返回 tool_call；第二轮：模型读取 tool_result 后返回最终答复。
     const toolStream = [
       'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read_file","arguments":"{\\"path\\":\\"a.txt\\"}"}}]}}]}',
       "",

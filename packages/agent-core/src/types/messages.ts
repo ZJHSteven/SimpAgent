@@ -14,6 +14,10 @@ export type ContextRole =
   | "tool"
   | "thinking";
 
+/**
+ * 多模态内容分片。
+ * 这里保留了 text / image_url / file 三种常见形态，便于后续映射到不同厂商协议。
+ */
 export type ContextContentPart =
   | {
       readonly type: "text";
@@ -37,6 +41,9 @@ export type ContextContentPart =
 
 export type ContextContent = string | readonly ContextContentPart[];
 
+/**
+ * selector 用于“上下文裁剪 / 精确定位”场景，便于做回溯、fork 或 message targeting。
+ */
 export interface ContextSelector {
   readonly role?: ContextRole;
   readonly index?: number;
@@ -44,6 +51,10 @@ export interface ContextSelector {
   readonly path?: readonly string[];
 }
 
+/**
+ * SimpAgent 的统一消息结构。
+ * 说明：大量字段为可选，目的是减少不同消息角色之间的结构浪费。
+ */
 export interface ContextMessage {
   readonly id: SimpAgentId;
   readonly role: ContextRole;
@@ -58,6 +69,9 @@ export interface ContextMessage {
   readonly metadata?: JsonObject;
 }
 
+/**
+ * 从多模态 content 中抽取纯文本（仅拼接 text 分片）。
+ */
 export function textOfContent(content: ContextContent): string {
   if (typeof content === "string") {
     return content;
@@ -69,6 +83,10 @@ export function textOfContent(content: ContextContent): string {
     .join("");
 }
 
+/**
+ * 创建文本消息的工厂函数。
+ * 用条件展开语法避免把 undefined 字段写入结果对象，保持 payload 干净。
+ */
 export function createTextMessage(input: {
   readonly id: SimpAgentId;
   readonly role: ContextRole;
@@ -97,6 +115,10 @@ export function createTextMessage(input: {
   };
 }
 
+/**
+ * 运行时断言：仅当 value 是 JSON 对象时返回，否则抛错。
+ * 常用于边界层校验外部输入。
+ */
 export function asJsonObject(value: JsonValue): JsonObject {
   if (typeof value === "object" && value !== null && !Array.isArray(value)) {
     return value;

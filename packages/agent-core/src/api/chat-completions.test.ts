@@ -1,3 +1,9 @@
+/**
+ * 本测试覆盖 chat-completions 适配器的三条关键链路：
+ * 1) 请求体组装（过滤 thinking、保留 extra、携带 tools）
+ * 2) SSE 增量解析与工具调用拼装
+ * 3) 发送请求时的非流式响应处理
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   assembleToolCalls,
@@ -74,6 +80,7 @@ describe("Chat Completions adapter", () => {
   });
 
   it("发送请求时支持 mock fetch 非流式响应", async () => {
+    // 通过 mock fetch 精确控制响应，确保测试稳定且不依赖外网。
     const fetchFn = vi.fn(async () => {
       return new Response(
         JSON.stringify({

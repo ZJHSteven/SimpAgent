@@ -1,3 +1,9 @@
+/**
+ * 本文件实现 Chat Completions 适配层：
+ * - 将内部 ContextMessage 转换为厂商 wire message
+ * - 构造 OpenAI-compatible 请求体
+ * - 统一解析流式/非流式返回为 AdapterStreamEvent
+ */
 import type {
   AdapterStreamEvent,
   ChatCompletionAdapterInput,
@@ -30,19 +36,30 @@ interface MutableToolCallAssembly {
   argumentsText: string;
 }
 
+/**
+ * 去掉 baseUrl 尾部多余斜杠，避免路径拼接出现 "//v1/..."。
+ */
 function trimSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
+/**
+ * 判断值是否为“纯对象”（非 null、非数组）。
+ */
 function isPlainObject(value: JsonValue | undefined): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * 将内部消息转为 provider 可接受的消息结构。
+ * 注意：thinking 是内部消息，不应发送给模型，因此会被过滤。
+ */
 function toWireMessages(messages: readonly ContextMessage[]): WireMessage[] {
   const wireMessages: WireMessage[] = [];
 
   for (const message of messages) {
     if (message.role === "thinking") {
+      // 内部思考消息只用于本地 trace/回放，不能进模型上下文。
       continue;
     }
 
@@ -69,6 +86,10 @@ function toWireMessages(messages: readonly ContextMessage[]): WireMessage[] {
   return wireMessages;
 }
 
+/**
+ * 合并策略级 extra 与调用级 extra。
+ * 规则：调用级覆盖策略级（后者优先级更高）。
+ */
 function mergeExtra(base: JsonObject | undefined, override: JsonObject | undefined): JsonObject {
   return {
     ...(base ?? {}),
@@ -76,6 +97,9 @@ function mergeExtra(base: JsonObject | undefined, override: JsonObject | undefin
   };
 }
 
+/**
+ * 构建标准 Chat Completions 请求。
+ */
 export function buildChatCompletionsRequest(input: ChatCompletionAdapterInput): ObservableHttpRequest {
   const extra = mergeExtra(input.strategy.extra, input.extra);
   const body: Record<string, JsonValue> = {
@@ -87,6 +111,7 @@ export function buildChatCompletionsRequest(input: ChatCompletionAdapterInput): 
   };
 
   if (input.tools.length > 0) {
+    // 仅当存在工具时才注入 tools 字段，减少无用 payload。
     body.tools = input.tools.map((tool) => ({
       type: "function",
       function: {
@@ -108,6 +133,9 @@ export function buildChatCompletionsRequest(input: ChatCompletionAdapterInput): 
   };
 }
 
+/**
+ * 解析非流式 JSON 响应到统一事件列表。
+ */
 function parseNonStreamResponse(payload: JsonObject): AdapterStreamEvent[] {
   const choices = payload.choices;
 
@@ -141,6 +169,10 @@ function parseNonStreamResponse(payload: JsonObject): AdapterStreamEvent[] {
   return events;
 }
 
+/**
+ * 把 tool_call_delta 分片组装成完整工具调用列表。
+ * 核心：按 index 聚合，同一 index 的参数片段顺序拼接。
+ */
 export function assembleToolCalls(events: readonly AdapterStreamEvent[]) {
   const calls = new Map<number, MutableToolCallAssembly>();
 
@@ -173,6 +205,9 @@ export function assembleToolCalls(events: readonly AdapterStreamEvent[]) {
   }));
 }
 
+/**
+ * 发送请求并返回统一响应结构。
+ */
 export async function sendChatCompletionsRequest(input: {
   readonly adapterInput: ChatCompletionAdapterInput;
   readonly fetchFn: FetchLike;
@@ -189,8 +224,10 @@ export async function sendChatCompletionsRequest(input: {
   let events: readonly AdapterStreamEvent[];
 
   if (input.adapterInput.stream) {
+    // 流式模式：从 SSE 逐块解析事件。
     events = await readSseStream(response);
   } else {
+    // 非流式模式：一次性 JSON 解析并映射为事件。
     const payload = (await response.json()) as JsonObject;
     events = parseNonStreamResponse(payload);
   }

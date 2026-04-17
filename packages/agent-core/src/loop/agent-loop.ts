@@ -1,3 +1,8 @@
+/**
+ * 本文件实现单次 turn 的核心执行循环（Agent Loop）。
+ * 典型流程：
+ * user -> model -> tool_calls -> human approval -> tool_result -> model -> ... -> done
+ */
 import { assembleToolCalls, sendChatCompletionsRequest } from "../api/chat-completions.js";
 import type { FetchLike, ProviderStrategy } from "../types/api.js";
 import type { IdGenerator, RuntimeClock } from "../types/common.js";
@@ -36,6 +41,9 @@ export interface RunAgentTurnResult {
   readonly trace: TraceRecord;
 }
 
+/**
+ * 解析工具参数：空字符串视为 {}，否则按 JSON 解析。
+ */
 function parseToolArguments(toolCall: ToolCallRequest): unknown {
   if (toolCall.argumentsText.trim().length === 0) {
     return {};
@@ -44,10 +52,19 @@ function parseToolArguments(toolCall: ToolCallRequest): unknown {
   return JSON.parse(toolCall.argumentsText);
 }
 
+/**
+ * 将工具结果序列化为可写入 tool 消息的文本。
+ */
 function stringifyToolResult(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+/**
+ * 执行单次 Agent turn。
+ * 说明：
+ * - maxToolIterations 用于防止异常循环导致无限调用工具。
+ * - 过程中的关键片段会进入 trace（请求、响应事件、审批、执行结果）。
+ */
 export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTurnResult> {
   const createdAt = input.clock.now();
   const currentMessages: ContextMessage[] = [
@@ -73,6 +90,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
   });
 
   for (let iteration = 0; iteration < (input.maxToolIterations ?? 3); iteration += 1) {
+    // 每一轮都带上当前上下文与可用工具，向模型请求下一步动作。
     const adapterResponse = await sendChatCompletionsRequest({
       adapterInput: {
         strategy: input.strategy,
@@ -92,6 +110,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
       responseEvents.push(event);
 
       if (event.type === "message_delta") {
+        // 实时把增量透传给上层订阅者（例如 SSE 客户端）。
         assistantText += event.delta;
         await input.onEvent({
           type: "message_delta",
@@ -102,6 +121,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
       }
 
       if (event.type === "thinking_delta") {
+        // thinking 只做本地回放和诊断，不直接回给最终用户界面（由上层决定）。
         thinkingText += event.delta;
         await input.onEvent({
           type: "thinking_delta",
@@ -126,6 +146,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     }
 
     if (assistantText.length > 0 || toolCalls.length > 0) {
+      // 即使 assistantText 为空，只要有 toolCalls，也要落一条 assistant 消息承载调用信息。
       currentMessages.push(
         createTextMessage({
           id: input.idGenerator.nextId("msg"),
@@ -138,6 +159,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     }
 
     if (toolCalls.length === 0) {
+      // 没有工具调用时，说明这一轮可直接结束。
       break;
     }
 
@@ -163,6 +185,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
       });
 
       const approval =
+        // 审批策略优先由配置决定，ask 才走 runtime 的人审流程。
         input.approvalPolicy === "always_approve"
           ? { decision: "approve" as const, reason: "配置允许自动执行工具。" }
           : input.approvalPolicy === "deny"
@@ -179,6 +202,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
       toolResults.push({ toolCall, result });
 
       currentMessages.push(
+        // 工具结果通过 tool 角色消息回填给模型，驱动下一轮继续推理。
         createTextMessage({
           id: input.idGenerator.nextId("msg"),
           role: "tool",
@@ -200,6 +224,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
   }
 
   const firstRequest = requests[0];
+  // 同时保留 request（首请求）和 requests（完整序列），兼顾简洁展示与完整追溯。
   const traceWithoutFirstRequest = {
     threadId: input.threadId,
     turnId: input.turnId,

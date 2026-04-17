@@ -1,3 +1,7 @@
+/**
+ * 本文件提供基于 JSON 文件的 TraceStore 实现。
+ * 存储模型：每个 thread 一个 json 文件，内部含 thread 快照 + traces 数组。
+ */
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { JsonObject, TraceRecord, TraceStore } from "@simpagent/agent-core";
@@ -19,6 +23,7 @@ export class JsonFileTraceStore implements TraceStore {
     const raw = await readFile(path, "utf8").catch(() => undefined);
 
     if (raw === undefined) {
+      // 文件不存在时返回空结构，便于上层无条件追加。
       return { traces: [] };
     }
 

@@ -12,6 +12,8 @@
     - [x] 实现 Node 文件、shell、trace store、TOML 配置读取和 CLI/server 工具审批。
     - [x] 已补齐工具执行后继续模型循环：assistant tool_calls -> tool result -> 下一次模型请求。
     - [x] 已重新通过 `npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
+    - [x] 已为 `packages/agent-core` 与三个 runtime（`runtime-node`/`runtime-cloudflare-worker`/`runtime-tauri`）下全部 `src/*.ts` 文件补齐教学向中文注释（文件头、类型/函数说明、关键逻辑注释）。
+    - [x] 注释补齐后再次通过 `npm run typecheck` 与 `npm test`（3 个测试文件、9 个测试全部通过）。
 - 正在做：
     - [ ] 等待填入真实 `simpagent.toml` 后进行手工 DeepSeek/OpenAI-compatible smoke test。
 - 下一步：复制 `simpagent.example.toml` 为 `simpagent.toml`，填入真实模型配置后执行 CLI/server smoke test。

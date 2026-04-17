@@ -1,6 +1,14 @@
+/**
+ * 本文件定义 Agent 在运行过程中的事件协议，并提供 SSE 编码辅助函数。
+ * 前端或上层服务可以订阅这些事件，实现实时 UI 回放与调试。
+ */
 import type { JsonObject, JsonValue, SimpAgentId } from "./common.js";
 import type { ToolApprovalRequest, ToolCallRequest, ToolExecutionResult } from "./tools.js";
 
+/**
+ * AgentEvent 是统一事件联合类型。
+ * 采用 discriminated union（type 字段）以便 switch 时拿到精确类型缩小。
+ */
 export type AgentEvent =
   | {
       readonly type: "run_started";
@@ -58,6 +66,12 @@ export type AgentEvent =
       readonly runId: SimpAgentId;
     };
 
+/**
+ * 将内部事件编码成标准 SSE 文本块。
+ * 形如：
+ * event: xxx
+ * data: {...json...}
+ */
 export function encodeSseEvent(event: AgentEvent): string {
   return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
 }

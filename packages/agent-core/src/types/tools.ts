@@ -7,6 +7,9 @@ import type { JsonObject, JsonValue, SimpAgentId } from "./common.js";
 
 export type ApprovalPolicy = "ask" | "deny" | "always_approve";
 
+/**
+ * ToolDefinition 是工具注册时的规范描述，形状对齐 OpenAI function tool。
+ */
 export interface ToolDefinition {
   readonly id: SimpAgentId;
   readonly name: string;
@@ -14,12 +17,18 @@ export interface ToolDefinition {
   readonly parameters: JsonObject;
 }
 
+/**
+ * 模型发起的一次工具调用请求。
+ */
 export interface ToolCallRequest {
   readonly id: string;
   readonly name: string;
   readonly argumentsText: string;
 }
 
+/**
+ * 人审请求对象：包含原始调用、解析参数和风险摘要。
+ */
 export interface ToolApprovalRequest {
   readonly threadId: SimpAgentId;
   readonly turnId: SimpAgentId;
@@ -40,11 +49,17 @@ export interface ToolExecutionResult {
   readonly content: JsonValue;
 }
 
+/**
+ * ToolExecutor 由 runtime 注入，负责工具的实际执行。
+ */
 export interface ToolExecutor {
   listTools(): readonly ToolDefinition[];
   executeTool(toolCall: ToolCallRequest): Promise<ToolExecutionResult>;
 }
 
+/**
+ * 固定拒绝结果：当人审拒绝时回填给模型，而不是直接抛异常中断。
+ */
 export const deniedToolResult: ToolExecutionResult = {
   ok: false,
   content: {

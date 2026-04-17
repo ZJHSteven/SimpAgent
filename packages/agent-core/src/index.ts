@@ -1,3 +1,7 @@
+/**
+ * agent-core 对外统一导出入口。
+ * 约定：上层包只从这里 import，避免深入内部目录导致耦合。
+ */
 export * from "./types/common.js";
 export * from "./types/messages.js";
 export * from "./types/tools.js";

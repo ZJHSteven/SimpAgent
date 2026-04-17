@@ -1,3 +1,9 @@
+/**
+ * 本文件实现内置工具定义与执行器。
+ * 设计目标：
+ * - 工具协议面向模型保持稳定
+ * - 具体执行下沉到 runtime 注入能力
+ */
 import type { JsonObject } from "../types/common.js";
 import type { RuntimeServices } from "../runtime/interfaces.js";
 import type { ToolCallRequest, ToolDefinition, ToolExecutionResult, ToolExecutor } from "../types/tools.js";
@@ -46,6 +52,9 @@ const shellCommandSchema: JsonObject = {
   additionalProperties: false
 };
 
+/**
+ * 对外暴露给模型的内置工具列表。
+ */
 export const builtinToolDefinitions: readonly ToolDefinition[] = [
   {
     id: "tool_read_file",
@@ -67,6 +76,10 @@ export const builtinToolDefinitions: readonly ToolDefinition[] = [
   }
 ];
 
+/**
+ * 解析模型传入的 argumentsText。
+ * 约束：必须是 JSON object，避免传入数组/原始值导致后续歧义。
+ */
 function parseArguments(toolCall: ToolCallRequest): JsonObject {
   const parsed = JSON.parse(toolCall.argumentsText.length === 0 ? "{}" : toolCall.argumentsText) as unknown;
 
@@ -85,6 +98,7 @@ export class RuntimeToolExecutor implements ToolExecutor {
   }
 
   async executeTool(toolCall: ToolCallRequest): Promise<ToolExecutionResult> {
+    // 先统一解析参数，再按 name 路由到对应 runtime 能力。
     const args = parseArguments(toolCall);
 
     if (toolCall.name === "read_file") {
@@ -98,6 +112,7 @@ export class RuntimeToolExecutor implements ToolExecutor {
     }
 
     if (toolCall.name === "edit_file") {
+      // edit_file 的 edits 需要做一次宽松清洗，避免模型漏字段导致运行时崩溃。
       const edits = Array.isArray(args.edits)
         ? args.edits.map((edit) => {
             const item = edit as { oldText?: unknown; newText?: unknown };
@@ -120,6 +135,7 @@ export class RuntimeToolExecutor implements ToolExecutor {
       return { ok: result.exitCode === 0, content: result as unknown as JsonObject };
     }
 
+    // 未知工具不抛异常，返回结构化错误，便于模型在下一轮自我修正。
     return {
       ok: false,
       content: {

@@ -1,8 +1,17 @@
+/**
+ * 本文件实现 Node 的 shell 命令执行运行时。
+ * 约束：
+ * - 使用 shell=true 兼容常见命令拼接场景
+ * - 提供 timeout，避免命令无界阻塞
+ */
 import { spawn } from "node:child_process";
 import { cwd as processCwd } from "node:process";
 import type { ShellCommandInput, ShellCommandOutput, ShellRuntime } from "@simpagent/agent-core";
 
 export class NodeShellRuntime implements ShellRuntime {
+  /**
+   * 执行 shell 命令并收集 stdout/stderr/退出码/耗时。
+   */
   runCommand(input: ShellCommandInput): Promise<ShellCommandOutput> {
     const startedAt = Date.now();
     const cwd = input.cwd ?? processCwd();
@@ -14,6 +23,7 @@ export class NodeShellRuntime implements ShellRuntime {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    // 超时后主动 kill 子进程，并在返回值中标记 timedOut。
     const timeout = setTimeout(() => {
       timedOut = true;
       child.kill();

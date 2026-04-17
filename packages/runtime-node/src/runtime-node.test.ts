@@ -1,3 +1,10 @@
+/**
+ * runtime-node 关键能力测试：
+ * - 配置解析
+ * - 文件读写/替换/删除
+ * - shell 执行
+ * - trace 落盘
+ */
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
