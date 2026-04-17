@@ -977,6 +977,13 @@
   padding: 0;
 }
 
+/* 受控 textarea 继承了全局 :focus-visible 后，会在圆角 composer 内被裁切成上下两条蓝线。
+   这里去掉内部输入框自己的焦点环，把焦点反馈交给外层 composer 容器。 */
+.composer-textarea:focus,
+.composer-textarea:focus-visible {
+  outline: none;
+}
+
 .composer-textarea::placeholder {
   color: var(--text-tertiary, #8d8d86);
   opacity: 1;
@@ -984,6 +991,13 @@
 
 .composer-surface-local {
   border-radius: 28px;
+}
+
+/* 外层焦点反馈比 textarea outline 更接近 ChatGPT 输入器：不会出现上下横线，也保留键盘可见焦点。 */
+.composer-surface-local:focus-within {
+  box-shadow:
+    var(--shadow-composer),
+    inset 0 0 0 1px rgb(15 143 112 / 28%);
 }
 
 @media (max-width: 820px) {

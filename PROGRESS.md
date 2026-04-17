@@ -20,9 +20,10 @@
     - [x] 已通过 `frontend` 的 `npm run test:e2e`（3 个用例全部通过）。
     - [x] 已完成最终验证：`frontend` 的 `npm run lint`、`npm run build`、`npm run test:e2e` 全部通过。
     - [x] 已完成根项目回归：`npm run typecheck`、`npm run build`、`npm run lint`、`npm test` 全部通过。
+    - [x] 已修复 React 受控 `textarea` 聚焦时出现上下两条蓝色横线的问题：内部输入框不再绘制 outline，焦点反馈移到外层 composer。
 - 正在做：
     - [ ] 等待人工查看 React 页面视觉效果，后续可裁剪 ChatGPT 兼容 CSS。
-- 下一步：启动 `frontend` 开发服务器人工对照页面；若视觉确认稳定，再逐步清理兼容 CSS 中未使用的规则和字体路径警告。
+- 下一步：继续人工对照页面；若视觉确认稳定，再逐步清理兼容 CSS 中未使用的规则和字体路径警告。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`chatgpt-temp/tem.html` 保留为视觉和行为参考，不删除。（原因：迁移需要可回看原始 DOM、样式和交互。）
