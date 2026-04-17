@@ -23,6 +23,7 @@
     - [x] 已重新定位并修复 React 受控 `textarea` 聚焦视觉问题：两条蓝线来自兼容 CSS 的 ProseMirror focus `box-shadow`，绿色外圈来自上一版新增的 `.composer-surface-local:focus-within` 内描边。
     - [x] 已移除根级 TypeScript 配置中的弃用 `baseUrl`，并将 `paths` 目标改为显式 `./` 相对路径。
     - [x] 已启用 `forceConsistentCasingInFileNames`，提前发现跨操作系统大小写不一致的导入路径。
+    - [x] 已为 `packages/runtime-node`、`apps/cli`、`apps/server` 显式声明 `types: ["node"]`，适配 TypeScript 6 不再默认加载全部 `@types/*` 的行为。
 - 正在做：
     - [ ] 验证 TypeScript 配置迁移后的 typecheck/build/test 是否全部通过。
 - 下一步：完成根项目回归验证；若通过，再继续人工对照 React 页面并按需裁剪兼容 CSS。
@@ -34,6 +35,7 @@
 - 决策D：输入框用受控 `textarea` 承载真实文本。（原因：`contenteditable` 很容易绕过 React 状态管理，长期不可控。）
 - 决策E：样式先做兼容迁移，再考虑清理。（原因：无感知迁移的第一优先级是视觉稳定。）
 - 决策F：不使用 `"ignoreDeprecations": "6.0"` 静音 `baseUrl` 弃用提示，而是直接迁移到显式 `paths`。（原因：静音只能覆盖 TypeScript 6 过渡期，TypeScript 7 会移除弃用行为。）
+- 决策G：只在 Node 运行环境相关项目里声明 `types: ["node"]`，不放到根配置。（原因：避免把 Node 全局类型扩散到 Cloudflare Worker 或纯核心包，减少运行时边界混淆。）
 
 ## 常见坑 / 复现方法
 - 坑1：当前工作区已有未跟踪文件 `chatgpt-temp/extract_svg.py` 与 `chatgpt-temp/extracted_symbols.txt`；本轮不要误删或误提交无关文件。
