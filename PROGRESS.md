@@ -17,9 +17,10 @@
   - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
   - [x] 已将 `frontend` 统一迁移到 Tailwind CSS 4 + `@tailwindcss/vite`，并用 shadcn CLI 初始化 `components.json`、`button` 和 `cn` 工具函数。
+  - [x] 已在 `ai-element-refactor` 分支安装 AI Elements 组件源码和配套 shadcn/ui 组件，作为本轮前端重构基线。
 - 正在做：
-  - [x] 已完成前后端连接实现、shadcn/Tailwind 4 配置整理与验证。
-- 下一步：新增 shadcn 组件时进入 `frontend/` 后执行 `npx shadcn@latest add <component>`；启动联调仍使用后端 `npm run server` 和前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
+  - [ ] 正在用 AI Elements 与 shadcn/ui 替换旧 ChatGPT 复刻业务 UI，目标是移除 `chatgpt-compat.css` 和旧业务 class。
+- 下一步：补装 shadcn `sidebar`，重建三栏骨架，再替换聊天、输入框、审批和思考栏；启动联调仍使用后端 `npm run server` 和前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
@@ -28,6 +29,7 @@
 - 决策D：run 完成后前端重新拉取 thread 快照，但保留本轮 live thought steps。（原因：后端 thread 快照有最终消息，live steps 有 trace 等可观测事件，两者不能互相覆盖。）
 - 决策E：server 在 `done/error` 后主动结束 SSE response。（原因：浏览器 EventSource 和自动化测试都不应无限挂着已结束 run 的连接。）
 - 决策F：`frontend` 使用 Tailwind CSS 4 的 CSS-first 配置，不再保留 `tailwind.config.js` / `postcss.config.js`。（原因：Tailwind 4 的 Vite 官方接入方式是 `@tailwindcss/vite` + `@import "tailwindcss"`；shadcn v4 的 `components.json` 中 `tailwind.config` 应为空。）
+- 决策G：本轮删除业务层旧 CSS，不删除 AI Elements/shadcn 组件源码内部自带的默认 Tailwind class。（原因：组件库源码里的 class 是组件默认实现；真正需要移除的是项目自己复制和手写的视觉层。）
 
 ## 常见坑 / 复现方法
 - 坑1：`chatgpt-temp/` 是视觉参考归档，不是当前 React 主应用入口。
@@ -38,4 +40,5 @@
 - 坑6：前端 run done 后会重新拉取 thread 快照；如果直接覆盖思考步骤，会丢掉 live `trace_snapshot` 等事件，所以刷新消息时保留本轮 live thought steps。
 - 坑7：shadcn 命令必须在 `frontend/` 下执行；仓库根目录不是 Vite 应用入口，直接在根目录跑会被识别成 `Manual` 或找不到 Tailwind CSS 入口。
 - 坑8：Tailwind 4 正常情况下没有 `tailwind.config.js`；判断是否装好应看 `npx shadcn@latest info --json` 里的 `tailwindVersion: "v4"` 和 `tailwindCss: "src/index.css"`。
+- 坑9：AI Elements 当前源码会用到 `String.replaceAll`、`Array.at`、`Array.toReversed`，前端 `tsconfig` 至少要使用 ES2023 lib，单靠 Vite build 不能替代严格类型检查。
 - 复测记录：本轮已通过 `npm run typecheck`、`npm test`、`npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`、`cd frontend; npx tsc --noEmit --pretty false`、`cd frontend; npx shadcn@latest info --json`。
