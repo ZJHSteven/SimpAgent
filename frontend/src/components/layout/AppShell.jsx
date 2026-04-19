@@ -8,11 +8,47 @@
  * 3. 右侧思考栏只在聊天入口打开，用 AI Elements ChainOfThought 渲染可观测步骤。
  */
 
+import { lazy, Suspense } from 'react'
 import { ChatMain } from './ChatMain.jsx'
 import { Sidebar } from './Sidebar.jsx'
-import { ThoughtPanel } from './ThoughtPanel.jsx'
-import { WorkspacePage } from './WorkspacePages.jsx'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
+
+/*
+ * 首屏加载策略说明：
+ * Chat 是用户进入页面后的默认工作区，所以 ChatMain 保持同步加载。
+ * 其它工作区和右侧思考栏不是首屏必需内容，如果同步导入，会把 ReactFlow、
+ * JSX 预览、motion 动画等重型依赖一起塞进首页主入口，导致 Vite 冷启动和线上首屏都变慢。
+ */
+const LazyThoughtPanel = lazy(() =>
+  import('./ThoughtPanel.jsx').then((module) => ({
+    default: module.ThoughtPanel,
+  })),
+)
+
+const LazyWorkspacePage = lazy(() =>
+  import('./WorkspacePages.jsx').then((module) => ({
+    default: module.WorkspacePage,
+  })),
+)
+
+function LazyPanelFallback() {
+  return (
+    <aside
+      aria-label="思考详情加载中"
+      className="hidden w-96 shrink-0 border-l bg-background p-4 text-sm text-muted-foreground lg:flex"
+    >
+      正在加载思考详情...
+    </aside>
+  )
+}
+
+function LazyWorkspaceFallback() {
+  return (
+    <section className="flex min-h-svh items-center justify-center text-sm text-muted-foreground">
+      正在加载工作区...
+    </section>
+  )
+}
 
 export function AppShell({
   activeWorkspace,
@@ -76,16 +112,20 @@ export function AppShell({
             />
 
             {isThoughtPanelOpen ? (
-              <ThoughtPanel
-                isBusy={isBusy}
-                pendingApprovals={pendingApprovals}
-                thoughtSteps={thoughtSteps}
-                onClose={onCloseThoughtPanel}
-              />
+              <Suspense fallback={<LazyPanelFallback />}>
+                <LazyThoughtPanel
+                  isBusy={isBusy}
+                  pendingApprovals={pendingApprovals}
+                  thoughtSteps={thoughtSteps}
+                  onClose={onCloseThoughtPanel}
+                />
+              </Suspense>
             ) : null}
           </div>
         ) : (
-          <WorkspacePage workspaceId={activeWorkspace} />
+          <Suspense fallback={<LazyWorkspaceFallback />}>
+            <LazyWorkspacePage workspaceId={activeWorkspace} />
+          </Suspense>
         )}
       </SidebarInset>
     </SidebarProvider>
