@@ -1,7 +1,7 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：TS 后端首版纵向跑通已完成；`tsconfig.base.json` 已完成 TypeScript 6/7 兼容性清理，移除了弃用的 `baseUrl`。
+- 现状：TS 后端首版纵向跑通已完成；当前任务切换为把 `chatgpt-temp/tem.html` 无感知迁移到 `frontend/` React 静态界面。
 - 已完成：
     - [x] 后端 monorepo、agent-core、runtime、CLI/server 与测试已完成并通过历史验收。
     - [x] 明确本轮前端迁移目标：视觉尽量不变，底层改成 React 组件化和状态驱动。
@@ -21,13 +21,10 @@
     - [x] 已完成最终验证：`frontend` 的 `npm run lint`、`npm run build`、`npm run test:e2e` 全部通过。
     - [x] 已完成根项目回归：`npm run typecheck`、`npm run build`、`npm run lint`、`npm test` 全部通过。
     - [x] 已重新定位并修复 React 受控 `textarea` 聚焦视觉问题：两条蓝线来自兼容 CSS 的 ProseMirror focus `box-shadow`，绿色外圈来自上一版新增的 `.composer-surface-local:focus-within` 内描边。
-    - [x] 已移除根级 TypeScript 配置中的弃用 `baseUrl`，并将 `paths` 目标改为显式 `./` 相对路径。
-    - [x] 已启用 `forceConsistentCasingInFileNames`，提前发现跨操作系统大小写不一致的导入路径。
-    - [x] 已为 `packages/runtime-node`、`apps/cli`、`apps/server` 显式声明 `types: ["node"]`，适配 TypeScript 6 不再默认加载全部 `@types/*` 的行为。
-    - [x] 已完成配置迁移回归：`npm run typecheck`、`npm run build`、`npm run lint`、`npm test`、`npx -p typescript@6 tsc -b ... --pretty false` 全部通过。
+    - [x] 已补齐 `apps/cli/src/index.ts` 与 `apps/server/src/index.ts` 的教学向中文注释（文件头、函数头、关键流程注释），并通过 `npm run typecheck` 与 `npm test` 回归验证。
 - 正在做：
     - [ ] 等待人工查看 React 页面视觉效果，后续可裁剪 ChatGPT 兼容 CSS。
-- 下一步：继续人工对照 React 页面；若视觉确认稳定，再逐步清理兼容 CSS 中未使用的规则和字体路径警告。
+- 下一步：继续人工对照页面；若视觉确认稳定，再逐步清理兼容 CSS 中未使用的规则和字体路径警告。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`chatgpt-temp/tem.html` 保留为视觉和行为参考，不删除。（原因：迁移需要可回看原始 DOM、样式和交互。）
@@ -35,8 +32,6 @@
 - 决策C：`frontend/` 暂不强行加入根 npm workspace。（原因：当前前端已有独立 `package.json` 和 lockfile，先降低迁移范围。）
 - 决策D：输入框用受控 `textarea` 承载真实文本。（原因：`contenteditable` 很容易绕过 React 状态管理，长期不可控。）
 - 决策E：样式先做兼容迁移，再考虑清理。（原因：无感知迁移的第一优先级是视觉稳定。）
-- 决策F：不使用 `"ignoreDeprecations": "6.0"` 静音 `baseUrl` 弃用提示，而是直接迁移到显式 `paths`。（原因：静音只能覆盖 TypeScript 6 过渡期，TypeScript 7 会移除弃用行为。）
-- 决策G：只在 Node 运行环境相关项目里声明 `types: ["node"]`，不放到根配置。（原因：避免把 Node 全局类型扩散到 Cloudflare Worker 或纯核心包，减少运行时边界混淆。）
 
 ## 常见坑 / 复现方法
 - 坑1：当前工作区已有未跟踪文件 `chatgpt-temp/extract_svg.py` 与 `chatgpt-temp/extracted_symbols.txt`；本轮不要误删或误提交无关文件。
