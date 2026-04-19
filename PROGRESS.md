@@ -30,8 +30,8 @@
     - [x] 已补充流式回调与工具异常回填测试，并通过 `npm run typecheck`、`npm test`。
     - [x] 已新增根目录 `README.md`，说明项目结构、配置、CLI/server 用法、agent loop 和常见问题。
 - 正在做：
-    - [ ] 执行完整回归：`npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
-- 下一步：完整回归通过后，提交 README 与进度文档，并汇总本轮修复结果。
+    - [x] 已完成完整回归：`npm run typecheck`、`npm run build`、`npm run lint`、`npm test` 全部通过。
+- 下一步：可用 CLI 实测真实模型服务下的 token 打字效果；若接入前端，再复用 server SSE 事件流展示同一套增量事件。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`chatgpt-temp/tem.html` 保留为视觉和行为参考，不删除。（原因：迁移需要可回看原始 DOM、样式和交互。）
@@ -53,4 +53,4 @@
 - 坑8：当前 CLI 的“实时打字”只是打印 `message_delta`，但 `message_delta` 事件本身被 adapter 延后到完整 SSE 结束后才产生。
 - 坑9：工具执行链路里一旦 `JSON.parse`、文件读写、shell runtime 抛错，当前实现会中断整个 turn，模型拿不到错误信息。
 - 坑10：README 示例里 Windows PowerShell 的 `curl` 换行使用反引号；Linux/macOS 用户可把反引号改成反斜杠。
-- 复测记录：`frontend` 的 `npm run lint`、`npm run build`、`npm run test:e2e` 均通过；真实 Chromium computed style 复查显示 focus 输入后 `editorBoxShadow: "none"`，外层 composer 阴影与未聚焦时一致。
+- 复测记录：本轮后端完整回归已通过 `npm run typecheck`、`npm run build`、`npm run lint`、`npm test`；`frontend` 历史复测为 `npm run lint`、`npm run build`、`npm run test:e2e` 均通过。

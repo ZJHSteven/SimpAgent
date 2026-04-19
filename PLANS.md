@@ -77,7 +77,7 @@
    - 将工具参数 JSON 解析异常转换成 `TOOL_ARGUMENT_PARSE_ERROR`。
    - 将 runtime/tool executor 抛出的异常转换成 `TOOL_EXECUTION_ERROR`。
    - 确保错误结果写入 `tool` role 消息，并继续请求模型下一轮。
-5. [ ] **补齐测试**
+5. [x] **补齐测试**
    - 增加 adapter 事件回调的流式顺序测试。
    - 增加工具执行异常不会中断 agent loop 的回归测试。
    - 运行 `npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
@@ -89,7 +89,7 @@
 - 已在 adapter 层新增流式事件回调，CLI/server 可在 SSE 分片到达时收到增量事件。
 - 已在 agent loop 内将工具参数解析失败和 runtime 抛错转换为结构化工具结果，避免直接 fatal。
 - 已新增根目录 `README.md`，说明项目结构、配置、CLI、server、agent loop 和常见问题。
-- 已通过阶段性回归：`npm run typecheck`、`npm test`。
+- 已通过完整回归：`npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
 
 ## 验收标准
 - CLI 能在流式响应尚未完全结束时收到并打印 token 增量。
