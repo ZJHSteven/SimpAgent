@@ -18,9 +18,12 @@
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
   - [x] 已将 `frontend` 统一迁移到 Tailwind CSS 4 + `@tailwindcss/vite`，并用 shadcn CLI 初始化 `components.json`、`button` 和 `cn` 工具函数。
   - [x] 已在 `ai-element-refactor` 分支安装 AI Elements 组件源码和配套 shadcn/ui 组件，作为本轮前端重构基线。
+  - [x] 已补装 shadcn `sidebar`，并用 shadcn Sidebar 重建左侧工作区入口。
+  - [x] 已用 AI Elements `Conversation`、`Message`、`PromptInput`、`ModelSelector`、`Context`、`Confirmation`、`Tool`、`ChainOfThought` 替换聊天主路径、输入框、工具审批和思考栏。
+  - [x] 已删除旧 ChatGPT 复刻组件、`chatgpt-compat.css` 和本地 SVG sprite。
 - 正在做：
-  - [ ] 正在用 AI Elements 与 shadcn/ui 替换旧 ChatGPT 复刻业务 UI，目标是移除 `chatgpt-compat.css` 和旧业务 class。
-- 下一步：补装 shadcn `sidebar`，重建三栏骨架，再替换聊天、输入框、审批和思考栏；启动联调仍使用后端 `npm run server` 和前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
+  - [ ] 正在更新 Playwright 用例并做真实浏览器视觉/行为验收。
+- 下一步：更新 E2E 断言，执行前端完整验证和根项目回归；启动联调仍使用后端 `npm run server` 和前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
@@ -41,4 +44,5 @@
 - 坑7：shadcn 命令必须在 `frontend/` 下执行；仓库根目录不是 Vite 应用入口，直接在根目录跑会被识别成 `Manual` 或找不到 Tailwind CSS 入口。
 - 坑8：Tailwind 4 正常情况下没有 `tailwind.config.js`；判断是否装好应看 `npx shadcn@latest info --json` 里的 `tailwindVersion: "v4"` 和 `tailwindCss: "src/index.css"`。
 - 坑9：AI Elements 当前源码会用到 `String.replaceAll`、`Array.at`、`Array.toReversed`，前端 `tsconfig` 至少要使用 ES2023 lib，单靠 Vite build 不能替代严格类型检查。
+- 坑10：AI Elements 的 Markdown/code 渲染会引入 shiki/mermaid 等异步 chunks，JS chunk 会明显增大；这和删除旧 CSS 是两个不同维度，后续可再做代码分割优化。
 - 复测记录：本轮已通过 `npm run typecheck`、`npm test`、`npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`、`cd frontend; npx tsc --noEmit --pretty false`、`cd frontend; npx shadcn@latest info --json`。

@@ -599,7 +599,7 @@ export function useSimpAgentChat() {
    * 发送用户消息。
    */
   const handleSendMessage = useCallback(
-    async (text) => {
+    async (text, options = {}) => {
       if (runStatus === 'running' || runStatus === 'waiting_for_tool_approval') {
         setComposerHelp({
           text: '当前回复还在进行中，请等待完成后再发送下一条。',
@@ -628,16 +628,34 @@ export function useSimpAgentChat() {
               : item,
           ),
         )
+        const visibleAttachments = (options.files ?? []).map((file, index) => ({
+          id: file.id ?? `attachment-${Date.now()}-${index}`,
+          filename: file.filename ?? file.name ?? '未命名附件',
+          mediaType: file.mediaType ?? file.type ?? 'application/octet-stream',
+          type: file.type ?? 'file',
+          url: file.url,
+        }))
+
         setMessages((currentMessages) => [
           ...currentMessages,
           {
             id: `user-local-${Date.now()}`,
             role: 'user',
             text,
+            attachments: visibleAttachments,
           },
         ])
 
-        const run = await startRun(thread.id, text)
+        if (visibleAttachments.length > 0) {
+          setComposerHelp({
+            text: '附件已在前端展示；当前后端接口暂未接收附件正文，本次只发送文本。',
+            tone: 'normal',
+          })
+        }
+
+        const run = await startRun(thread.id, text, {
+          model: options.model,
+        })
         const assistantId = `assistant-stream-${run.turnId}`
         streamingAssistantIdRef.current = assistantId
         activeRunIdRef.current = run.runId

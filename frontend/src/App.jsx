@@ -10,44 +10,24 @@
 
 import { useCallback, useState } from 'react'
 import { AppShell } from './components/layout/AppShell.jsx'
-import { SettingsModal } from './components/settings/SettingsModal.jsx'
 import { useSimpAgentChat } from './hooks/useSimpAgentChat.js'
 
 function App() {
-  // sidebarState 控制桌面端左侧栏宽度：expanded 是完整侧栏，collapsed 是窄 rail。
-  const [sidebarState, setSidebarState] = useState('collapsed')
+  // 当前左侧工作区入口。chat 是主聊天，其余入口用于展示配置、图流和诊断组件。
+  const [activeWorkspace, setActiveWorkspace] = useState('chat')
 
-  // isMobileSidebarOpen 控制移动端抽屉侧栏，和桌面端 grid 宽度分开，避免两个状态互相干扰。
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
-
-  // isThoughtPanelOpen 控制右侧思考面板的 data-open 和触发按钮 aria-expanded。
+  // 右侧思考栏仍然由 App 托管，因为消息里的“已思考”按钮和右栏关闭按钮都会改它。
   const [isThoughtPanelOpen, setIsThoughtPanelOpen] = useState(false)
 
-  // isSettingsOpen 控制设置弹窗的显示。
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  // 模型选择是纯前端状态，会随下一次 run 一起传给后端；后端不消费时也不影响聊天。
+  const [selectedModel, setSelectedModel] = useState('gpt-4o')
 
   // chatState 是前后端真实连接后的聊天业务状态。
   const chatState = useSimpAgentChat()
 
-  // 切换桌面侧栏：函数式 setState 可以避免闭包读到旧状态。
-  const toggleDesktopSidebar = useCallback(() => {
-    setSidebarState((currentState) =>
-      currentState === 'collapsed' ? 'expanded' : 'collapsed',
-    )
-  }, [])
-
-  // 移动端侧栏显式打开，顶部按钮只绑定一次。
-  const openMobileSidebar = useCallback(() => {
-    setIsMobileSidebarOpen(true)
-  }, [])
-
-  // 移动端侧栏显式关闭，遮罩、关闭按钮、新聊天都会复用这个函数。
-  const closeMobileSidebar = useCallback(() => {
-    setIsMobileSidebarOpen(false)
-  }, [])
-
   // 思考面板支持按钮切换和关闭按钮强制关闭。
   const toggleThoughtPanel = useCallback(() => {
+    setActiveWorkspace('chat')
     setIsThoughtPanelOpen((isOpen) => !isOpen)
   }, [])
 
@@ -58,55 +38,58 @@ function App() {
 
   const handleNewChat = useCallback(() => {
     void chatState.onNewChat()
-    setIsMobileSidebarOpen(false)
+    setActiveWorkspace('chat')
+    setIsThoughtPanelOpen(false)
   }, [chatState])
 
   const handleSelectThread = useCallback(
     (threadId) => {
       void chatState.onSelectThread(threadId)
-      setIsMobileSidebarOpen(false)
+      setActiveWorkspace('chat')
     },
     [chatState],
   )
 
-  const handleSettingsOpen = useCallback(() => {
-    setIsSettingsOpen(true)
+  const handleWorkspaceChange = useCallback((workspaceId) => {
+    setActiveWorkspace(workspaceId)
   }, [])
 
-  const handleSettingsClose = useCallback(() => {
-    setIsSettingsOpen(false)
-  }, [])
+  const handleSendMessage = useCallback(
+    (text, options = {}) =>
+      chatState.onSendMessage(text, {
+        ...options,
+        model: selectedModel,
+      }),
+    [chatState, selectedModel],
+  )
 
   return (
-    <>
-      <AppShell
-        sidebarState={sidebarState}
-        isMobileSidebarOpen={isMobileSidebarOpen}
-        isThoughtPanelOpen={isThoughtPanelOpen}
-        threads={chatState.visibleThreads}
-        activeThreadId={chatState.activeThreadId}
-        searchQuery={chatState.searchQuery}
-        messages={chatState.messages}
-        thoughtSteps={chatState.thoughtSteps}
-        composerHelp={chatState.composerHelp}
-        isBusy={chatState.isBusy}
-        isWaitingForApproval={chatState.isWaitingForApproval}
-        onToggleDesktopSidebar={toggleDesktopSidebar}
-        onOpenMobileSidebar={openMobileSidebar}
-        onCloseMobileSidebar={closeMobileSidebar}
-        onToggleThoughtPanel={toggleThoughtPanel}
-        onCloseThoughtPanel={closeThoughtPanel}
-        onSearchChange={chatState.setSearchQuery}
-        onSelectThread={handleSelectThread}
-        onSendMessage={chatState.onSendMessage}
-        onEmptySubmit={chatState.onEmptySubmit}
-        onComposerInput={chatState.onComposerInput}
-        onNewChat={handleNewChat}
-        onOpenSettings={handleSettingsOpen}
-        onToolApproval={chatState.onToolApproval}
-      />
-      {isSettingsOpen && <SettingsModal onClose={handleSettingsClose} />}
-    </>
+    <AppShell
+      activeWorkspace={activeWorkspace}
+      activeThreadId={chatState.activeThreadId}
+      composerHelp={chatState.composerHelp}
+      isBusy={chatState.isBusy}
+      isThoughtPanelOpen={isThoughtPanelOpen}
+      isWaitingForApproval={chatState.isWaitingForApproval}
+      messages={chatState.messages}
+      pendingApprovals={chatState.pendingApprovals}
+      runStatus={chatState.runStatus}
+      searchQuery={chatState.searchQuery}
+      selectedModel={selectedModel}
+      thoughtSteps={chatState.thoughtSteps}
+      threads={chatState.visibleThreads}
+      onCloseThoughtPanel={closeThoughtPanel}
+      onComposerInput={chatState.onComposerInput}
+      onEmptySubmit={chatState.onEmptySubmit}
+      onModelChange={setSelectedModel}
+      onNewChat={handleNewChat}
+      onSearchChange={chatState.setSearchQuery}
+      onSelectThread={handleSelectThread}
+      onSendMessage={handleSendMessage}
+      onToggleThoughtPanel={toggleThoughtPanel}
+      onToolApproval={chatState.onToolApproval}
+      onWorkspaceChange={handleWorkspaceChange}
+    />
   )
 }
 

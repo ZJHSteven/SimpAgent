@@ -1,91 +1,93 @@
 /*
  * 文件作用：
- * AppShell 是整页布局骨架，负责组合移动遮罩、左侧栏、主聊天区和思考面板。
+ * AppShell 是 AI Elements 重构后的整页骨架。
  *
- * 迁移重点：
- * 旧 HTML 依赖 data-sidebar-state 和 data-open 驱动 CSS。
- * React 版保留这些 data 属性，让现有视觉样式继续工作，但状态来源改为 React。
+ * 核心思路：
+ * 1. 左侧使用 shadcn Sidebar 作为工作区导航，不再依赖旧 ChatGPT 复刻 CSS。
+ * 2. 中间区域根据左侧入口切换：Chat 是真实聊天，其余入口是配置/诊断/图流面板。
+ * 3. 右侧思考栏只在聊天入口打开，用 AI Elements ChainOfThought 渲染可观测步骤。
  */
 
 import { ChatMain } from './ChatMain.jsx'
 import { Sidebar } from './Sidebar.jsx'
 import { ThoughtPanel } from './ThoughtPanel.jsx'
+import { WorkspacePage } from './WorkspacePages.jsx'
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 
 export function AppShell({
-  sidebarState,
-  isMobileSidebarOpen,
-  isThoughtPanelOpen,
-  threads,
+  activeWorkspace,
   activeThreadId,
-  searchQuery,
-  messages,
-  thoughtSteps,
   composerHelp,
   isBusy,
+  isThoughtPanelOpen,
   isWaitingForApproval,
-  onToggleDesktopSidebar,
-  onOpenMobileSidebar,
-  onCloseMobileSidebar,
-  onToggleThoughtPanel,
+  messages,
+  pendingApprovals,
+  runStatus,
+  searchQuery,
+  selectedModel,
+  thoughtSteps,
+  threads,
   onCloseThoughtPanel,
+  onComposerInput,
+  onEmptySubmit,
+  onModelChange,
+  onNewChat,
   onSearchChange,
   onSelectThread,
   onSendMessage,
-  onEmptySubmit,
-  onComposerInput,
-  onNewChat,
-  onOpenSettings,
+  onToggleThoughtPanel,
   onToolApproval,
+  onWorkspaceChange,
 }) {
+  const isChatWorkspace = activeWorkspace === 'chat'
+
   return (
-    <>
-      <div
-        id="mobile-sidebar-overlay"
-        className="md:hidden"
-        data-open={String(isMobileSidebarOpen)}
-        onClick={onCloseMobileSidebar}
-      ></div>
+    <SidebarProvider defaultOpen>
+      <Sidebar
+        activeThreadId={activeThreadId}
+        activeWorkspace={activeWorkspace}
+        searchQuery={searchQuery}
+        threads={threads}
+        onNewChat={onNewChat}
+        onSearchChange={onSearchChange}
+        onSelectThread={onSelectThread}
+        onWorkspaceChange={onWorkspaceChange}
+      />
 
-      <div
-        className="app-shell"
-        id="app-shell"
-        data-sidebar-state={sidebarState}
-      >
-        <Sidebar
-          sidebarState={sidebarState}
-          isMobileSidebarOpen={isMobileSidebarOpen}
-          threads={threads}
-          activeThreadId={activeThreadId}
-          searchQuery={searchQuery}
-          onToggleDesktopSidebar={onToggleDesktopSidebar}
-          onCloseMobileSidebar={onCloseMobileSidebar}
-          onNewChat={onNewChat}
-          onSearchChange={onSearchChange}
-          onSelectThread={onSelectThread}
-          onOpenSettings={onOpenSettings}
-        />
+      <SidebarInset className="min-h-svh overflow-hidden">
+        {isChatWorkspace ? (
+          <div className="flex min-h-svh min-w-0">
+            <ChatMain
+              composerHelp={composerHelp}
+              isBusy={isBusy}
+              isThoughtPanelOpen={isThoughtPanelOpen}
+              isWaitingForApproval={isWaitingForApproval}
+              messages={messages}
+              runStatus={runStatus}
+              selectedModel={selectedModel}
+              onComposerInput={onComposerInput}
+              onEmptySubmit={onEmptySubmit}
+              onModelChange={onModelChange}
+              onNewChat={onNewChat}
+              onSendMessage={onSendMessage}
+              onToggleThoughtPanel={onToggleThoughtPanel}
+              onToolApproval={onToolApproval}
+            />
 
-        <ChatMain
-          messages={messages}
-          composerHelp={composerHelp}
-          isBusy={isBusy}
-          isWaitingForApproval={isWaitingForApproval}
-          isThoughtPanelOpen={isThoughtPanelOpen}
-          onOpenMobileSidebar={onOpenMobileSidebar}
-          onToggleThoughtPanel={onToggleThoughtPanel}
-          onSendMessage={onSendMessage}
-          onEmptySubmit={onEmptySubmit}
-          onComposerInput={onComposerInput}
-          onNewChat={onNewChat}
-          onToolApproval={onToolApproval}
-        />
-
-        <ThoughtPanel
-          isOpen={isThoughtPanelOpen}
-          thoughtSteps={thoughtSteps}
-          onClose={onCloseThoughtPanel}
-        />
-      </div>
-    </>
+            {isThoughtPanelOpen ? (
+              <ThoughtPanel
+                isBusy={isBusy}
+                pendingApprovals={pendingApprovals}
+                thoughtSteps={thoughtSteps}
+                onClose={onCloseThoughtPanel}
+              />
+            ) : null}
+          </div>
+        ) : (
+          <WorkspacePage workspaceId={activeWorkspace} />
+        )}
+      </SidebarInset>
+    </SidebarProvider>
   )
 }

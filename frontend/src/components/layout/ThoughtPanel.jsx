@@ -1,75 +1,97 @@
 /*
  * 文件作用：
- * ThoughtPanel 渲染右侧“思考详情”抽屉。
- *
- * 迁移重点：
- * 旧页面通过 thoughtPanel.dataset.open 控制显隐。
- * React 版继续输出 data-open，但值来自 props，方便测试和样式复用。
+ * ThoughtPanel 用 AI Elements ChainOfThought 展示后端 thinking/tool/trace 事件。
  */
 
-import { Icon } from '../ui/Icon.jsx'
+import {
+  ChainOfThought,
+  ChainOfThoughtContent,
+  ChainOfThoughtHeader,
+  ChainOfThoughtStep,
+} from '@/components/ai-elements/chain-of-thought'
+import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning'
+import { Shimmer } from '@/components/ai-elements/shimmer'
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { CheckCircleIcon, ClockIcon, XCircleIcon } from 'lucide-react'
 
-export function ThoughtPanel({ isOpen, thoughtSteps, onClose }) {
+function stepStatus(status) {
+  if (status === 'error') {
+    return 'pending'
+  }
+  if (status === 'done') {
+    return 'complete'
+  }
+  return 'active'
+}
+
+function stepIcon(status) {
+  if (status === 'error') {
+    return XCircleIcon
+  }
+  if (status === 'done') {
+    return CheckCircleIcon
+  }
+  return ClockIcon
+}
+
+export function ThoughtPanel({ isBusy, pendingApprovals, thoughtSteps, onClose }) {
   return (
     <aside
-      className="thought-panel"
-      id="thought-panel"
-      data-open={String(isOpen)}
       aria-label="思考详情"
+      className="hidden w-96 shrink-0 border-l bg-background lg:flex lg:flex-col"
+      id="thought-panel"
     >
-      <div className="thought-panel__header">
-        <h2 className="thought-panel__title">思考</h2>
-        <button
-          className="thought-panel__close"
-          id="thought-panel-close"
-          type="button"
-          aria-label="关闭思考详情"
-          onClick={onClose}
-        >
-          ×
-        </button>
-      </div>
-
-      <div className="thought-list">
-        {thoughtSteps.length === 0 ? (
-          <p className="thought-empty">当前会话还没有可观测事件。</p>
+      <header className="flex h-14 items-center justify-between border-b px-4">
+        <h2 className="font-medium">思考与工具</h2>
+        <Button size="sm" type="button" variant="ghost" onClick={onClose}>
+          关闭
+        </Button>
+      </header>
+      <ScrollArea className="min-h-0 flex-1 p-4">
+        {isBusy ? (
+          <Reasoning defaultOpen>
+            <ReasoningTrigger>
+              <Shimmer>模型正在推理</Shimmer>
+            </ReasoningTrigger>
+            <ReasoningContent>
+              SimpAgent 正在读取上下文、生成回复并等待工具事件。
+            </ReasoningContent>
+          </Reasoning>
         ) : null}
-        {thoughtSteps.map((step, index) => (
-          <div className="thought-step" key={step.id}>
-            <div className="thought-step__rail">
-              <Icon
-                id={step.iconId}
-                className="thought-step__icon"
-                fill="currentColor"
+
+        <ChainOfThought defaultOpen>
+          <ChainOfThoughtHeader>
+            {thoughtSteps.length > 0
+              ? `已记录 ${thoughtSteps.length} 个步骤`
+              : '暂无思考步骤'}
+          </ChainOfThoughtHeader>
+          <ChainOfThoughtContent>
+            {thoughtSteps.length === 0 ? (
+              <ChainOfThoughtStep
+                description="发送消息后，这里会显示 thinking、tool、trace 和错误事件。"
+                label="等待会话事件"
+                status="pending"
               />
-              {index < thoughtSteps.length - 1 ? (
-                <div className="thought-step__line"></div>
-              ) : null}
-            </div>
-            <div className="thought-step__body" data-status={step.status ?? 'info'}>
-              <div className="thought-step__title">{step.title}</div>
-              {step.text ? (
-                <p className="thought-step__text">{step.text}</p>
-              ) : null}
-              {step.sources ? (
-                <div className="source-pill-row">
-                  {step.sources.map((source) => (
-                    <a
-                      className="source-pill"
-                      href={source.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      key={source.id}
-                    >
-                      {source.label}
-                    </a>
-                  ))}
-                </div>
-              ) : null}
-            </div>
+            ) : null}
+            {thoughtSteps.map((step) => (
+              <ChainOfThoughtStep
+                description={step.text}
+                icon={stepIcon(step.status)}
+                key={step.id}
+                label={step.title}
+                status={stepStatus(step.status)}
+              />
+            ))}
+          </ChainOfThoughtContent>
+        </ChainOfThought>
+
+        {pendingApprovals.length > 0 ? (
+          <div className="mt-4 text-sm text-muted-foreground">
+            等待审批：{pendingApprovals.length} 个工具调用。
           </div>
-        ))}
-      </div>
+        ) : null}
+      </ScrollArea>
     </aside>
   )
 }

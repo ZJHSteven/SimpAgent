@@ -97,10 +97,10 @@ export function getThread(threadId) {
 /**
  * 在指定 thread 上启动一次 run。
  */
-export function startRun(threadId, input) {
+export function startRun(threadId, input, options = {}) {
   return requestJson(`/threads/${encodeURIComponent(threadId)}/runs`, {
     method: 'POST',
-    body: JSON.stringify({ input }),
+    body: JSON.stringify({ input, ...options }),
   })
 }
 
