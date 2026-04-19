@@ -12,21 +12,23 @@ import { MessageActions } from './MessageActions.jsx'
 export function UserMessage({ message }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(message.text)
+  const [displayText, setDisplayText] = useState(message.text)
 
   const handleEdit = () => {
     setIsEditing(true)
-    setEditText(message.text)
+    setEditText(displayText)
   }
 
   const handleCancel = () => {
     setIsEditing(false)
-    setEditText(message.text)
+    setEditText(displayText)
   }
 
   const handleSend = () => {
-    // TODO: 实现真实的发送逻辑，这可能会通过 context 或 props 传递
+    // 当前后端还没有“编辑历史消息并重新生成”的接口，所以这里只做本地显示更新。
+    // 关键点：不能直接写 `message.text = editText`，props 是 React 父组件的只读输入。
+    setDisplayText(editText)
     setIsEditing(false)
-    message.text = editText
   }
 
   return (
@@ -63,7 +65,7 @@ export function UserMessage({ message }) {
         ) : (
           <>
             <div className="user-bubble user-message-bubble-color">
-              <div className="whitespace-pre-wrap">{message.text}</div>
+              <div className="whitespace-pre-wrap">{displayText}</div>
             </div>
             <MessageActions onEdit={handleEdit} />
           </>

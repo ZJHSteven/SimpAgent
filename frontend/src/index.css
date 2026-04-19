@@ -222,11 +222,13 @@
     .app-shell[data-sidebar-state="collapsed"] .history-list,
     .app-shell[data-sidebar-state="collapsed"] .sidebar-footer,
     .app-shell[data-sidebar-state="collapsed"] .sidebar-label,
-    .app-shell[data-sidebar-state="collapsed"] .sidebar-shortcut {
+    .app-shell[data-sidebar-state="collapsed"] .sidebar-shortcut,
+    .app-shell[data-sidebar-state="collapsed"] .sidebar-search__input {
       display: none;
     }
 
     .app-shell[data-sidebar-state="collapsed"] .sidebar-action,
+    .app-shell[data-sidebar-state="collapsed"] .sidebar-search,
     .app-shell[data-sidebar-state="collapsed"] .sidebar-profile {
       display: flex;
       justify-content: center;
@@ -278,6 +280,48 @@
     .sidebar-action:hover {
       background: var(--color-sidebar-hover);
       transform: translateX(1px);
+    }
+
+    .sidebar-action[data-active="true"] {
+      background: var(--color-sidebar-hover);
+      font-weight: 650;
+    }
+
+    .sidebar-search {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 38px;
+      width: 100%;
+      padding: 6px 10px;
+      border-radius: var(--radius-small);
+      color: var(--color-muted);
+    }
+
+    .sidebar-search:focus-within {
+      background: var(--color-sidebar-hover);
+      color: var(--color-text);
+    }
+
+    .sidebar-search__input {
+      min-width: 0;
+      width: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--color-text);
+      font: inherit;
+    }
+
+    .sidebar-search__input::placeholder {
+      color: var(--color-muted);
+      opacity: 1;
+    }
+
+    .sidebar-empty {
+      padding: 8px 10px;
+      color: var(--color-muted);
+      font-size: 13px;
     }
 
     /* 分组标题用于历史会话列表。 */
@@ -559,6 +603,87 @@
       margin: 0 0 12px;
     }
 
+    .tool-approval {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: min(100%, 520px);
+      margin: 14px 0;
+      padding: 12px;
+      border: 1px solid var(--color-soft-border);
+      border-radius: var(--radius-small);
+      background: #fafaf8;
+    }
+
+    .tool-approval__title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--color-text);
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .tool-approval__icon {
+      color: var(--color-muted);
+      flex: 0 0 auto;
+    }
+
+    .tool-approval__name {
+      display: inline-flex;
+      margin-left: 4px;
+      padding: 1px 5px;
+      border-radius: 6px;
+      background: #ecece8;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
+
+    .tool-approval__status,
+    .tool-approval__summary {
+      margin: 0;
+      color: var(--color-muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .tool-approval__args {
+      max-height: 180px;
+      overflow: auto;
+      margin: 0;
+      padding: 8px;
+      border-radius: var(--radius-small);
+      background: #f3f3ef;
+      color: var(--color-text);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .tool-approval__actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .tool-approval__actions button {
+      min-height: 32px;
+      padding: 0 12px;
+      border: 1px solid var(--color-soft-border);
+      border-radius: var(--radius-small);
+      background: white;
+      color: var(--color-text);
+    }
+
+    .tool-approval__actions button:last-child {
+      border-color: #111;
+      background: #111;
+      color: white;
+    }
+
+    .tool-approval__actions button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
     /* 表格模拟概率分析类回复，体现原快照里的内容场景。 */
     .result-table {
       width: 100%;
@@ -786,6 +911,14 @@
       margin-bottom: 12px;
     }
 
+    .thought-empty {
+      margin: 0;
+      padding: 8px 2px;
+      color: var(--color-muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
     .thought-step__title {
       color: var(--color-text);
       font-size: 14px;
@@ -797,6 +930,7 @@
       color: var(--color-muted);
       font-size: 13px;
       line-height: 1.55;
+      white-space: pre-wrap;
     }
 
     .source-pill-row {
@@ -989,6 +1123,11 @@
 .composer-textarea::placeholder {
   color: var(--text-tertiary, #8d8d86);
   opacity: 1;
+}
+
+.composer-textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .composer-surface-local {

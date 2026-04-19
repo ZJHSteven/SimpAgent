@@ -20,6 +20,23 @@ export class AgentPool {
     this.agents.set(agent.id, agent);
   }
 
+  /**
+   * 生成当前内存中尚未使用的 thread id。
+   *
+   * 为什么需要循环：
+   * - server 启动后会先恢复磁盘里的历史 thread。
+   * - IncrementalIdGenerator 重新从 1 开始，如果不避让，会把 `thread_1` 这类历史会话覆盖掉。
+   */
+  private nextUnusedThreadId(): string {
+    let threadId = this.idGenerator.nextId("thread");
+
+    while (this.threads.has(threadId)) {
+      threadId = this.idGenerator.nextId("thread");
+    }
+
+    return threadId;
+  }
+
   getAgent(agentId: string): AgentDefinition {
     const agent = this.agents.get(agentId);
 
@@ -36,7 +53,7 @@ export class AgentPool {
 
     const now = this.clock.now();
     const thread: ThreadState = {
-      id: this.idGenerator.nextId("thread"),
+      id: this.nextUnusedThreadId(),
       agentId: input.agentId,
       title: input.title ?? "新的会话",
       createdAt: now,
@@ -44,6 +61,25 @@ export class AgentPool {
       messages: []
     };
 
+    this.threads.set(thread.id, thread);
+    return thread;
+  }
+
+  /**
+   * 恢复已经持久化的 thread 快照。
+   *
+   * 输入：
+   * - thread: 从 TraceStore、数据库或其它持久层读取出来的完整会话快照。
+   *
+   * 输出：
+   * - 恢复后的 thread 本身，方便 server 启动流程统计或继续处理。
+   *
+   * 核心逻辑：
+   * - 先校验 thread 绑定的 agent 仍然存在，避免恢复出无法运行的新会话。
+   * - 再按原 id 放回内存 Map，让 `GET /threads` 与后续 run 能继续使用历史会话。
+   */
+  restoreThread(thread: ThreadState): ThreadState {
+    this.getAgent(thread.agentId);
     this.threads.set(thread.id, thread);
     return thread;
   }
@@ -74,6 +110,25 @@ export class AgentPool {
     return next;
   }
 
+  /**
+   * 更新 thread 标题。
+   *
+   * 典型场景：
+   * - 新建会话默认叫“新的会话”。
+   * - 用户首次发送消息后，server 用输入内容生成一个短标题，侧栏即可显示有意义的历史记录。
+   */
+  updateThreadTitle(threadId: string, title: string): ThreadState {
+    const current = this.getThread(threadId);
+    const next: ThreadState = {
+      ...current,
+      title,
+      updatedAt: this.clock.now()
+    };
+
+    this.threads.set(threadId, next);
+    return next;
+  }
+
   forkThread(input: {
     readonly sourceThreadId: string;
     readonly fromMessageId: string;
@@ -88,7 +143,7 @@ export class AgentPool {
 
     const now = this.clock.now();
     const forked: ThreadState = {
-      id: this.idGenerator.nextId("thread"),
+      id: this.nextUnusedThreadId(),
       agentId: source.agentId,
       title: input.title ?? `${source.title} 的分支`,
       createdAt: now,
@@ -102,4 +157,3 @@ export class AgentPool {
     return forked;
   }
 }
-

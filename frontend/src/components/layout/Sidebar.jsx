@@ -4,10 +4,9 @@
  *
  * 迁移重点：
  * 1. 保留旧页面的 id、aria-label、className，减少视觉和测试偏差。
- * 2. 历史记录从数组渲染，后续接真实会话列表时只换数据源。
+ * 2. 历史记录来自真实后端 thread 列表，搜索只在前端本地过滤当前已加载数据。
  */
 
-import { historyGroups } from '../../lib/chatData.js'
 import { Icon } from '../ui/Icon.jsx'
 
 function SidebarAction({ iconId, label, shortcut, onClick }) {
@@ -34,9 +33,14 @@ function SidebarAction({ iconId, label, shortcut, onClick }) {
 export function Sidebar({
   sidebarState,
   isMobileSidebarOpen,
+  threads,
+  activeThreadId,
+  searchQuery,
   onToggleDesktopSidebar,
   onCloseMobileSidebar,
   onNewChat,
+  onSearchChange,
+  onSelectThread,
   onOpenSettings,
 }) {
   // aria-expanded 表达“侧栏内容是否展开”，和 data-sidebar-state 保持一致。
@@ -90,22 +94,43 @@ export function Sidebar({
             shortcut="Ctrl Shift O"
             onClick={onNewChat}
           />
-          <SidebarAction iconId="ac6d36" label="搜索聊天" />
+          <div className="sidebar-search" role="search">
+            <span className="sidebar-action-icon" aria-hidden="true">
+              <Icon id="ac6d36" />
+            </span>
+            <input
+              className="sidebar-search__input"
+              type="search"
+              aria-label="搜索聊天"
+              placeholder="搜索聊天"
+              value={searchQuery}
+              onChange={(event) => onSearchChange(event.target.value)}
+            />
+          </div>
         </nav>
 
         <div className="history-list flex-1 overflow-y-auto">
-          {historyGroups.map((group) => (
-            <section key={group.id}>
-              <div className="sidebar-section-title">{group.title}</div>
-              <div className="sidebar-menu">
-                {group.items.map((item) => (
-                  <button className="sidebar-action" type="button" key={item}>
-                    <span className="sidebar-label ellipsis">{item}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          ))}
+          <section>
+            <div className="sidebar-section-title">最近</div>
+            <div className="sidebar-menu">
+              {threads.length === 0 ? (
+                <div className="sidebar-empty">暂无会话</div>
+              ) : null}
+              {threads.map((thread) => (
+                <button
+                  className="sidebar-action"
+                  type="button"
+                  key={thread.id}
+                  data-active={String(thread.id === activeThreadId)}
+                  onClick={() => onSelectThread(thread.id)}
+                >
+                  <span className="sidebar-label ellipsis">
+                    {thread.title || '新的会话'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
         </div>
 
         <div className="sidebar-footer">
@@ -121,7 +146,7 @@ export function Sidebar({
             <span className="sidebar-label">设置</span>
           </button>
           <p className="mt-2 text-[11px] text-muted text-center px-2">
-            页面只模拟前端交互，不会向任何 AI 服务发送内容。
+            已连接 SimpAgent 本地后端。
           </p>
         </div>
       </div>

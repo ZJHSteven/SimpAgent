@@ -14,6 +14,7 @@ export function MessageThread({
   messages,
   isThoughtPanelOpen,
   onToggleThoughtPanel,
+  onToolApproval,
 }) {
   // threadRef 只用于滚动容器，不用于直接增删消息 DOM。
   const threadRef = useRef(null)
@@ -38,6 +39,7 @@ export function MessageThread({
               message={message}
               isThoughtPanelOpen={isThoughtPanelOpen}
               onToggleThoughtPanel={onToggleThoughtPanel}
+              onToolApproval={onToolApproval}
               key={message.id}
             />
           ),

@@ -11,10 +11,11 @@ export function AssistantMessage({
   message,
   isThoughtPanelOpen,
   onToggleThoughtPanel,
+  onToolApproval,
 }) {
   // 旧 HTML 的初始回复是“第一段 -> 表格 -> 解释段 -> 代码块”。
   // 这里按同样顺序渲染，避免迁移后初始消息阅读节奏发生变化。
-  const [firstParagraph, ...restParagraphs] = message.paragraphs
+  const [firstParagraph, ...restParagraphs] = message.paragraphs ?? []
 
   return (
     <article className="message message--assistant">
@@ -46,8 +47,11 @@ export function AssistantMessage({
           <ToolApproval 
             key={tool.id} 
             toolName={tool.name} 
-            onAllow={() => console.log('Allowed tool:', tool.name)} 
-            onReject={() => console.log('Rejected tool:', tool.name)} 
+            status={tool.status}
+            riskSummary={tool.riskSummary}
+            argumentsText={tool.argumentsText}
+            onAllow={() => onToolApproval(tool.id, 'approve')}
+            onReject={() => onToolApproval(tool.id, 'deny')}
           />
         ))}
 

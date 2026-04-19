@@ -55,6 +55,49 @@
 - 已通过 `frontend` 的 `npm run test:e2e`，3 个 Chromium 用例全部通过。
 - 已用真实 Chromium 复查 computed style：focus 并输入文字后 `#prompt-textarea` 的 `box-shadow` 为 `none`，`.composer-surface-local` 的阴影与未聚焦时一致，没有绿色 focus 内描边。
 
+# ExecPlan：SimpChat 前后端真实连接
+
+## 当前目标
+- 把 `frontend/` 从本地模拟消息切换到 `apps/server` 已有 HTTP/SSE 后端。
+- 复用现有 ChatGPT 风格布局，让左侧栏显示真实 thread 历史，让主聊天区展示真实 user/assistant 消息。
+- 把 `message_delta`、`thinking_delta`、`tool_call`、`tool_approval_requested`、`tool_result`、`trace_snapshot`、`error`、`done` 统一映射到前端状态。
+- 让工具审批按钮真正调用后端审批接口，工具执行结果和错误进入右侧“已思考”面板。
+
+## 执行步骤
+1. [x] **计划与文档基线**
+   - 更新本文件记录本轮前后端连接 ExecPlan。
+   - 完成后更新 `PROGRESS.md`，记录真实连接后的运行方式、验证命令和当前结论。
+2. [x] **后端连接体验补强**
+   - 启动时从 `JsonFileTraceStore.listThreads()` 恢复已保存 thread。
+   - 为新 thread 首次发送时自动生成简短标题。
+   - 对不存在的 thread/run 返回稳定 404 JSON，而不是落到通用 500。
+3. [x] **前端 API 与状态层**
+   - 新增 `simpagentApi` 客户端层，封装 thread、run、SSE 和审批接口。
+   - 新增聊天状态 hook，集中维护 thread 列表、当前 thread、消息、运行状态、审批状态和思考步骤。
+   - 修复 `UserMessage.jsx` 直接修改 props 的问题，保持 React 状态不可变。
+4. [x] **UI 真实数据接入**
+   - 左侧栏改用真实 thread 列表并支持本地搜索。
+   - 发送消息后立即显示用户消息和助手占位消息，并用 SSE 增量更新助手内容。
+   - 右侧思考面板渲染 thinking、工具调用、审批、工具结果、trace 和错误。
+5. [x] **测试与验收**
+   - 增加后端 Vitest 覆盖 thread 恢复、404、标题生成和 SSE/审批关键路径。
+   - 更新前端 Playwright 测试，使用 mock API/SSE 验证真实连接行为。
+   - 执行根项目与前端完整验证并提交。
+
+## 验收标准
+- 前端刷新后能从后端恢复 thread 历史。
+- 新聊天、选择历史、搜索历史、发送消息、流式输出、工具审批、工具结果展示都可用。
+- `npm run typecheck`、`npm test`、`npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e` 全部通过。
+- 完成后 `PROGRESS.md` 反映最新状态，并产生一次清晰中文提交。
+
+## 当前结果
+- 已完成后端 thread 恢复、首次发送自动标题、稳定 404/400、SSE 终止事件后关闭连接。
+- 已新增 server Vitest，覆盖 thread 恢复、标题生成、SSE 输出和错误边界。
+- 已完成前端 `simpagentApi`、`useSimpAgentChat`、真实 thread 侧栏、搜索、SSE 流式输出、工具审批和思考面板接入。
+- 已修复 `UserMessage.jsx` 直接修改 props 的 lint 问题。
+- 已更新 README，记录后端和前端开发服务器启动方式。
+- 已通过阶段验证：`npm run typecheck`、`npm test`、`npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。
+
 # ExecPlan：CLI 流式输出与工具错误回填修复
 
 ## 当前目标

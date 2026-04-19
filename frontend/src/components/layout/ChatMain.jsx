@@ -13,6 +13,8 @@ import { Topbar } from '../chat/Topbar.jsx'
 export function ChatMain({
   messages,
   composerHelp,
+  isBusy,
+  isWaitingForApproval,
   isThoughtPanelOpen,
   onOpenMobileSidebar,
   onToggleThoughtPanel,
@@ -20,6 +22,7 @@ export function ChatMain({
   onEmptySubmit,
   onComposerInput,
   onNewChat,
+  onToolApproval,
 }) {
   return (
     <main className="chat-main" aria-label="聊天主区域">
@@ -32,10 +35,13 @@ export function ChatMain({
         messages={messages}
         isThoughtPanelOpen={isThoughtPanelOpen}
         onToggleThoughtPanel={onToggleThoughtPanel}
+        onToolApproval={onToolApproval}
       />
 
       <Composer
         help={composerHelp}
+        isBusy={isBusy}
+        isWaitingForApproval={isWaitingForApproval}
         onSendMessage={onSendMessage}
         onEmptySubmit={onEmptySubmit}
         onComposerInput={onComposerInput}

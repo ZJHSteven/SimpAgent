@@ -15,18 +15,27 @@ export function AppShell({
   sidebarState,
   isMobileSidebarOpen,
   isThoughtPanelOpen,
+  threads,
+  activeThreadId,
+  searchQuery,
   messages,
+  thoughtSteps,
   composerHelp,
+  isBusy,
+  isWaitingForApproval,
   onToggleDesktopSidebar,
   onOpenMobileSidebar,
   onCloseMobileSidebar,
   onToggleThoughtPanel,
   onCloseThoughtPanel,
+  onSearchChange,
+  onSelectThread,
   onSendMessage,
   onEmptySubmit,
   onComposerInput,
   onNewChat,
   onOpenSettings,
+  onToolApproval,
 }) {
   return (
     <>
@@ -45,15 +54,22 @@ export function AppShell({
         <Sidebar
           sidebarState={sidebarState}
           isMobileSidebarOpen={isMobileSidebarOpen}
+          threads={threads}
+          activeThreadId={activeThreadId}
+          searchQuery={searchQuery}
           onToggleDesktopSidebar={onToggleDesktopSidebar}
           onCloseMobileSidebar={onCloseMobileSidebar}
           onNewChat={onNewChat}
+          onSearchChange={onSearchChange}
+          onSelectThread={onSelectThread}
           onOpenSettings={onOpenSettings}
         />
 
         <ChatMain
           messages={messages}
           composerHelp={composerHelp}
+          isBusy={isBusy}
+          isWaitingForApproval={isWaitingForApproval}
           isThoughtPanelOpen={isThoughtPanelOpen}
           onOpenMobileSidebar={onOpenMobileSidebar}
           onToggleThoughtPanel={onToggleThoughtPanel}
@@ -61,10 +77,12 @@ export function AppShell({
           onEmptySubmit={onEmptySubmit}
           onComposerInput={onComposerInput}
           onNewChat={onNewChat}
+          onToolApproval={onToolApproval}
         />
 
         <ThoughtPanel
           isOpen={isThoughtPanelOpen}
+          thoughtSteps={thoughtSteps}
           onClose={onCloseThoughtPanel}
         />
       </div>

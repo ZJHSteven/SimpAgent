@@ -1,56 +1,37 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：TS 后端首版纵向跑通已完成；当前任务切换为修复 CLI 流式输出、工具错误回填，并补充根目录 README。
+- 现状：SimpChat 前端已从本地模拟切换为真实调用 `apps/server`；thread 列表、历史选择、搜索、发送、SSE 流式输出、工具审批和思考面板都已接入。
 - 已完成：
-    - [x] 后端 monorepo、agent-core、runtime、CLI/server 与测试已完成并通过历史验收。
-    - [x] 明确本轮前端迁移目标：视觉尽量不变，底层改成 React 组件化和状态驱动。
-    - [x] 明确迁移时修复两个现有故障：模型按钮缺少可访问名称、移动端侧栏按钮重复触发。
-    - [x] 明确样式采用兼容层优先：先保留关键 class、变量、DOM 层级和 ChatGPT 兼容 CSS，不做一次性纯原子类重写。
-    - [x] 明确输入器最终使用 React 受控 `textarea`，外观继续模拟当前 ProseMirror 风格 composer。
-    - [x] 已更新 `PLANS.md` 记录前端迁移 ExecPlan。
-    - [x] 已将 Vite 默认页面替换为 SimpChat React 页面。
-    - [x] 已拆分 `layout`、`chat`、`composer`、`ui` 组件，避免把整页塞进 `App.jsx`。
-    - [x] 已把消息、历史记录、思考步骤改成数据驱动渲染。
-    - [x] 已迁移 `tem.html` 内联 CSS 与 ChatGPT 兼容 CSS，并生成 `frontend/public/icons.svg`。
-    - [x] 已把输入器改为 React 受控 `textarea`，保留 composer 外观结构。
-    - [x] 已通过 `frontend` 的 `npm run lint` 与 `npm run build`。
-    - [x] 已为 `frontend` 增加 Playwright 配置、`test:e2e` 脚本和桌面/移动端/中文输入法组合态测试。
-    - [x] 已修复 Playwright 暴露的侧栏过渡断言、移动遮罩层级、表格重复 key 和组合态测试问题。
-    - [x] 已通过 `frontend` 的 `npm run test:e2e`（3 个用例全部通过）。
-    - [x] 已完成最终验证：`frontend` 的 `npm run lint`、`npm run build`、`npm run test:e2e` 全部通过。
-    - [x] 已完成根项目回归：`npm run typecheck`、`npm run build`、`npm run lint`、`npm test` 全部通过。
-    - [x] 已重新定位并修复 React 受控 `textarea` 聚焦视觉问题：两条蓝线来自兼容 CSS 的 ProseMirror focus `box-shadow`，绿色外圈来自上一版新增的 `.composer-surface-local:focus-within` 内描边。
-    - [x] 已补齐 `apps/cli/src/index.ts` 与 `apps/server/src/index.ts` 的教学向中文注释（文件头、函数头、关键流程注释），并通过 `npm run typecheck` 与 `npm test` 回归验证。
-    - [x] 已按要求先提交现有注释改动：`docs: 补充 CLI 与 server 教学注释`。
-    - [x] 已确认 CLI 非真流式的根因：adapter 先完整读取 SSE，再把事件列表交给 agent loop。
-    - [x] 已确认工具错误中断的根因：参数解析和工具执行异常没有转换成 `tool` 消息回填给模型。
-    - [x] 已在 Chat Completions adapter 与 SSE parser 中加入实时事件回调，保留完整事件列表用于 trace。
-    - [x] 已在 agent loop 中把工具参数解析失败和工具执行异常转换为结构化工具结果回填给模型。
-    - [x] 已补充流式回调与工具异常回填测试，并通过 `npm run typecheck`、`npm test`。
-    - [x] 已新增根目录 `README.md`，说明项目结构、配置、CLI/server 用法、agent loop 和常见问题。
+  - [x] 后端 monorepo、agent-core、runtime、CLI/server、流式 token、工具错误回填与基础测试已完成。
+  - [x] React 前端迁移、ChatGPT 风格布局、受控输入器、移动端侧栏和 focus 视觉回归已完成。
+  - [x] 已为 `frontend` 新增 `simpagentApi` 客户端层，默认通过 `/api` 访问后端，可用 `VITE_SIMPAGENT_API_BASE` 覆盖。
+  - [x] 已为 `frontend` 新增 `useSimpAgentChat` 状态 hook，集中维护 threads、当前消息、run 状态、工具审批和思考步骤。
+  - [x] 已将左侧栏改为真实 thread 列表，支持创建新聊天、选择历史聊天和本地搜索。
+  - [x] 已将发送消息改为 `POST /threads/:id/runs` + `EventSource /runs/:runId/events`，支持 `message_delta` 打字式输出。
+  - [x] 已将 `thinking_delta`、`tool_call`、`tool_result`、`trace_snapshot` 和 `error` 渲染到右侧“已思考”面板。
+  - [x] 已将 `tool_approval_requested` 渲染为审批按钮，允许/拒绝会回填 `POST /runs/:runId/tool-approvals/:toolCallId`。
+  - [x] 已修复 `UserMessage.jsx` 直接修改 props 导致的 React lint 错误。
+  - [x] 已为后端补强启动恢复 thread、首次发送自动标题、稳定 404/400、SSE 终止后关闭连接。
+  - [x] 已新增 server Vitest，覆盖 thread 恢复、标题生成、SSE 输出和错误边界。
+  - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
+  - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
 - 正在做：
-    - [x] 已完成完整回归：`npm run typecheck`、`npm run build`、`npm run lint`、`npm test` 全部通过。
-- 下一步：可用 CLI 实测真实模型服务下的 token 打字效果；若接入前端，再复用 server SSE 事件流展示同一套增量事件。
+  - [x] 已完成前后端连接实现与验证。
+- 下一步：启动 `npm run server` 和 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1` 后，在浏览器访问 `http://127.0.0.1:5173` 做真实模型联调。
 
 ## 关键决策与理由（防止“吃书”）
-- 决策A：`chatgpt-temp/tem.html` 保留为视觉和行为参考，不删除。（原因：迁移需要可回看原始 DOM、样式和交互。）
-- 决策B：本轮不接入真实 AI 后端，只保留本地模拟回复。（原因：用户当前目标是技术栈迁移和静态界面可用性。）
-- 决策C：`frontend/` 暂不强行加入根 npm workspace。（原因：当前前端已有独立 `package.json` 和 lockfile，先降低迁移范围。）
-- 决策D：输入框用受控 `textarea` 承载真实文本。（原因：`contenteditable` 很容易绕过 React 状态管理，长期不可控。）
-- 决策E：样式先做兼容迁移，再考虑清理。（原因：无感知迁移的第一优先级是视觉稳定。）
-- 决策F：流式修复放在 Chat Completions adapter 层，而不是 CLI 里重复解析 SSE。（原因：server、CLI 和后续 UI 都应复用同一套事件协议。）
-- 决策G：工具错误要作为 `ToolExecutionResult` 回填给模型，而不是直接抛到进程级 fatal。（原因：agent loop 的设计目标是让模型看到工具失败原因并继续下一步处理。）
+- 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
+- 决策B：前端默认使用 Vite `/api` proxy 连接 `http://127.0.0.1:8787`，并允许用 `SIMPAGENT_PROXY_TARGET` 改代理目标；不是在浏览器里直连裸后端地址。（原因：本地开发避免 CORS，默认端口被占用时也能换后端端口。）
+- 决策C：前端不引入额外状态库，先用 `useSimpAgentChat` 管理真实连接状态。（原因：当前状态规模可控，少一层依赖更容易让初学者阅读。）
+- 决策D：run 完成后前端重新拉取 thread 快照，但保留本轮 live thought steps。（原因：后端 thread 快照有最终消息，live steps 有 trace 等可观测事件，两者不能互相覆盖。）
+- 决策E：server 在 `done/error` 后主动结束 SSE response。（原因：浏览器 EventSource 和自动化测试都不应无限挂着已结束 run 的连接。）
 
 ## 常见坑 / 复现方法
-- 坑1：当前工作区已有未跟踪文件 `chatgpt-temp/extract_svg.py` 与 `chatgpt-temp/extracted_symbols.txt`；本轮不要误删或误提交无关文件。
-- 坑2：现有 `chatgpt-temp` Playwright 测试迁移前已失败，不能把失败当成 React 迁移新增问题。
-- 坑3：移动端侧栏按钮之前重复绑定 click，React 版只能绑定一次。
-- 坑4：SVG sprite 放到 Vite `public` 后，引用路径应使用 `/icons.svg#id`。
-- 坑5：React 组件拆分不能只把整段 HTML 塞进 `App.jsx`；状态、布局、聊天流、输入器、面板需要分层。
-- 坑6：ChatGPT 兼容 CSS 很大，Vite build 会提示部分 `/cdn/assets/*.woff*` 运行时路径未解析，以及 `::scroll-button` 伪元素兼容警告；当前不阻断构建，后续裁剪兼容 CSS 时可清理。
-- 坑7：输入框上下蓝线不是 `outline`，而是 `textarea.ProseMirror` focus 后继承的蓝色 `box-shadow`；只断言 `outline-style: none` 会漏测。
-- 坑8：当前 CLI 的“实时打字”只是打印 `message_delta`，但 `message_delta` 事件本身被 adapter 延后到完整 SSE 结束后才产生。
-- 坑9：工具执行链路里一旦 `JSON.parse`、文件读写、shell runtime 抛错，当前实现会中断整个 turn，模型拿不到错误信息。
-- 坑10：README 示例里 Windows PowerShell 的 `curl` 换行使用反引号；Linux/macOS 用户可把反引号改成反斜杠。
-- 复测记录：本轮后端完整回归已通过 `npm run typecheck`、`npm run build`、`npm run lint`、`npm test`；`frontend` 历史复测为 `npm run lint`、`npm run build`、`npm run test:e2e` 均通过。
+- 坑1：`chatgpt-temp/` 是视觉参考归档，不是当前 React 主应用入口。
+- 坑2：ChatGPT 兼容 CSS 很大，Vite build 会提示部分 `/cdn/assets/*.woff*` 运行时路径未解析，以及 `::scroll-button` 伪元素兼容警告；当前不阻断构建。
+- 坑3：输入框上下蓝线不是 `outline`，而是 `textarea.ProseMirror` focus 后继承的蓝色 `box-shadow`；只断言 `outline-style: none` 会漏测。
+- 坑4：server 启动恢复历史 thread 后，`IncrementalIdGenerator` 会重新从 `thread_1` 开始；`AgentPool` 必须避让已有 thread id，避免新建会话覆盖历史。
+- 坑5：SSE 如果在 `done` 后不主动关闭，浏览器和测试都会留下长连接；server 现在在 `done/error` 后结束 SSE response。
+- 坑6：前端 run done 后会重新拉取 thread 快照；如果直接覆盖思考步骤，会丢掉 live `trace_snapshot` 等事件，所以刷新消息时保留本轮 live thought steps。
+- 复测记录：本轮已通过 `npm run typecheck`、`npm test`、`npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。

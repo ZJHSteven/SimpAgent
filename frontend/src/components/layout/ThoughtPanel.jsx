@@ -7,10 +7,9 @@
  * React 版继续输出 data-open，但值来自 props，方便测试和样式复用。
  */
 
-import { thoughtSteps } from '../../lib/chatData.js'
 import { Icon } from '../ui/Icon.jsx'
 
-export function ThoughtPanel({ isOpen, onClose }) {
+export function ThoughtPanel({ isOpen, thoughtSteps, onClose }) {
   return (
     <aside
       className="thought-panel"
@@ -32,6 +31,9 @@ export function ThoughtPanel({ isOpen, onClose }) {
       </div>
 
       <div className="thought-list">
+        {thoughtSteps.length === 0 ? (
+          <p className="thought-empty">当前会话还没有可观测事件。</p>
+        ) : null}
         {thoughtSteps.map((step, index) => (
           <div className="thought-step" key={step.id}>
             <div className="thought-step__rail">
@@ -44,7 +46,7 @@ export function ThoughtPanel({ isOpen, onClose }) {
                 <div className="thought-step__line"></div>
               ) : null}
             </div>
-            <div className="thought-step__body">
+            <div className="thought-step__body" data-status={step.status ?? 'info'}>
               <div className="thought-step__title">{step.title}</div>
               {step.text ? (
                 <p className="thought-step__text">{step.text}</p>

@@ -9,7 +9,7 @@
 
 import { useLayoutEffect, useRef } from 'react'
 
-export function ComposerInput({ value, onChange, onSubmit }) {
+export function ComposerInput({ value, disabled, onChange, onSubmit }) {
   // textareaRef 只用于自动高度，不用于绕过 React 改文本。
   const textareaRef = useRef(null)
 
@@ -50,6 +50,7 @@ export function ComposerInput({ value, onChange, onSubmit }) {
           data-virtualkeyboard="true"
           value={value}
           rows={1}
+          disabled={disabled}
           ref={textareaRef}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={handleKeyDown}

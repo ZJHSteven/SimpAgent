@@ -14,6 +14,8 @@ import { ComposerToolbar } from './ComposerToolbar.jsx'
 
 export function Composer({
   help,
+  isBusy,
+  isWaitingForApproval,
   onSendMessage,
   onEmptySubmit,
   onComposerInput,
@@ -32,9 +34,13 @@ export function Composer({
       return
     }
 
+    if (isBusy || isWaitingForApproval) {
+      return
+    }
+
     onSendMessage(trimmedText)
     setText('')
-  }, [onEmptySubmit, onSendMessage, text])
+  }, [isBusy, isWaitingForApproval, onEmptySubmit, onSendMessage, text])
 
   const handleSubmit = useCallback(
     (event) => {
@@ -69,13 +75,17 @@ export function Composer({
 
           <ComposerInput
             value={text}
+            disabled={isBusy || isWaitingForApproval}
             onChange={handleTextChange}
             onSubmit={submitText}
           />
 
           <ComposerToolbar position="footer" />
 
-          <ComposerToolbar position="trailing" canSend={hasText} />
+          <ComposerToolbar
+            position="trailing"
+            canSend={hasText && !isBusy && !isWaitingForApproval}
+          />
         </div>
 
         <ComposerHelp help={help} />
