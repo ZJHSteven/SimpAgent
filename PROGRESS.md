@@ -16,9 +16,10 @@
   - [x] 已新增 server Vitest，覆盖 thread 恢复、标题生成、SSE 输出和错误边界。
   - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
+  - [x] 已将 `frontend` 统一迁移到 Tailwind CSS 4 + `@tailwindcss/vite`，并用 shadcn CLI 初始化 `components.json`、`button` 和 `cn` 工具函数。
 - 正在做：
-  - [x] 已完成前后端连接实现与验证。
-- 下一步：启动 `npm run server` 和 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1` 后，在浏览器访问 `http://127.0.0.1:5173` 做真实模型联调。
+  - [x] 已完成前后端连接实现、shadcn/Tailwind 4 配置整理与验证。
+- 下一步：新增 shadcn 组件时进入 `frontend/` 后执行 `npx shadcn@latest add <component>`；启动联调仍使用后端 `npm run server` 和前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
@@ -26,6 +27,7 @@
 - 决策C：前端不引入额外状态库，先用 `useSimpAgentChat` 管理真实连接状态。（原因：当前状态规模可控，少一层依赖更容易让初学者阅读。）
 - 决策D：run 完成后前端重新拉取 thread 快照，但保留本轮 live thought steps。（原因：后端 thread 快照有最终消息，live steps 有 trace 等可观测事件，两者不能互相覆盖。）
 - 决策E：server 在 `done/error` 后主动结束 SSE response。（原因：浏览器 EventSource 和自动化测试都不应无限挂着已结束 run 的连接。）
+- 决策F：`frontend` 使用 Tailwind CSS 4 的 CSS-first 配置，不再保留 `tailwind.config.js` / `postcss.config.js`。（原因：Tailwind 4 的 Vite 官方接入方式是 `@tailwindcss/vite` + `@import "tailwindcss"`；shadcn v4 的 `components.json` 中 `tailwind.config` 应为空。）
 
 ## 常见坑 / 复现方法
 - 坑1：`chatgpt-temp/` 是视觉参考归档，不是当前 React 主应用入口。
@@ -34,4 +36,6 @@
 - 坑4：server 启动恢复历史 thread 后，`IncrementalIdGenerator` 会重新从 `thread_1` 开始；`AgentPool` 必须避让已有 thread id，避免新建会话覆盖历史。
 - 坑5：SSE 如果在 `done` 后不主动关闭，浏览器和测试都会留下长连接；server 现在在 `done/error` 后结束 SSE response。
 - 坑6：前端 run done 后会重新拉取 thread 快照；如果直接覆盖思考步骤，会丢掉 live `trace_snapshot` 等事件，所以刷新消息时保留本轮 live thought steps。
-- 复测记录：本轮已通过 `npm run typecheck`、`npm test`、`npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。
+- 坑7：shadcn 命令必须在 `frontend/` 下执行；仓库根目录不是 Vite 应用入口，直接在根目录跑会被识别成 `Manual` 或找不到 Tailwind CSS 入口。
+- 坑8：Tailwind 4 正常情况下没有 `tailwind.config.js`；判断是否装好应看 `npx shadcn@latest info --json` 里的 `tailwindVersion: "v4"` 和 `tailwindCss: "src/index.css"`。
+- 复测记录：本轮已通过 `npm run typecheck`、`npm test`、`npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`、`cd frontend; npx tsc --noEmit --pretty false`、`cd frontend; npx shadcn@latest info --json`。

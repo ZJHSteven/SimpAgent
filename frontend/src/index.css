@@ -4,10 +4,25 @@
  *
  * 迁移说明：
  * 1. chatgpt-compat.css 是从临时 HTML 依赖的 ChatGPT 样式复制而来，先作为兼容层保留。
- * 2. 下方主体样式来自 chatgpt-temp/tem.html 的内联 <style>，尽量保持视觉不变。
+ * 2. 下方主体样式来自 chatgpt-temp/tem.html 的内联 \3c style>，尽量保持视觉不变。
  * 3. 文件末尾补充 React 受控 textarea 和移动遮罩的少量适配样式。
  */
+@import "tailwindcss";
+@import "tw-animate-css";
 @import './styles/chatgpt-compat.css';
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+/*
+ ---break---
+ */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Tailwind 入口说明：
+ * 当前项目使用 Tailwind 4。Tailwind 4 不再写 @tailwind base/components/utilities，
+ * 而是在全局 CSS 顶部用 @import "tailwindcss" 作为唯一入口。
+ * shadcn CLI 会据此把 tailwindCss 识别为 src/index.css，并把 tailwind.config 留空。
+ */
 /*
       全局设计变量：
       把常用颜色、尺寸、阴影集中放在 :root，后续想调整整体风格时只改这里即可。
@@ -43,6 +58,38 @@
         "Segoe UI",
         "Microsoft YaHei",
         sans-serif;
+      --background: oklch(1 0 0);
+      --foreground: oklch(0.145 0 0);
+      --card: oklch(1 0 0);
+      --card-foreground: oklch(0.145 0 0);
+      --popover: oklch(1 0 0);
+      --popover-foreground: oklch(0.145 0 0);
+      --primary: oklch(0.205 0 0);
+      --primary-foreground: oklch(0.985 0 0);
+      --secondary: oklch(0.97 0 0);
+      --secondary-foreground: oklch(0.205 0 0);
+      --muted: oklch(0.97 0 0);
+      --muted-foreground: oklch(0.556 0 0);
+      --accent: oklch(0.97 0 0);
+      --accent-foreground: oklch(0.205 0 0);
+      --destructive: oklch(0.577 0.245 27.325);
+      --border: oklch(0.922 0 0);
+      --input: oklch(0.922 0 0);
+      --ring: oklch(0.708 0 0);
+      --chart-1: oklch(0.87 0 0);
+      --chart-2: oklch(0.556 0 0);
+      --chart-3: oklch(0.439 0 0);
+      --chart-4: oklch(0.371 0 0);
+      --chart-5: oklch(0.269 0 0);
+      --radius: 0.625rem;
+      --sidebar: oklch(0.985 0 0);
+      --sidebar-foreground: oklch(0.145 0 0);
+      --sidebar-primary: oklch(0.205 0 0);
+      --sidebar-primary-foreground: oklch(0.985 0 0);
+      --sidebar-accent: oklch(0.97 0 0);
+      --sidebar-accent-foreground: oklch(0.205 0 0);
+      --sidebar-border: oklch(0.922 0 0);
+      --sidebar-ring: oklch(0.708 0 0);
     }
 
     /* 使用 border-box 可以让 width 包含 padding 和 border，布局更直观。 */
@@ -92,7 +139,6 @@
       grid-template-columns: var(--sidebar-collapsed-width) minmax(0, 1fr);
     }
 
-
     /* 左侧栏模拟 ChatGPT 的历史列表区域。 */
     .sidebar {
       position: sticky;
@@ -110,7 +156,6 @@
       transition: width 180ms ease, padding 180ms ease;
     }
 
-
     /* 侧栏顶部 rail 按钮区域。 */
     .sidebar-rail-header {
       display: flex;
@@ -118,7 +163,6 @@
       justify-content: flex-start;
       min-height: var(--sidebar-header-height);
     }
-
 
     /* 收起/展开按钮复用原始 sprite，hover 时显示第二个边栏图标。 */
     .sidebar-toggle {
@@ -161,7 +205,6 @@
       margin: 0;
     }
 
-
     .sidebar-action-icon {
       display: inline-flex;
       align-items: center;
@@ -194,8 +237,6 @@
     .sidebar-profile:hover {
       background: var(--color-sidebar-hover);
     }
-
-
 
     .sidebar-profile-avatar {
       display: inline-flex;
@@ -239,8 +280,6 @@
       margin-right: auto;
     }
 
-
-
     /* 品牌图标直接引用本地下载的 sprite，不再手工重绘。 */
     .brand__image {
       width: 28px;
@@ -258,7 +297,6 @@
       line-height: 1.2;
     }
 
-
     /* 侧栏按钮是主要导航入口，保持高度稳定，避免 hover 时跳动。 */
     .sidebar-action {
       display: flex;
@@ -273,8 +311,6 @@
       text-align: left;
       transition: background 160ms ease;
     }
-
-
 
     /* hover 只改变背景和轻微位移，不改变尺寸。 */
     .sidebar-action:hover {
@@ -333,10 +369,6 @@
       line-height: 1.2;
     }
 
-
-
-
-
     /* 历史条目使用列表语义，方便屏幕阅读器理解。 */
     .history-list {
       display: flex;
@@ -346,7 +378,6 @@
       padding: 0;
       list-style: none;
     }
-
 
     /* 单条历史会话做单行截断，复刻原页面的紧凑历史感。 */
     .history-item {
@@ -588,7 +619,6 @@
       background-color: var(--color-sidebar-hover);
       color: var(--color-text);
     }
-
 
     /* 助手正文不使用卡片，让阅读区更像 ChatGPT 的自然文本。 */
     .assistant-content {
@@ -1015,7 +1045,6 @@
         box-shadow: 20px 0 60px rgb(0 0 0 / 18%);
       }
 
-
       .sidebar[data-open="true"] {
         transform: translateX(0) !important;
       }
@@ -1138,4 +1167,105 @@
   .sidebar-close-button {
     display: inline-flex;
   }
+}
+
+/*
+ ---break---
+ */
+
+@theme inline {
+      --font-heading: var(--font-sans);
+      --font-sans: 'Geist Variable', sans-serif;
+      --color-sidebar-ring: var(--sidebar-ring);
+      --color-sidebar-border: var(--sidebar-border);
+      --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+      --color-sidebar-accent: var(--sidebar-accent);
+      --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+      --color-sidebar-primary: var(--sidebar-primary);
+      --color-sidebar-foreground: var(--sidebar-foreground);
+      --color-sidebar: var(--sidebar);
+      --color-chart-5: var(--chart-5);
+      --color-chart-4: var(--chart-4);
+      --color-chart-3: var(--chart-3);
+      --color-chart-2: var(--chart-2);
+      --color-chart-1: var(--chart-1);
+      --color-ring: var(--ring);
+      --color-input: var(--input);
+      --color-border: var(--border);
+      --color-destructive: var(--destructive);
+      --color-accent-foreground: var(--accent-foreground);
+      --color-accent: var(--accent);
+      --color-muted-foreground: var(--muted-foreground);
+      --color-muted: var(--muted);
+      --color-secondary-foreground: var(--secondary-foreground);
+      --color-secondary: var(--secondary);
+      --color-primary-foreground: var(--primary-foreground);
+      --color-primary: var(--primary);
+      --color-popover-foreground: var(--popover-foreground);
+      --color-popover: var(--popover);
+      --color-card-foreground: var(--card-foreground);
+      --color-card: var(--card);
+      --color-foreground: var(--foreground);
+      --color-background: var(--background);
+      --radius-sm: calc(var(--radius) * 0.6);
+      --radius-md: calc(var(--radius) * 0.8);
+      --radius-lg: var(--radius);
+      --radius-xl: calc(var(--radius) * 1.4);
+      --radius-2xl: calc(var(--radius) * 1.8);
+      --radius-3xl: calc(var(--radius) * 2.2);
+      --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ ---break---
+ */
+
+.dark {
+      --background: oklch(0.145 0 0);
+      --foreground: oklch(0.985 0 0);
+      --card: oklch(0.205 0 0);
+      --card-foreground: oklch(0.985 0 0);
+      --popover: oklch(0.205 0 0);
+      --popover-foreground: oklch(0.985 0 0);
+      --primary: oklch(0.922 0 0);
+      --primary-foreground: oklch(0.205 0 0);
+      --secondary: oklch(0.269 0 0);
+      --secondary-foreground: oklch(0.985 0 0);
+      --muted: oklch(0.269 0 0);
+      --muted-foreground: oklch(0.708 0 0);
+      --accent: oklch(0.269 0 0);
+      --accent-foreground: oklch(0.985 0 0);
+      --destructive: oklch(0.704 0.191 22.216);
+      --border: oklch(1 0 0 / 10%);
+      --input: oklch(1 0 0 / 15%);
+      --ring: oklch(0.556 0 0);
+      --chart-1: oklch(0.87 0 0);
+      --chart-2: oklch(0.556 0 0);
+      --chart-3: oklch(0.439 0 0);
+      --chart-4: oklch(0.371 0 0);
+      --chart-5: oklch(0.269 0 0);
+      --sidebar: oklch(0.205 0 0);
+      --sidebar-foreground: oklch(0.985 0 0);
+      --sidebar-primary: oklch(0.488 0.243 264.376);
+      --sidebar-primary-foreground: oklch(0.985 0 0);
+      --sidebar-accent: oklch(0.269 0 0);
+      --sidebar-accent-foreground: oklch(0.985 0 0);
+      --sidebar-border: oklch(1 0 0 / 10%);
+      --sidebar-ring: oklch(0.556 0 0);
+}
+
+/*
+ ---break---
+ */
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+      }
+  body {
+    @apply bg-background text-foreground;
+      }
+  html {
+    @apply font-sans;
+      }
 }
