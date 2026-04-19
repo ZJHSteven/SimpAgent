@@ -360,7 +360,7 @@ export const MessageResponse = memo(
           isAnimating={isAnimating}
           {...props}
         >
-          {children}
+          {typeof children === "string" ? children : String(children ?? "")}
         </LazyRichMessageResponse>
       </Suspense>
     );

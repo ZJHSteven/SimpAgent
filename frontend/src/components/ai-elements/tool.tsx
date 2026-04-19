@@ -7,6 +7,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import type { BundledLanguage } from "shiki";
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
 import {
   CheckCircleIcon,
@@ -30,7 +31,7 @@ function DeferredCodeBlock({
   language,
 }: {
   code: string;
-  language: string;
+  language: BundledLanguage;
 }) {
   /*
    * 首屏性能说明：
