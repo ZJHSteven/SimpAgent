@@ -8,7 +8,7 @@
 
 import { Icon } from '../ui/Icon.jsx'
 
-export function MessageActions() {
+export function MessageActions({ onEdit }) {
   return (
     <div className="message-actions">
       <button
@@ -27,6 +27,7 @@ export function MessageActions() {
         aria-label="编辑消息"
         data-state="closed"
         type="button"
+        onClick={onEdit}
       >
         <span className="flex items-center justify-center touch:w-10 h-8 w-8">
           <Icon id="6d87e1" />

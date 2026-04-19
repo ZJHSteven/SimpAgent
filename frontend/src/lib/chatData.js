@@ -78,6 +78,9 @@ export const initialMessages = [
       '我先按这版规则做一个展示表。这里的重点不是精确复现模型能力，而是复刻 ChatGPT 风格的消息阅读体验。',
       '原页面里缺的是“本地可运行的样式和行为”。只复制 DOM 会把线上样式、脚本、图标和用户数据一起带进来，但离开原站后这些依赖并不可靠。',
     ],
+    tools: [
+      { id: 'tool-1', name: 'search_github_repos', status: 'pending' }
+    ],
     table: {
       headers: ['情况', '目标 15', '目标 16'],
       rows: [

@@ -37,6 +37,7 @@ export function Sidebar({
   onToggleDesktopSidebar,
   onCloseMobileSidebar,
   onNewChat,
+  onOpenSettings,
 }) {
   // aria-expanded 表达“侧栏内容是否展开”，和 data-sidebar-state 保持一致。
   const isExpanded = sidebarState === 'expanded'
@@ -112,6 +113,7 @@ export function Sidebar({
             className="sidebar-profile sidebar-action"
             type="button"
             aria-label="打开设置菜单"
+            onClick={onOpenSettings}
           >
             <span className="sidebar-action-icon" aria-hidden="true">
               <Icon id="settings" />

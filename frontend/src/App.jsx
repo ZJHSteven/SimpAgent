@@ -10,6 +10,7 @@
 
 import { useCallback, useState } from 'react'
 import { AppShell } from './components/layout/AppShell.jsx'
+import { SettingsModal } from './components/settings/SettingsModal.jsx'
 import {
   DEFAULT_HELP_TEXT,
   createAssistantReplyMessage,
@@ -20,11 +21,14 @@ function App() {
   // sidebarState 控制桌面端左侧栏宽度：expanded 是完整侧栏，collapsed 是窄 rail。
   const [sidebarState, setSidebarState] = useState('collapsed')
 
-  // isMobileSidebarOpen 控制移动端抽屉侧栏，和桌面端 grid 宽度分开，避免两个状态互相干扰。
+  // isMobileSidebarOpen 控制移动端抽屉侧栏，和桌面端 grid 宽度分开，避免两个状 态互相干扰。
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
 
   // isThoughtPanelOpen 控制右侧思考面板的 data-open 和触发按钮 aria-expanded。
   const [isThoughtPanelOpen, setIsThoughtPanelOpen] = useState(false)
+
+  // isSettingsOpen 控制设置弹窗的显示。
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   // messages 是聊天流唯一数据源；用户发送、新聊天重置、模拟助手回复都只改这个数组。
   const [messages, setMessages] = useState(initialMessages)
@@ -116,23 +120,35 @@ function App() {
     setIsMobileSidebarOpen(false)
   }, [])
 
+  const handleSettingsOpen = useCallback(() => {
+    setIsSettingsOpen(true)
+  }, [])
+
+  const handleSettingsClose = useCallback(() => {
+    setIsSettingsOpen(false)
+  }, [])
+
   return (
-    <AppShell
-      sidebarState={sidebarState}
-      isMobileSidebarOpen={isMobileSidebarOpen}
-      isThoughtPanelOpen={isThoughtPanelOpen}
-      messages={messages}
-      composerHelp={composerHelp}
-      onToggleDesktopSidebar={toggleDesktopSidebar}
-      onOpenMobileSidebar={openMobileSidebar}
-      onCloseMobileSidebar={closeMobileSidebar}
-      onToggleThoughtPanel={toggleThoughtPanel}
-      onCloseThoughtPanel={closeThoughtPanel}
-      onSendMessage={handleSendMessage}
-      onEmptySubmit={handleEmptySubmit}
-      onComposerInput={handleComposerInput}
-      onNewChat={handleNewChat}
-    />
+    <>
+      <AppShell
+        sidebarState={sidebarState}
+        isMobileSidebarOpen={isMobileSidebarOpen}
+        isThoughtPanelOpen={isThoughtPanelOpen}
+        messages={messages}
+        composerHelp={composerHelp}
+        onToggleDesktopSidebar={toggleDesktopSidebar}
+        onOpenMobileSidebar={openMobileSidebar}
+        onCloseMobileSidebar={closeMobileSidebar}
+        onToggleThoughtPanel={toggleThoughtPanel}
+        onCloseThoughtPanel={closeThoughtPanel}
+        onSendMessage={handleSendMessage}
+        onEmptySubmit={handleEmptySubmit}
+        onComposerInput={handleComposerInput}
+        onNewChat={handleNewChat}
+        onOpenSettings={handleSettingsOpen}
+      />
+      {isSettingsOpen && <SettingsModal onClose={handleSettingsClose} />}
+    </>
   )
 }
 

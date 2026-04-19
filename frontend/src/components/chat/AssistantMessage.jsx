@@ -5,6 +5,7 @@
 
 import { Icon } from '../ui/Icon.jsx'
 import { ResultTable } from './ResultTable.jsx'
+import { ToolApproval } from './ToolApproval.jsx'
 
 export function AssistantMessage({
   message,
@@ -17,13 +18,38 @@ export function AssistantMessage({
 
   return (
     <article className="message message--assistant">
-      <div className="message-meta">
-        <Icon id="127a53" className="assistant-avatar" fill="currentColor" />
-        <span>SimpChat 说：</span>
+      <div className="message-meta flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          <Icon id="127a53" className="assistant-avatar" fill="currentColor" />
+          <span>SimpChat 说：</span>
+        </div>
+        {message.thought ? (
+          <button
+            className="thought-toggle inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+            id="thought-toggle"
+            type="button"
+            aria-label="查看思考过程"
+            aria-expanded={String(isThoughtPanelOpen)}
+            aria-controls="thought-panel"
+            onClick={onToggleThoughtPanel}
+          >
+            <span>{message.thought.label}</span>
+            <Icon id="b140e7" />
+          </button>
+        ) : null}
       </div>
 
       <div className="assistant-content">
         {firstParagraph ? <p>{firstParagraph}</p> : null}
+
+        {message.tools && message.tools.map((tool) => (
+          <ToolApproval 
+            key={tool.id} 
+            toolName={tool.name} 
+            onAllow={() => console.log('Allowed tool:', tool.name)} 
+            onReject={() => console.log('Rejected tool:', tool.name)} 
+          />
+        ))}
 
         <ResultTable table={message.table} />
 
@@ -37,21 +63,6 @@ export function AssistantMessage({
           </pre>
         ) : null}
       </div>
-
-      {message.thought ? (
-        <button
-          className="thought-toggle"
-          id="thought-toggle"
-          type="button"
-          aria-label="查看思考过程"
-          aria-expanded={String(isThoughtPanelOpen)}
-          aria-controls="thought-panel"
-          onClick={onToggleThoughtPanel}
-        >
-          <span>{message.thought.label}</span>
-          <Icon id="b140e7" />
-        </button>
-      ) : null}
     </article>
   )
 }

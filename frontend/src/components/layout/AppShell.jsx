@@ -26,6 +26,7 @@ export function AppShell({
   onEmptySubmit,
   onComposerInput,
   onNewChat,
+  onOpenSettings,
 }) {
   return (
     <>
@@ -47,6 +48,7 @@ export function AppShell({
           onToggleDesktopSidebar={onToggleDesktopSidebar}
           onCloseMobileSidebar={onCloseMobileSidebar}
           onNewChat={onNewChat}
+          onOpenSettings={onOpenSettings}
         />
 
         <ChatMain
