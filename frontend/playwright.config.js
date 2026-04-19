@@ -29,7 +29,11 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev -- --host 127.0.0.1',
+    /*
+     * 这里不再额外传 --host。
+     * Vite 的双栈监听写在 vite.config.js 里，测试也应该覆盖真实开发配置。
+     */
+    command: 'npm run dev',
     url: 'http://127.0.0.1:5173',
     reuseExistingServer: true,
     timeout: 120_000,

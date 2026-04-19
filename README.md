@@ -117,23 +117,24 @@ curl -X POST http://localhost:8787/threads/thread_1/runs `
 npm run server
 ```
 
-再启动前端开发服务器：
+再启动前端开发服务器。
+`frontend/vite.config.js` 已经让 Vite 使用 IPv4/IPv6 双栈监听，所以这里不需要再手动传 `--host 127.0.0.1`：
 
 ```bash
-npm.cmd --prefix frontend run dev -- --host 127.0.0.1
+npm.cmd --prefix frontend run dev
 ```
 
 默认访问：
 
 ```text
-http://127.0.0.1:5173
+http://localhost:5173
 ```
 
 前端请求规则：
 
 - 默认 API base 是 `/api`。
 - `frontend/vite.config.js` 会把 `/api/*` 代理到 `http://127.0.0.1:8787/*`。
-- 如果本机 `8787` 已被占用，可先用 `$env:PORT=8788; npm run server` 启动后端，再用 `$env:SIMPAGENT_PROXY_TARGET="http://127.0.0.1:8788"; npm.cmd --prefix frontend run dev -- --host 127.0.0.1 --port 5174` 启动前端。
+- 如果本机 `8787` 已被占用，可先用 `$env:PORT=8788; npm run server` 启动后端，再用 `$env:SIMPAGENT_PROXY_TARGET="http://127.0.0.1:8788"; npm.cmd --prefix frontend run dev -- --port 5174` 启动前端。
 - 如果部署到其它后端地址，可以设置 `VITE_SIMPAGENT_API_BASE` 覆盖。
 
 前端当前已接入：
