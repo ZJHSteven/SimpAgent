@@ -12,31 +12,23 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { cjk } from "@streamdown/cjk";
+import { code } from "@streamdown/code";
+import { math } from "@streamdown/math";
+import { mermaid } from "@streamdown/mermaid";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import type {
-  ComponentProps,
-  HTMLAttributes,
-  ReactElement,
-  ReactNode,
-} from "react";
+import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import {
   createContext,
-  lazy,
   memo,
-  Suspense,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
 } from "react";
-
-const LazyRichMessageResponse = lazy(() =>
-  import("./message-response-rich").then((module) => ({
-    default: module.RichMessageResponse,
-  }))
-);
+import { Streamdown } from "streamdown";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -327,43 +319,21 @@ export const MessageBranchPage = ({
   );
 };
 
-export type MessageResponseProps = HTMLAttributes<HTMLDivElement> & {
-  children?: ReactNode;
-  isAnimating?: boolean;
-};
+export type MessageResponseProps = ComponentProps<typeof Streamdown>;
+
+const streamdownPlugins = { cjk, code, math, mermaid };
 
 export const MessageResponse = memo(
-  ({ children, className, isAnimating, ...props }: MessageResponseProps) => {
-    /*
-     * 首屏性能说明：
-     * Message 的布局外壳很轻，但完整 Markdown 渲染器会同步带入 streamdown、
-     * 代码高亮、数学公式和 Mermaid 图表链。默认聊天页需要先把界面画出来，
-     * 不应该因为富文本能力阻塞首屏，所以这里先渲染一个纯文本 fallback，
-     * 再按需加载真正的 RichMessageResponse。
-     */
-    const fallback = (
-      <div
-        className={cn(
-          "size-full whitespace-pre-wrap break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-          className
-        )}
-        {...props}
-      >
-        {children}
-      </div>
-    );
-
-    return (
-      <Suspense fallback={fallback}>
-        <LazyRichMessageResponse
-          className={className}
-          isAnimating={isAnimating}
-        >
-          {typeof children === "string" ? children : String(children ?? "")}
-        </LazyRichMessageResponse>
-      </Suspense>
-    );
-  },
+  ({ className, ...props }: MessageResponseProps) => (
+    <Streamdown
+      className={cn(
+        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        className
+      )}
+      plugins={streamdownPlugins}
+      {...props}
+    />
+  ),
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&
     nextProps.isAnimating === prevProps.isAnimating

@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import type { LanguageModelUsage } from "ai";
 import type { ComponentProps } from "react";
 import { createContext, useContext, useMemo } from "react";
+import { getUsage } from "tokenlens";
 
 const PERCENT_MAX = 100;
 const ICON_RADIUS = 10;
@@ -195,19 +196,20 @@ export const ContextContentFooter = ({
   className,
   ...props
 }: ContextContentFooterProps) => {
-  /*
-   * 性能取舍说明：
-   * AI Elements 默认实现会通过 tokenlens 在浏览器端估算模型费用。
-   * tokenlens 会把大量 provider/model 价格表同步打入首屏主入口，而当前 SimpChat
-   * 还没有真实后端 usage 数据，所以先只展示“未接入真实费用”。
-   * 后续如果后端返回已计算好的费用，前端可以直接显示后端字段，避免再引入整套价格库。
-   */
-  const { usage } = useContextValue();
-  const hasUsage =
-    (usage?.inputTokens ?? 0) > 0 ||
-    (usage?.outputTokens ?? 0) > 0 ||
-    (usage?.reasoningTokens ?? 0) > 0;
-  const totalCost = hasUsage ? "等待后端费用数据" : "未接入真实费用";
+  const { modelId, usage } = useContextValue();
+  const costUSD = modelId
+    ? getUsage({
+        modelId,
+        usage: {
+          input: usage?.inputTokens ?? 0,
+          output: usage?.outputTokens ?? 0,
+        },
+      }).costUSD?.totalUSD
+    : undefined;
+  const totalCost = new Intl.NumberFormat("en-US", {
+    currency: "USD",
+    style: "currency",
+  }).format(costUSD ?? 0);
 
   return (
     <div
@@ -253,7 +255,7 @@ export const ContextInputUsage = ({
   children,
   ...props
 }: ContextInputUsageProps) => {
-  const { usage } = useContextValue();
+  const { usage, modelId } = useContextValue();
   const inputTokens = usage?.inputTokens ?? 0;
 
   if (children) {
@@ -264,13 +266,24 @@ export const ContextInputUsage = ({
     return null;
   }
 
+  const inputCost = modelId
+    ? getUsage({
+        modelId,
+        usage: { input: inputTokens, output: 0 },
+      }).costUSD?.totalUSD
+    : undefined;
+  const inputCostText = new Intl.NumberFormat("en-US", {
+    currency: "USD",
+    style: "currency",
+  }).format(inputCost ?? 0);
+
   return (
     <div
       className={cn("flex items-center justify-between text-xs", className)}
       {...props}
     >
       <span className="text-muted-foreground">Input</span>
-      <TokensWithCost tokens={inputTokens} />
+      <TokensWithCost costText={inputCostText} tokens={inputTokens} />
     </div>
   );
 };
@@ -282,7 +295,7 @@ export const ContextOutputUsage = ({
   children,
   ...props
 }: ContextOutputUsageProps) => {
-  const { usage } = useContextValue();
+  const { usage, modelId } = useContextValue();
   const outputTokens = usage?.outputTokens ?? 0;
 
   if (children) {
@@ -293,13 +306,24 @@ export const ContextOutputUsage = ({
     return null;
   }
 
+  const outputCost = modelId
+    ? getUsage({
+        modelId,
+        usage: { input: 0, output: outputTokens },
+      }).costUSD?.totalUSD
+    : undefined;
+  const outputCostText = new Intl.NumberFormat("en-US", {
+    currency: "USD",
+    style: "currency",
+  }).format(outputCost ?? 0);
+
   return (
     <div
       className={cn("flex items-center justify-between text-xs", className)}
       {...props}
     >
       <span className="text-muted-foreground">Output</span>
-      <TokensWithCost tokens={outputTokens} />
+      <TokensWithCost costText={outputCostText} tokens={outputTokens} />
     </div>
   );
 };
@@ -311,7 +335,7 @@ export const ContextReasoningUsage = ({
   children,
   ...props
 }: ContextReasoningUsageProps) => {
-  const { usage } = useContextValue();
+  const { usage, modelId } = useContextValue();
   const reasoningTokens = usage?.reasoningTokens ?? 0;
 
   if (children) {
@@ -322,13 +346,24 @@ export const ContextReasoningUsage = ({
     return null;
   }
 
+  const reasoningCost = modelId
+    ? getUsage({
+        modelId,
+        usage: { reasoningTokens },
+      }).costUSD?.totalUSD
+    : undefined;
+  const reasoningCostText = new Intl.NumberFormat("en-US", {
+    currency: "USD",
+    style: "currency",
+  }).format(reasoningCost ?? 0);
+
   return (
     <div
       className={cn("flex items-center justify-between text-xs", className)}
       {...props}
     >
       <span className="text-muted-foreground">Reasoning</span>
-      <TokensWithCost tokens={reasoningTokens} />
+      <TokensWithCost costText={reasoningCostText} tokens={reasoningTokens} />
     </div>
   );
 };
@@ -340,7 +375,7 @@ export const ContextCacheUsage = ({
   children,
   ...props
 }: ContextCacheUsageProps) => {
-  const { usage } = useContextValue();
+  const { usage, modelId } = useContextValue();
   const cacheTokens = usage?.cachedInputTokens ?? 0;
 
   if (children) {
@@ -351,13 +386,24 @@ export const ContextCacheUsage = ({
     return null;
   }
 
+  const cacheCost = modelId
+    ? getUsage({
+        modelId,
+        usage: { cacheReads: cacheTokens, input: 0, output: 0 },
+      }).costUSD?.totalUSD
+    : undefined;
+  const cacheCostText = new Intl.NumberFormat("en-US", {
+    currency: "USD",
+    style: "currency",
+  }).format(cacheCost ?? 0);
+
   return (
     <div
       className={cn("flex items-center justify-between text-xs", className)}
       {...props}
     >
       <span className="text-muted-foreground">Cache</span>
-      <TokensWithCost tokens={cacheTokens} />
+      <TokensWithCost costText={cacheCostText} tokens={cacheTokens} />
     </div>
   );
 };
