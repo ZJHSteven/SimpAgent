@@ -4,7 +4,7 @@
  * user -> model -> tool_calls -> human approval -> tool_result -> model -> ... -> done
  */
 import { assembleToolCalls, sendChatCompletionsRequest } from "../api/chat-completions.js";
-import type { FetchLike, ProviderStrategy } from "../types/api.js";
+import type { AdapterStreamEvent, FetchLike, ProviderStrategy } from "../types/api.js";
 import type { IdGenerator, RuntimeClock } from "../types/common.js";
 import { createTextMessage, type ContextMessage } from "../types/messages.js";
 import type { AgentEvent } from "../types/events.js";
@@ -13,6 +13,7 @@ import type {
   ApprovalPolicy,
   ToolApprovalRequest,
   ToolCallRequest,
+  ToolExecutionResult,
   ToolExecutor
 } from "../types/tools.js";
 import { deniedToolResult } from "../types/tools.js";
@@ -53,6 +54,102 @@ function parseToolArguments(toolCall: ToolCallRequest): unknown {
 }
 
 /**
+ * 将 unknown 错误转换为稳定字符串。
+ *
+ * 输入：
+ * - error: 任意异常值，可能是 Error，也可能是字符串、对象、null。
+ *
+ * 输出：
+ * - 可写入 tool result / trace / 终端日志的简短错误信息。
+ */
+function errorToMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * 构造工具错误结果。
+ *
+ * 设计理由：
+ * - 工具失败是 agent 可以继续处理的信息，不应该默认升级成整个 turn 的 fatal。
+ * - 模型收到统一 JSON 后，可以改参数、换工具，或者向用户解释失败原因。
+ */
+function createToolErrorResult(input: {
+  readonly errorCode: string;
+  readonly message: string;
+  readonly toolCall: ToolCallRequest;
+}): ToolExecutionResult {
+  return {
+    ok: false,
+    content: {
+      ok: false,
+      errorCode: input.errorCode,
+      message: input.message,
+      toolCallId: input.toolCall.id,
+      toolName: input.toolCall.name
+    }
+  };
+}
+
+/**
+ * 安全解析工具参数。
+ *
+ * 输出分两类：
+ * - ok=true：parsedArguments 可用于人审展示。
+ * - ok=false：result 可直接作为 tool 消息回填给模型。
+ */
+function safeParseToolArguments(
+  toolCall: ToolCallRequest
+):
+  | {
+      readonly ok: true;
+      readonly parsedArguments: unknown;
+    }
+  | {
+      readonly ok: false;
+      readonly parsedArguments: unknown;
+      readonly result: ToolExecutionResult;
+    } {
+  try {
+    return {
+      ok: true,
+      parsedArguments: parseToolArguments(toolCall)
+    };
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      parsedArguments: {
+        ok: false,
+        errorCode: "TOOL_ARGUMENT_PARSE_ERROR",
+        message: errorToMessage(error)
+      },
+      result: createToolErrorResult({
+        errorCode: "TOOL_ARGUMENT_PARSE_ERROR",
+        message: `工具参数不是合法 JSON：${errorToMessage(error)}`,
+        toolCall
+      })
+    };
+  }
+}
+
+/**
+ * 安全执行工具，把 runtime 抛出的异常转换为可回填给模型的结构化结果。
+ */
+async function executeToolSafely(input: {
+  readonly toolExecutor: ToolExecutor;
+  readonly toolCall: ToolCallRequest;
+}): Promise<ToolExecutionResult> {
+  try {
+    return await input.toolExecutor.executeTool(input.toolCall);
+  } catch (error: unknown) {
+    return createToolErrorResult({
+      errorCode: "TOOL_EXECUTION_ERROR",
+      message: errorToMessage(error),
+      toolCall: input.toolCall
+    });
+  }
+}
+
+/**
  * 将工具结果序列化为可写入 tool 消息的文本。
  */
 function stringifyToolResult(value: unknown): string {
@@ -90,27 +187,23 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
   });
 
   for (let iteration = 0; iteration < (input.maxToolIterations ?? 3); iteration += 1) {
-    // 每一轮都带上当前上下文与可用工具，向模型请求下一步动作。
-    const adapterResponse = await sendChatCompletionsRequest({
-      adapterInput: {
-        strategy: input.strategy,
-        messages: currentMessages,
-        tools: input.toolExecutor.listTools(),
-        stream: true
-      },
-      fetchFn: input.fetchFn,
-      clock: input.clock
-    });
-    requests.push(adapterResponse.request);
-
     let assistantText = "";
     let thinkingText = "";
+    const adapterEvents: AdapterStreamEvent[] = [];
 
-    for (const event of adapterResponse.events) {
+    /**
+     * 实时处理模型 adapter 事件。
+     *
+     * 关键点：
+     * - 这里会在 SSE block 刚解析出来时执行，所以 CLI 能立即看到 token。
+     * - 同时仍然把事件收集到 adapterEvents / responseEvents，后面要用它拼装工具调用和写 trace。
+     */
+    const handleAdapterEvent = async (event: AdapterStreamEvent): Promise<void> => {
+      adapterEvents.push(event);
       responseEvents.push(event);
 
       if (event.type === "message_delta") {
-        // 实时把增量透传给上层订阅者（例如 SSE 客户端）。
+        // 实时把增量透传给上层订阅者（例如 CLI 或 SSE 客户端）。
         assistantText += event.delta;
         await input.onEvent({
           type: "message_delta",
@@ -121,7 +214,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
       }
 
       if (event.type === "thinking_delta") {
-        // thinking 只做本地回放和诊断，不直接回给最终用户界面（由上层决定）。
+        // thinking 是否展示给最终用户由上层决定；core 只负责保持事件可观测。
         thinkingText += event.delta;
         await input.onEvent({
           type: "thinking_delta",
@@ -130,9 +223,23 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
           delta: event.delta
         });
       }
-    }
+    };
 
-    const toolCalls = assembleToolCalls(adapterResponse.events);
+    // 每一轮都带上当前上下文与可用工具，向模型请求下一步动作。
+    const adapterResponse = await sendChatCompletionsRequest({
+      adapterInput: {
+        strategy: input.strategy,
+        messages: currentMessages,
+        tools: input.toolExecutor.listTools(),
+        stream: true
+      },
+      fetchFn: input.fetchFn,
+      clock: input.clock,
+      onStreamEvent: handleAdapterEvent
+    });
+    requests.push(adapterResponse.request);
+
+    const toolCalls = assembleToolCalls(adapterEvents);
 
     if (thinkingText.length > 0) {
       currentMessages.push(
@@ -171,12 +278,15 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
         toolCall
       });
 
+      const parsedArguments = safeParseToolArguments(toolCall);
       const approvalRequest: ToolApprovalRequest = {
         threadId: input.threadId,
         turnId: input.turnId,
         toolCall,
-        parsedArguments: parseToolArguments(toolCall) as never,
-        riskSummary: `工具 ${toolCall.name} 即将执行。`
+        parsedArguments: parsedArguments.parsedArguments as never,
+        riskSummary: parsedArguments.ok
+          ? `工具 ${toolCall.name} 即将执行。`
+          : `工具 ${toolCall.name} 的参数解析失败，将把错误回填给模型。`
       };
 
       await input.onEvent({
@@ -184,20 +294,22 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
         request: approvalRequest
       });
 
-      const approval =
+      const approval = parsedArguments.ok
         // 审批策略优先由配置决定，ask 才走 runtime 的人审流程。
-        input.approvalPolicy === "always_approve"
+        ? input.approvalPolicy === "always_approve"
           ? { decision: "approve" as const, reason: "配置允许自动执行工具。" }
           : input.approvalPolicy === "deny"
             ? { decision: "deny" as const, reason: "配置拒绝所有工具。" }
-            : await input.runtime.approvalRuntime.requestApproval(approvalRequest);
+            : await input.runtime.approvalRuntime.requestApproval(approvalRequest)
+        : { decision: "deny" as const, reason: "工具参数解析失败，跳过真实工具执行。" };
 
       toolApprovals.push({ request: approvalRequest, approval });
 
-      const result =
-        approval.decision === "approve"
-          ? await input.toolExecutor.executeTool(toolCall)
-          : deniedToolResult;
+      const result = parsedArguments.ok
+        ? approval.decision === "approve"
+          ? await executeToolSafely({ toolExecutor: input.toolExecutor, toolCall })
+          : deniedToolResult
+        : parsedArguments.result;
 
       toolResults.push({ toolCall, result });
 

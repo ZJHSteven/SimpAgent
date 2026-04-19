@@ -104,5 +104,59 @@ describe("Chat Completions adapter", () => {
     expect(response.requestId).toBe("req_1");
     expect(response.events).toContainEqual({ type: "message_delta", delta: "完成" });
   });
-});
 
+  it("流式响应解析时会边读边触发事件回调", async () => {
+    // 这个测试专门覆盖 CLI “模拟打字效果”的底层能力：
+    // 第一段 SSE 到达后，adapter 必须立刻回调 message_delta，不能等第二段和 [DONE] 全部结束。
+    const encoder = new TextEncoder();
+    let releaseSecondChunk: (() => void) | undefined;
+    let resolveFirstDelta: (() => void) | undefined;
+    const waitForSecondChunk = new Promise<void>((resolve) => {
+      releaseSecondChunk = resolve;
+    });
+    const firstDeltaArrived = new Promise<void>((resolve) => {
+      resolveFirstDelta = resolve;
+    });
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        // 先推送第一段 token，然后故意等待测试释放第二段，用来验证“第一段是否已经实时回调”。
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"你"}}]}\n\n'));
+        await waitForSecondChunk;
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"好"}}]}\n\n'));
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      }
+    });
+    const streamedText: string[] = [];
+    const fetchFn = vi.fn(async () => new Response(body, { status: 200 }));
+
+    const pendingResponse = sendChatCompletionsRequest({
+      adapterInput: {
+        strategy,
+        messages: [{ id: "m1", role: "user", content: "测试流式" }],
+        tools: [],
+        stream: true
+      },
+      fetchFn,
+      clock: { now: () => 100 },
+      onStreamEvent: (event) => {
+        if (event.type === "message_delta") {
+          streamedText.push(event.delta);
+        }
+
+        if (streamedText.length === 1) {
+          resolveFirstDelta?.();
+        }
+      }
+    });
+
+    await firstDeltaArrived;
+    expect(streamedText).toEqual(["你"]);
+
+    releaseSecondChunk?.();
+    const response = await pendingResponse;
+
+    expect(streamedText).toEqual(["你", "好"]);
+    expect(response.events).toContainEqual({ type: "done" });
+  });
+});

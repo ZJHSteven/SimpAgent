@@ -212,6 +212,7 @@ export async function sendChatCompletionsRequest(input: {
   readonly adapterInput: ChatCompletionAdapterInput;
   readonly fetchFn: FetchLike;
   readonly clock: RuntimeClock;
+  readonly onStreamEvent?: (event: AdapterStreamEvent) => void | Promise<void>;
 }): Promise<ChatCompletionAdapterResponse> {
   const startedAt = input.clock.now();
   const request = buildChatCompletionsRequest(input.adapterInput);
@@ -222,24 +223,47 @@ export async function sendChatCompletionsRequest(input: {
   });
 
   let events: readonly AdapterStreamEvent[];
+  let firstTokenAt: number | undefined;
+
+  /**
+   * 统一处理 adapter 事件的实时回调。
+   *
+   * 这里放在 adapter 层而不是 CLI 层，是因为 server SSE、CLI 打字效果、未来 UI 都应复用同一套
+   * token 事件，而不是各自重新解析厂商 SSE 文本。
+   */
+  const publishAdapterEvent = async (event: AdapterStreamEvent): Promise<void> => {
+    if (
+      firstTokenAt === undefined &&
+      (event.type === "message_delta" || event.type === "thinking_delta" || event.type === "tool_call_delta")
+    ) {
+      // 首 token 延迟应该在事件刚解析出来时记录，而不是等完整响应读完后再记录。
+      firstTokenAt = input.clock.now();
+    }
+
+    await input.onStreamEvent?.(event);
+  };
 
   if (input.adapterInput.stream) {
     // 流式模式：从 SSE 逐块解析事件。
-    events = await readSseStream(response);
+    events = await readSseStream(response, publishAdapterEvent);
   } else {
     // 非流式模式：一次性 JSON 解析并映射为事件。
     const payload = (await response.json()) as JsonObject;
     events = parseNonStreamResponse(payload);
+
+    for (const event of events) {
+      // 非流式也走同一套回调，方便测试和上层统一处理。
+      await publishAdapterEvent(event);
+    }
   }
 
-  const firstEvent = events.find((event) => event.type === "message_delta" || event.type === "thinking_delta");
   const completedAt = input.clock.now();
 
   return {
     request,
     status: response.status,
     ...(response.headers.get("x-request-id") === null ? {} : { requestId: response.headers.get("x-request-id") as string }),
-    ...(firstEvent === undefined ? {} : { firstTokenMs: completedAt - startedAt }),
+    ...(firstTokenAt === undefined ? {} : { firstTokenMs: firstTokenAt - startedAt }),
     totalMs: completedAt - startedAt,
     events
   };

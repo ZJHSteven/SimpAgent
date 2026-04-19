@@ -13,6 +13,32 @@ interface MutableToolDelta {
 }
 
 /**
+ * 逐个发送解析出来的 adapter 事件。
+ *
+ * 输入：
+ * - events: 当前 SSE block 解析出的事件数组，通常是 1 个，也可能同时包含正文、思考和工具分片。
+ * - onEvent: 可选的实时回调，上层 agent loop 会用它把 token 立刻转发给 CLI 或 SSE 客户端。
+ *
+ * 输出：
+ * - 返回同一批 events，方便调用方继续追加到完整历史列表中。
+ *
+ * 核心逻辑：
+ * - 即使上层没有传 onEvent，也照常返回事件数组，保持原有“完整收集后返回”的能力。
+ * - 如果传了 onEvent，则按解析顺序逐个 await，保证终端打印、SSE 广播和 trace 收集顺序一致。
+ */
+async function publishEvents(
+  events: readonly AdapterStreamEvent[],
+  onEvent: ((event: AdapterStreamEvent) => void | Promise<void>) | undefined
+): Promise<readonly AdapterStreamEvent[]> {
+  for (const event of events) {
+    // 这里逐个 await，而不是 Promise.all，是为了保留 token 顺序；流式输出最怕乱序。
+    await onEvent?.(event);
+  }
+
+  return events;
+}
+
+/**
  * 解析单个 data payload（不含 "data:" 前缀）。
  */
 function parseChunkPayload(payload: string): AdapterStreamEvent[] {
@@ -108,7 +134,10 @@ export function parseSseText(text: string): AdapterStreamEvent[] {
  * - 按双换行切 block
  * - 保留最后一个不完整块到 buffer，等待下一批字节
  */
-export async function readSseStream(response: Response): Promise<readonly AdapterStreamEvent[]> {
+export async function readSseStream(
+  response: Response,
+  onEvent?: (event: AdapterStreamEvent) => void | Promise<void>
+): Promise<readonly AdapterStreamEvent[]> {
   if (response.body === null) {
     return [];
   }
@@ -131,16 +160,17 @@ export async function readSseStream(response: Response): Promise<readonly Adapte
 
     for (const part of parts) {
       // parseSseText 期望完整 block，这里补上分隔换行。
-      events.push(...parseSseText(`${part}\n\n`));
+      const parsedEvents = await publishEvents(parseSseText(`${part}\n\n`), onEvent);
+      events.push(...parsedEvents);
     }
   }
 
   buffer += decoder.decode();
 
   if (buffer.trim().length > 0) {
-    events.push(...parseSseText(buffer));
+    const parsedEvents = await publishEvents(parseSseText(buffer), onEvent);
+    events.push(...parsedEvents);
   }
 
   return events;
 }
-

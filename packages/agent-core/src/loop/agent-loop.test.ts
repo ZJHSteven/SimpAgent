@@ -101,4 +101,83 @@ describe("agent loop human-in-loop", () => {
     );
     expect(traceStore.traces).toHaveLength(1);
   });
+
+  it("工具执行抛错时会回填结构化错误并继续下一轮模型请求", async () => {
+    // 第一轮：模型要求读取一个不存在的文件；工具 runtime 抛错。
+    // 第二轮：模型应该能看到 tool role 里的 TOOL_EXECUTION_ERROR，并生成最终解释，而不是整个 turn fatal。
+    const toolStream = [
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_missing","function":{"name":"read_file","arguments":"{\\"path\\":\\"missing.txt\\"}"}}]}}]}',
+      "",
+      "data: [DONE]",
+      "",
+      ""
+    ].join("\n");
+    const finalStream = [
+      'data: {"choices":[{"delta":{"content":"文件读取失败，我会改用其它方式总结。"}}]}',
+      "",
+      "data: [DONE]",
+      "",
+      ""
+    ].join("\n");
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(toolStream, { status: 200 }))
+      .mockResolvedValueOnce(new Response(finalStream, { status: 200 }));
+    const fileRuntime: FileRuntime = {
+      readTextFile: vi.fn(async () => {
+        throw new Error("ENOENT: missing.txt");
+      }),
+      editTextFile: vi.fn()
+    };
+    const shellRuntime: ShellRuntime = {
+      runCommand: vi.fn()
+    };
+    const approvalRuntime: ApprovalRuntime = {
+      requestApproval: vi.fn()
+    };
+    const traceStore = createMockTraceStore();
+    const events: unknown[] = [];
+
+    const result = await runAgentTurn({
+      runId: "run_1",
+      threadId: "thread_1",
+      turnId: "turn_1",
+      messages: [],
+      userText: "读取缺失文件后继续处理",
+      strategy: {
+        id: "provider_1",
+        name: "mock",
+        provider: "deepseek-chat-completions",
+        baseUrl: "https://example.test",
+        apiKey: "key",
+        model: "model"
+      },
+      toolExecutor: new RuntimeToolExecutor({ fileRuntime, shellRuntime, approvalRuntime }),
+      runtime: { fileRuntime, shellRuntime, approvalRuntime },
+      traceStore,
+      fetchFn,
+      clock: { now: () => 1 },
+      idGenerator: new IncrementalIdGenerator(),
+      approvalPolicy: "always_approve",
+      onEvent: (event) => {
+        events.push(event);
+      }
+    });
+
+    expect(fileRuntime.readTextFile).toHaveBeenCalledOnce();
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(result.messages.some((message) => String(message.content).includes("TOOL_EXECUTION_ERROR"))).toBe(true);
+    expect(result.messages.at(-1)?.content).toBe("文件读取失败，我会改用其它方式总结。");
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "tool_result",
+        result: expect.objectContaining({
+          ok: false,
+          content: expect.objectContaining({
+            errorCode: "TOOL_EXECUTION_ERROR"
+          })
+        })
+      })
+    );
+  });
 });
