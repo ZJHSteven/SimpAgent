@@ -47,6 +47,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
   SidebarSeparator,
+  useSidebar,
 } from '@/components/ui/sidebar'
 
 const WORKSPACE_ITEMS = [
@@ -77,6 +78,31 @@ export function Sidebar({
   onSelectThread,
   onWorkspaceChange,
 }) {
+  // shadcn Sidebar 在移动端会渲染为 Sheet 抽屉。抽屉里的按钮默认不会自动关闭，
+  // 所以业务动作完成后需要主动关闭移动端抽屉，避免用户点完“新聊天/Graph”还被侧栏挡住。
+  const { isMobile, setOpenMobile } = useSidebar()
+
+  function closeMobileSidebar() {
+    if (isMobile) {
+      setOpenMobile(false)
+    }
+  }
+
+  function handleNewChat() {
+    onNewChat()
+    closeMobileSidebar()
+  }
+
+  function handleWorkspaceChange(workspaceId) {
+    onWorkspaceChange(workspaceId)
+    closeMobileSidebar()
+  }
+
+  function handleSelectThread(threadId) {
+    onSelectThread(threadId)
+    closeMobileSidebar()
+  }
+
   return (
     <ShadcnSidebar collapsible="icon" variant="sidebar">
       <SidebarHeader>
@@ -85,7 +111,7 @@ export function Sidebar({
             <SidebarMenuButton
               aria-label="新聊天"
               tooltip="新聊天"
-              onClick={onNewChat}
+              onClick={handleNewChat}
             >
               <MessageSquarePlusIcon />
               <span>新聊天</span>
@@ -117,7 +143,7 @@ export function Sidebar({
                     <SidebarMenuButton
                       isActive={activeWorkspace === item.id}
                       tooltip={item.label}
-                      onClick={() => onWorkspaceChange(item.id)}
+                      onClick={() => handleWorkspaceChange(item.id)}
                     >
                       <Icon />
                       <span>{item.label}</span>
@@ -148,7 +174,7 @@ export function Sidebar({
                   <SidebarMenuButton
                     isActive={thread.id === activeThreadId}
                     tooltip={thread.title || '新的会话'}
-                    onClick={() => onSelectThread(thread.id)}
+                    onClick={() => handleSelectThread(thread.id)}
                   >
                     <ScrollTextIcon />
                     <span>{thread.title || '新的会话'}</span>
@@ -166,7 +192,7 @@ export function Sidebar({
             <SidebarMenuButton
               isActive={activeWorkspace === 'agent'}
               tooltip="Agent 设置"
-              onClick={() => onWorkspaceChange('agent')}
+              onClick={() => handleWorkspaceChange('agent')}
             >
               <Settings2Icon />
               <span>Agent 设置</span>
