@@ -17,9 +17,39 @@ import {
   XCircleIcon,
 } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { isValidElement } from "react";
+import { isValidElement, lazy, Suspense } from "react";
 
-import { CodeBlock } from "./code-block";
+const LazyCodeBlock = lazy(() =>
+  import("./code-block").then((module) => ({
+    default: module.CodeBlock,
+  }))
+);
+
+function DeferredCodeBlock({
+  code,
+  language,
+}: {
+  code: string;
+  language: string;
+}) {
+  /*
+   * 首屏性能说明：
+   * 工具卡片本身经常会出现在聊天主路径里，但代码高亮只有用户展开工具参数/结果时才重要。
+   * CodeBlock 会继续加载 Shiki 和语言语法包，所以这里用普通 pre 作为即时兜底，
+   * 再通过 React.lazy 按需加载高亮版本。
+   */
+  const fallback = (
+    <pre className="overflow-x-auto p-4 text-xs">
+      <code>{code}</code>
+    </pre>
+  );
+
+  return (
+    <Suspense fallback={fallback}>
+      <LazyCodeBlock code={code} language={language} />
+    </Suspense>
+  );
+}
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
 
@@ -122,7 +152,7 @@ export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
       Parameters
     </h4>
     <div className="rounded-md bg-muted/50">
-      <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
+      <DeferredCodeBlock code={JSON.stringify(input, null, 2)} language="json" />
     </div>
   </div>
 );
@@ -146,10 +176,10 @@ export const ToolOutput = ({
 
   if (typeof output === "object" && !isValidElement(output)) {
     Output = (
-      <CodeBlock code={JSON.stringify(output, null, 2)} language="json" />
+      <DeferredCodeBlock code={JSON.stringify(output, null, 2)} language="json" />
     );
   } else if (typeof output === "string") {
-    Output = <CodeBlock code={output} language="json" />;
+    Output = <DeferredCodeBlock code={output} language="json" />;
   }
 
   return (
