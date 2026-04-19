@@ -32,6 +32,13 @@ export default defineConfig({
     },
   },
   server: {
+    /*
+     * 开发服务器监听地址说明：
+     * - 之前如果只监听 ::1 或只监听 127.0.0.1，浏览器访问 localhost 时可能先尝试另一个地址族。
+     * - Windows 上这种 IPv4/IPv6 回退常见表现就是首页 HTML 请求“连接”阶段卡 2 秒左右。
+     * - 绑定到 :: 可以让 Vite 同时接受 IPv6 与 IPv4 连接，避免 localhost/127.0.0.1 表现不一致。
+     */
+    host: '::',
     proxy: {
       '/api': {
         target: simpAgentProxyTarget,
