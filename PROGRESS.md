@@ -25,8 +25,8 @@
   - [x] 已把非 Chat 工作区页面和默认关闭的思考面板改为页面级按需加载，避免首屏同步加载 Graph/Preview/思考栏等非首屏模块。
   - [x] 已撤回对 AI Elements 组件内部 `Context`、`Message`、`Tool` 的性能改写，第一版保持组件库内部功能完整。
 - 正在做：
-  - [ ] 正在按“不改组件库内部实现”的边界完成前端首屏性能验证。
-- 下一步：继续运行前端 e2e、根项目回归和浏览器加载时序复测；启动联调用后端 `npm run server` 和前端 `npm.cmd --prefix frontend run dev`。
+  - [x] 前端首屏性能修复已完成，且保持 AI Elements 组件库内部功能不变。
+- 下一步：可进入人工体验联调；启动联调用后端 `npm run server` 和前端 `npm.cmd --prefix frontend run dev`。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
@@ -51,4 +51,6 @@
 - 坑10：AI Elements 的 Markdown/code 渲染会引入 shiki/mermaid 等异步 chunks，JS chunk 会明显增大；这和删除旧 CSS 是两个不同维度，后续可再做代码分割优化。
 - 坑11：Playwright `reuseExistingServer: true` 会复用 5173 上已有 Vite 服务；如果旧 worktree 的 dev server 没停，测试会跑到旧页面。复测前需要确认 5173 来自当前 worktree，或停止旧进程后重跑。
 - 坑12：`localhost:5173` 的首页 HTML 请求如果“等待”很短但“连接/阻塞”很长，优先检查 Vite 是否只监听了 IPv4 或 IPv6 单一地址族。
-- 复测记录：本轮已通过 `npm.cmd --prefix frontend run lint`、`npx.cmd tsc -p frontend/tsconfig.json --noEmit`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`、`npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
+- 复测记录：本轮已通过 `npm.cmd --prefix frontend run lint`、`npx.cmd tsc -p frontend/tsconfig.json --noEmit`、`npm.cmd --prefix frontend run build -- --sourcemap`、`npm.cmd --prefix frontend run test:e2e`、`npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
+- 性能复测：`curl` 访问 `localhost:5173`、`127.0.0.1:5173`、`[::1]:5173` 均为毫秒级连接；Chromium 本地导航约 317ms，首页 HTML 连接约 1ms，等待约 2.4ms，首屏请求数约 99。
+- 包体复测：在保持 AI Elements 组件内部功能不变的前提下，生产主入口从优化前约 1535KB 降到约 522KB；非首屏工作区被拆到 `WorkspacePages` chunk。
