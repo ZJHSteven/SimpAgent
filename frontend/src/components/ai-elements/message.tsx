@@ -358,7 +358,6 @@ export const MessageResponse = memo(
         <LazyRichMessageResponse
           className={className}
           isAnimating={isAnimating}
-          {...props}
         >
           {typeof children === "string" ? children : String(children ?? "")}
         </LazyRichMessageResponse>
