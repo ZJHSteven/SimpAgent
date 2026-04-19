@@ -21,9 +21,12 @@
   - [x] 已补装 shadcn `sidebar`，并用 shadcn Sidebar 重建左侧工作区入口。
   - [x] 已用 AI Elements `Conversation`、`Message`、`PromptInput`、`ModelSelector`、`Context`、`Confirmation`、`Tool`、`ChainOfThought` 替换聊天主路径、输入框、工具审批和思考栏。
   - [x] 已删除旧 ChatGPT 复刻组件、`chatgpt-compat.css` 和本地 SVG sprite。
+  - [x] 已修复 Vite dev server 本地监听地址，避免 `localhost` 在 IPv4/IPv6 地址族之间回退导致首页 HTML 连接阶段卡顿。
+  - [x] 已把非 Chat 工作区页面和默认关闭的思考面板改为页面级按需加载，避免首屏同步加载 Graph/Preview/思考栏等非首屏模块。
+  - [x] 已撤回对 AI Elements 组件内部 `Context`、`Message`、`Tool` 的性能改写，第一版保持组件库内部功能完整。
 - 正在做：
-  - [x] AI Elements 前端重构收口已完成，前端验证和根项目回归均已通过。
-- 下一步：可进入人工体验联调；启动联调仍使用后端 `npm run server` 和前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
+  - [ ] 正在按“不改组件库内部实现”的边界完成前端首屏性能验证。
+- 下一步：继续运行前端 e2e、根项目回归和浏览器加载时序复测；启动联调用后端 `npm run server` 和前端 `npm.cmd --prefix frontend run dev`。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
@@ -33,6 +36,7 @@
 - 决策E：server 在 `done/error` 后主动结束 SSE response。（原因：浏览器 EventSource 和自动化测试都不应无限挂着已结束 run 的连接。）
 - 决策F：`frontend` 使用 Tailwind CSS 4 的 CSS-first 配置，不再保留 `tailwind.config.js` / `postcss.config.js`。（原因：Tailwind 4 的 Vite 官方接入方式是 `@tailwindcss/vite` + `@import "tailwindcss"`；shadcn v4 的 `components.json` 中 `tailwind.config` 应为空。）
 - 决策G：本轮删除业务层旧 CSS，不删除 AI Elements/shadcn 组件源码内部自带的默认 Tailwind class。（原因：组件库源码里的 class 是组件默认实现；真正需要移除的是项目自己复制和手写的视觉层。）
+- 决策H：首屏性能优化第一版只做外层加载策略，不改 AI Elements 组件内部行为。（原因：组件库源码是当前重构基线，不能为了减包直接牺牲 `tokenlens`、Markdown、代码高亮等内置功能。）
 
 ## 常见坑 / 复现方法
 - 坑1：`chatgpt-temp/` 是视觉参考归档，不是当前 React 主应用入口。
@@ -46,4 +50,5 @@
 - 坑9：AI Elements 当前源码会用到 `String.replaceAll`、`Array.at`、`Array.toReversed`，前端 `tsconfig` 至少要使用 ES2023 lib，单靠 Vite build 不能替代严格类型检查。
 - 坑10：AI Elements 的 Markdown/code 渲染会引入 shiki/mermaid 等异步 chunks，JS chunk 会明显增大；这和删除旧 CSS 是两个不同维度，后续可再做代码分割优化。
 - 坑11：Playwright `reuseExistingServer: true` 会复用 5173 上已有 Vite 服务；如果旧 worktree 的 dev server 没停，测试会跑到旧页面。复测前需要确认 5173 来自当前 worktree，或停止旧进程后重跑。
+- 坑12：`localhost:5173` 的首页 HTML 请求如果“等待”很短但“连接/阻塞”很长，优先检查 Vite 是否只监听了 IPv4 或 IPv6 单一地址族。
 - 复测记录：本轮已通过 `npm.cmd --prefix frontend run lint`、`npx.cmd tsc -p frontend/tsconfig.json --noEmit`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`、`npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
