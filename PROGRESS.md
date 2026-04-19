@@ -22,8 +22,8 @@
   - [x] 已用 AI Elements `Conversation`、`Message`、`PromptInput`、`ModelSelector`、`Context`、`Confirmation`、`Tool`、`ChainOfThought` 替换聊天主路径、输入框、工具审批和思考栏。
   - [x] 已删除旧 ChatGPT 复刻组件、`chatgpt-compat.css` 和本地 SVG sprite。
 - 正在做：
-  - [ ] 正在执行根项目 typecheck/build/lint/test 回归，确认前端分支没有误伤后端和 runtime。
-- 下一步：完成根项目回归后收口提交；启动联调仍使用后端 `npm run server` 和前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
+  - [x] AI Elements 前端重构收口已完成，前端验证和根项目回归均已通过。
+- 下一步：可进入人工体验联调；启动联调仍使用后端 `npm run server` 和前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
@@ -46,4 +46,4 @@
 - 坑9：AI Elements 当前源码会用到 `String.replaceAll`、`Array.at`、`Array.toReversed`，前端 `tsconfig` 至少要使用 ES2023 lib，单靠 Vite build 不能替代严格类型检查。
 - 坑10：AI Elements 的 Markdown/code 渲染会引入 shiki/mermaid 等异步 chunks，JS chunk 会明显增大；这和删除旧 CSS 是两个不同维度，后续可再做代码分割优化。
 - 坑11：Playwright `reuseExistingServer: true` 会复用 5173 上已有 Vite 服务；如果旧 worktree 的 dev server 没停，测试会跑到旧页面。复测前需要确认 5173 来自当前 worktree，或停止旧进程后重跑。
-- 复测记录：本轮已通过 `npm run typecheck`、`npm test`、`npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`、`cd frontend; npx tsc --noEmit --pretty false`、`cd frontend; npx shadcn@latest info --json`。
+- 复测记录：本轮已通过 `npm.cmd --prefix frontend run lint`、`npx.cmd tsc -p frontend/tsconfig.json --noEmit`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`、`npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
