@@ -25,10 +25,13 @@
     - [x] 已按要求先提交现有注释改动：`docs: 补充 CLI 与 server 教学注释`。
     - [x] 已确认 CLI 非真流式的根因：adapter 先完整读取 SSE，再把事件列表交给 agent loop。
     - [x] 已确认工具错误中断的根因：参数解析和工具执行异常没有转换成 `tool` 消息回填给模型。
+    - [x] 已在 Chat Completions adapter 与 SSE parser 中加入实时事件回调，保留完整事件列表用于 trace。
+    - [x] 已在 agent loop 中把工具参数解析失败和工具执行异常转换为结构化工具结果回填给模型。
+    - [x] 已补充流式回调与工具异常回填测试，并通过 `npm run typecheck`、`npm test`。
+    - [x] 已新增根目录 `README.md`，说明项目结构、配置、CLI/server 用法、agent loop 和常见问题。
 - 正在做：
-    - [ ] 按 `PLANS.md` 的新 ExecPlan 修复 CLI 流式输出与工具错误回填。
-    - [ ] 新增根目录 `README.md`，说明项目结构与使用方式。
-- 下一步：实现 adapter 增量事件回调、agent loop 工具错误回填，并补齐测试与 README。
+    - [ ] 执行完整回归：`npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
+- 下一步：完整回归通过后，提交 README 与进度文档，并汇总本轮修复结果。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`chatgpt-temp/tem.html` 保留为视觉和行为参考，不删除。（原因：迁移需要可回看原始 DOM、样式和交互。）
@@ -49,4 +52,5 @@
 - 坑7：输入框上下蓝线不是 `outline`，而是 `textarea.ProseMirror` focus 后继承的蓝色 `box-shadow`；只断言 `outline-style: none` 会漏测。
 - 坑8：当前 CLI 的“实时打字”只是打印 `message_delta`，但 `message_delta` 事件本身被 adapter 延后到完整 SSE 结束后才产生。
 - 坑9：工具执行链路里一旦 `JSON.parse`、文件读写、shell runtime 抛错，当前实现会中断整个 turn，模型拿不到错误信息。
+- 坑10：README 示例里 Windows PowerShell 的 `curl` 换行使用反引号；Linux/macOS 用户可把反引号改成反斜杠。
 - 复测记录：`frontend` 的 `npm run lint`、`npm run build`、`npm run test:e2e` 均通过；真实 Chromium computed style 复查显示 focus 输入后 `editorBoxShadow: "none"`，外层 composer 阴影与未聚焦时一致。

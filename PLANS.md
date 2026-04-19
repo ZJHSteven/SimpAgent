@@ -66,14 +66,14 @@
 1. [x] **提交现有注释改动**
    - 已对 `apps/cli/src/index.ts` 与 `apps/server/src/index.ts` 的教学注释改动执行 `npm run typecheck` 和 `npm test`。
    - 已提交为 `docs: 补充 CLI 与 server 教学注释`。
-2. [ ] **定位流式输出链路**
+2. [x] **定位流式输出链路**
    - 检查 `readSseStream`、`sendChatCompletionsRequest`、`runAgentTurn`、CLI `printEvent` 的调用顺序。
    - 确认当前阻塞点是 adapter 先完整收集事件，再返回给 agent loop。
-3. [ ] **实现真流式事件转发**
+3. [x] **实现真流式事件转发**
    - 为 Chat Completions adapter 增加增量事件回调。
    - 保留完整事件列表用于 trace 和工具调用拼装。
    - 确保 CLI/server 仍能复用同一套事件协议。
-4. [ ] **实现工具错误回填**
+4. [x] **实现工具错误回填**
    - 将工具参数 JSON 解析异常转换成 `TOOL_ARGUMENT_PARSE_ERROR`。
    - 将 runtime/tool executor 抛出的异常转换成 `TOOL_EXECUTION_ERROR`。
    - 确保错误结果写入 `tool` role 消息，并继续请求模型下一轮。
@@ -81,8 +81,15 @@
    - 增加 adapter 事件回调的流式顺序测试。
    - 增加工具执行异常不会中断 agent loop 的回归测试。
    - 运行 `npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。
-6. [ ] **补充 README**
+6. [x] **补充 README**
    - 新增根目录 README，面向初学者说明项目模块、运行步骤、CLI/server 行为和调试建议。
+
+## 当前结果
+- 已提交现有注释改动。
+- 已在 adapter 层新增流式事件回调，CLI/server 可在 SSE 分片到达时收到增量事件。
+- 已在 agent loop 内将工具参数解析失败和 runtime 抛错转换为结构化工具结果，避免直接 fatal。
+- 已新增根目录 `README.md`，说明项目结构、配置、CLI、server、agent loop 和常见问题。
+- 已通过阶段性回归：`npm run typecheck`、`npm test`。
 
 ## 验收标准
 - CLI 能在流式响应尚未完全结束时收到并打印 token 增量。
