@@ -8,6 +8,7 @@ export default defineConfig({
       "apps/**/*.test.ts"
     ],
     exclude: [
+      "**/*.smoke.test.ts",
       "**/dist/**",
       "**/node_modules/**"
     ],

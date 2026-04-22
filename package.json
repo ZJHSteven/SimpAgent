@@ -12,6 +12,7 @@
     "typecheck": "tsc -b packages/agent-core packages/runtime-node packages/runtime-cloudflare-worker packages/runtime-tauri apps/cli apps/server --pretty false",
     "lint": "eslint \"apps/**/*.ts\" \"packages/**/*.ts\"",
     "test": "vitest run",
+    "test:smoke": "vitest run --config vitest.smoke.config.ts",
     "test:watch": "vitest",
     "cli": "tsx apps/cli/src/index.ts",
     "server": "tsx apps/server/src/index.ts"

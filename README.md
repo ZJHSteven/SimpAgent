@@ -168,10 +168,21 @@ npm run typecheck
 npm run build
 npm run lint
 npm test
+npm run test:smoke
 npm.cmd --prefix frontend run lint
 npm.cmd --prefix frontend run build
 npm.cmd --prefix frontend run test:e2e
 ```
+
+`npm run test:smoke` 是单独的真 LLM smoke test 层，默认只收集 `.smoke.test.ts` 文件。
+它需要手工设置环境变量才会真正访问厂商 API：
+
+- `SIMPAGENT_SMOKE_API_KEY`
+- `SIMPAGENT_SMOKE_CHAT_MODEL`
+- `SIMPAGENT_SMOKE_REASONING_MODEL`
+- 可选：`SIMPAGENT_SMOKE_BASE_URL`
+
+如果这些环境变量没有设置，smoke test 会自动跳过，不影响日常 `npm test`。
 
 当前核心测试覆盖：
 
@@ -182,6 +193,7 @@ npm.cmd --prefix frontend run test:e2e
 - Node runtime 的配置、文件、shell、trace store。
 - HTTP Server 的 thread 恢复、标题生成、404/400 边界和 SSE 输出。
 - React 前端的真实 API mock、SSE 流式输出、工具审批、移动端侧栏和中文输入法组合态。
+- 真 LLM smoke test 会在有环境变量时额外验证非思考模型和思考模型的真实 SSE 流式返回。
 
 ## 常见问题
 
