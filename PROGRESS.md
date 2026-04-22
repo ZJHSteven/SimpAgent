@@ -18,6 +18,7 @@
   - [x] 已决定新增独立的真 LLM smoke test 层，用于真实厂商 SSE 的手工验证。
   - [x] 已新增 `npm run test:smoke` 和专用 `vitest.smoke.config.ts`，默认只收集 `.smoke.test.ts` 文件。
   - [x] 已新增 smoke 专用 TOML 读取器和普通单测，确认可从 `simpagent.toml` 读取 `smokeChatModel`、`smokeReasoningModel` 等字段。
+  - [x] 已新增 `GET /models` 接口，并在 smoke test 中先拉模型列表再校验配置里的模型是否可用。
   - [x] 已把 smoke test 运行条件写入根目录 README，明确需要在 `simpagent.toml` 中填写 smoke 字段。
   - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。

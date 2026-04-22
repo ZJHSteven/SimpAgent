@@ -20,6 +20,7 @@ import {
   encodeSseEvent,
   runAgentTurn,
   systemClock,
+  listProviderModels,
   type AgentEvent,
   type FetchLike,
   type JsonObject,
@@ -263,6 +264,16 @@ export async function createSimpAgentHttpServer(
       // GET /threads: 列出内存中的会话。
       if (method === "GET" && url.pathname === "/threads") {
         sendJson(response, 200, pool.listThreads());
+        return;
+      }
+
+      // GET /models: 从 provider 拉取当前可用模型列表，便于前端下拉选择。
+      if (method === "GET" && url.pathname === "/models") {
+        const models = await listProviderModels({
+          strategy,
+          fetchFn
+        });
+        sendJson(response, 200, models);
         return;
       }
 

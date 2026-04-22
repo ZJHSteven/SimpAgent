@@ -78,6 +78,15 @@ export function listThreads() {
 }
 
 /**
+ * 获取 provider 当前可用的模型列表。
+ *
+ * 这个接口直接对应后端 `GET /models`，用于后续把“选择模型”按钮真正接成下拉菜单。
+ */
+export function listModels() {
+  return requestJson('/models')
+}
+
+/**
  * 创建新 thread。
  */
 export function createThread(input = {}) {

@@ -160,6 +160,39 @@ describe("SimpAgent server", () => {
     expect(fetchFn).toHaveBeenCalledOnce();
   });
 
+  it("GET /models 会把 provider 的模型列表原样返回", async () => {
+    const storageDir = await mkdtemp(join(tmpdir(), "simpagent-server-"));
+    const fetchFn = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          object: "list",
+          data: [
+            { id: "deepseek-chat", object: "model", owned_by: "deepseek" },
+            { id: "deepseek-reasoner", object: "model", owned_by: "deepseek" }
+          ]
+        }),
+        { status: 200 }
+      )
+    );
+    const server = await createSimpAgentHttpServer({
+      config: createTestConfig(storageDir),
+      fetchFn
+    });
+    const baseUrl = await listenOnRandomPort(server);
+
+    const response = await fetchJson(`${baseUrl}/models`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      object: "list",
+      data: [
+        { id: "deepseek-chat", object: "model", owned_by: "deepseek" },
+        { id: "deepseek-reasoner", object: "model", owned_by: "deepseek" }
+      ]
+    });
+    expect(fetchFn).toHaveBeenCalledOnce();
+  });
+
   it("对不存在资源和非法输入返回稳定 JSON 错误", async () => {
     const storageDir = await mkdtemp(join(tmpdir(), "simpagent-server-"));
     const server = await createSimpAgentHttpServer({

@@ -184,6 +184,9 @@ npm.cmd --prefix frontend run test:e2e
 
 如果这些字段没有设置，smoke test 会直接失败并提示缺少哪个配置，不会静默跳过。
 
+后端还提供了一个 `GET /models` 接口，会去 provider 的 `/models` 拉取当前可用模型列表。
+这个接口给前端模型下拉框和 smoke test 共用，后面想做“自动选 chat / reasoning 模型”时就不用再重复写一遍请求逻辑。
+
 当前核心测试覆盖：
 
 - Chat Completions 请求体组装。
@@ -192,6 +195,7 @@ npm.cmd --prefix frontend run test:e2e
 - 工具 runtime 抛错后回填 `TOOL_EXECUTION_ERROR` 并继续下一轮。
 - Node runtime 的配置、文件、shell、trace store。
 - HTTP Server 的 thread 恢复、标题生成、404/400 边界和 SSE 输出。
+- HTTP Server 的模型列表代理 `/models`。
 - React 前端的真实 API mock、SSE 流式输出、工具审批、移动端侧栏和中文输入法组合态。
 - 真 LLM smoke test 会在 `simpagent.toml` 配好 smoke 字段后额外验证非思考模型和思考模型的真实 SSE 流式返回。
 

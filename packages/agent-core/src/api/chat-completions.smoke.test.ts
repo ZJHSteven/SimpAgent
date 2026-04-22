@@ -12,7 +12,7 @@
  * - 需要在 TOML 里填写 `smokeChatModel` 和 `smokeReasoningModel`
  */
 import { describe, expect, it } from "vitest";
-import { sendChatCompletionsRequest, type ProviderStrategy } from "../index.js";
+import { listProviderModels, sendChatCompletionsRequest, type ProviderStrategy } from "../index.js";
 import type { AdapterStreamEvent } from "../types/api.js";
 import { loadSmokeTestConfig } from "./smoke-config.js";
 
@@ -31,6 +31,29 @@ function createStrategy(model: string, apiKey: string, baseUrl: string): Provide
     apiKey,
     model
   };
+}
+
+/**
+ * 先拉取模型列表，再确认 smoke 配置里写的模型确实可用。
+ *
+ * 这么做有两个好处：
+ * 1) smoke test 不再只盲目相信 TOML，而是先验证 provider 真返回了可选模型。
+ * 2) 未来如果要把“选择模型”接到 UI，这个 helper 也是同一条逻辑链。
+ */
+async function assertSmokeModelsAvailable(input: {
+  readonly strategy: ProviderStrategy;
+}): Promise<void> {
+  const models = await listProviderModels({
+    strategy: input.strategy,
+    fetchFn: fetch
+  });
+  const availableModelIds = new Set(models.data.map((model) => model.id));
+
+  if (!availableModelIds.has(input.strategy.model)) {
+    throw new Error(
+      `模型列表里没有找到 ${input.strategy.model}。当前可用模型：${[...availableModelIds].join(", ")}`
+    );
+  }
 }
 
 /**
@@ -97,9 +120,11 @@ async function runRealStreamingSmoke(input: {
 describe("真 LLM smoke test", () => {
   it("非思考模型会真实流式返回 message_delta", async () => {
     const smokeConfig = await loadSmokeTestConfig();
+    const strategy = createStrategy(smokeConfig.chatModel, smokeConfig.apiKey, smokeConfig.baseUrl);
+    await assertSmokeModelsAvailable({ strategy });
 
     const { response, events } = await runRealStreamingSmoke({
-      strategy: createStrategy(smokeConfig.chatModel, smokeConfig.apiKey, smokeConfig.baseUrl),
+      strategy,
       prompt: "请用一句非常简短的中文回答：1 + 1 等于几？"
     });
 
@@ -117,9 +142,11 @@ describe("真 LLM smoke test", () => {
 
   it("思考模型会同时流式返回 thinking_delta 和 message_delta", async () => {
     const smokeConfig = await loadSmokeTestConfig();
+    const strategy = createStrategy(smokeConfig.reasoningModel, smokeConfig.apiKey, smokeConfig.baseUrl);
+    await assertSmokeModelsAvailable({ strategy });
 
     const { response, events } = await runRealStreamingSmoke({
-      strategy: createStrategy(smokeConfig.reasoningModel, smokeConfig.apiKey, smokeConfig.baseUrl),
+      strategy,
       prompt: "请先简要思考，再用一句中文回答：为什么 7 比 5 大？"
     });
 

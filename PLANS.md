@@ -12,6 +12,7 @@
 2. [x] **落地 smoke 配置与用例**
    - 新增专用 Vitest 配置，只收集 `.smoke.test.ts` 文件。
    - 新增真 LLM smoke test，覆盖非思考模型和思考模型的真实流式返回，并改为从 `simpagent.toml` 读取 smoke 配置。
+   - 新增 `GET /models` 模型列表接口，smoke test 先拉列表再校验模型可用性。
 3. [x] **同步文档与状态**
    - 更新 `PROGRESS.md`，记录 smoke test 的运行方式和当前结论。
 4. [ ] **执行验证**
@@ -21,6 +22,7 @@
 ## 验收标准
 - 普通回归测试不依赖真实网络，保持稳定快速。
 - 真 LLM smoke test 不再静默跳过，而是要求 `simpagent.toml` 里的 smoke 字段完整。
+- 模型列表接口 `/models` 可以被前端下拉和 smoke test 共用。
 - smoke test 至少覆盖一个非思考模型和一个思考模型的真实 SSE 流式输出。
 - 计划和状态文档能让后续维护者一眼看懂测试分层。
 

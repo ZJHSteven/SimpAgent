@@ -12,7 +12,7 @@ export * from "./types/trace.js";
 export * from "./runtime/interfaces.js";
 export * from "./api/stream.js";
 export * from "./api/chat-completions.js";
+export * from "./api/models.js";
 export * from "./tools/builtin-tools.js";
 export * from "./loop/agent-loop.js";
 export * from "./pool/agent-pool.js";
-

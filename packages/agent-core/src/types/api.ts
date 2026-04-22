@@ -54,6 +54,29 @@ export interface ObservableHttpRequest {
 }
 
 /**
+ * 模型列表接口返回的单个模型条目。
+ *
+ * 这是 OpenAI-compatible / DeepSeek-compatible 的最小公共字段集合。
+ */
+export interface ProviderModelInfo {
+  readonly id: string;
+  readonly object: "model";
+  readonly owned_by: string;
+}
+
+/**
+ * 模型列表接口返回体。
+ *
+ * 说明：
+ * - object 固定为 list。
+ * - data 里是当前可用模型数组，前端或 smoke test 可以据此做选择/校验。
+ */
+export interface ProviderModelListResponse {
+  readonly object: "list";
+  readonly data: readonly ProviderModelInfo[];
+}
+
+/**
  * 统一流式事件：
  * - message_delta: 正文 token 增量
  * - thinking_delta: 思考/推理 token 增量
@@ -109,4 +132,3 @@ export interface ChatCompletionAdapterResponse {
 export interface FetchLike {
   (input: string, init: RequestInit): Promise<Response>;
 }
-
