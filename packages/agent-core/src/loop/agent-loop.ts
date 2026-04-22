@@ -167,7 +167,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
   const currentMessages: ContextMessage[] = [
     ...input.messages,
     createTextMessage({
-      id: input.idGenerator.nextId("msg"),
+      id: input.idGenerator.nextId(),
       role: "user",
       content: input.userText,
       turnId: input.turnId
@@ -244,7 +244,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     if (thinkingText.length > 0) {
       currentMessages.push(
         createTextMessage({
-          id: input.idGenerator.nextId("msg"),
+          id: input.idGenerator.nextId(),
           role: "thinking",
           content: thinkingText,
           turnId: input.turnId
@@ -256,7 +256,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
       // 即使 assistantText 为空，只要有 toolCalls，也要落一条 assistant 消息承载调用信息。
       currentMessages.push(
         createTextMessage({
-          id: input.idGenerator.nextId("msg"),
+          id: input.idGenerator.nextId(),
           role: "assistant",
           content: assistantText,
           turnId: input.turnId,
@@ -316,7 +316,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
       currentMessages.push(
         // 工具结果通过 tool 角色消息回填给模型，驱动下一轮继续推理。
         createTextMessage({
-          id: input.idGenerator.nextId("msg"),
+          id: input.idGenerator.nextId(),
           role: "tool",
           content: stringifyToolResult(result.content),
           turnId: input.turnId,

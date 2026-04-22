@@ -3,7 +3,7 @@
  * 说明：当前实现是“简化 TOML 子集解析器”，仅覆盖项目所需键值场景。
  */
 import { readFile } from "node:fs/promises";
-import type { ApprovalPolicy, ApiProviderKind, ProviderStrategy } from "@simpagent/agent-core";
+import { createUuidV7Id, type ApprovalPolicy, type ApiProviderKind, type ProviderStrategy } from "@simpagent/agent-core";
 
 /**
  * Node 运行时配置对象。
@@ -135,7 +135,7 @@ export async function loadNodeConfig(path = "simpagent.toml"): Promise<SimpAgent
  */
 export function configToProviderStrategy(config: SimpAgentNodeConfig): ProviderStrategy {
   return {
-    id: "provider_default",
+    id: createUuidV7Id(),
     name: config.provider,
     provider: config.provider,
     baseUrl: config.baseUrl,
@@ -144,4 +144,3 @@ export function configToProviderStrategy(config: SimpAgentNodeConfig): ProviderS
     timeoutMs: config.timeoutMs
   };
 }
-

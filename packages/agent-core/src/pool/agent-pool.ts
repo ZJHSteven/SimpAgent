@@ -23,15 +23,15 @@ export class AgentPool {
   /**
    * 生成当前内存中尚未使用的 thread id。
    *
-   * 为什么需要循环：
-   * - server 启动后会先恢复磁盘里的历史 thread。
-   * - IncrementalIdGenerator 重新从 1 开始，如果不避让，会把 `thread_1` 这类历史会话覆盖掉。
+   * 为什么保留循环：
+   * - UUID v7 的碰撞概率极低，但这里仍然做一次 Map 检查，避免极端情况下的重复。
+   * - 这样即便测试里注入固定 ID，也能尽早暴露问题。
    */
   private nextUnusedThreadId(): string {
-    let threadId = this.idGenerator.nextId("thread");
+    let threadId = this.idGenerator.nextId();
 
     while (this.threads.has(threadId)) {
-      threadId = this.idGenerator.nextId("thread");
+      threadId = this.idGenerator.nextId();
     }
 
     return threadId;

@@ -8,8 +8,8 @@
  * 3) 执行一次 agent turn，并将流式事件打印到终端。
  */
 import {
-  IncrementalIdGenerator,
   RuntimeToolExecutor,
+  UuidV7IdGenerator,
   runAgentTurn,
   systemClock,
   type AgentEvent
@@ -100,16 +100,16 @@ async function main(): Promise<void> {
   const approvalRuntime = new CliApprovalRuntime();
   // 聚合为 core 期望的 runtime 结构。
   const runtime = { fileRuntime, shellRuntime, approvalRuntime };
-  // 生成 run/thread/turn/message 等递增 ID。
-  const idGenerator = new IncrementalIdGenerator();
+  // 生成 run/thread/turn/message 等 UUID v7 ID。
+  const idGenerator = new UuidV7IdGenerator();
   // trace 持久化到本地配置目录。
   const traceStore = new JsonFileTraceStore(config.storageDir);
 
   await runAgentTurn({
     // 每次执行都创建新的 run/thread/turn 标识。
-    runId: idGenerator.nextId("run"),
-    threadId: idGenerator.nextId("thread"),
-    turnId: idGenerator.nextId("turn"),
+    runId: idGenerator.nextId(),
+    threadId: idGenerator.nextId(),
+    turnId: idGenerator.nextId(),
     // CLI 首版不复用历史消息，直接空上下文起步。
     messages: [],
     // 用户输入（来自 argv 或默认文案）。
@@ -140,4 +140,3 @@ main().catch((error: unknown) => {
   process.stderr.write(`[fatal] ${message}\n`);
   process.exitCode = 1;
 });
-

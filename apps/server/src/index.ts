@@ -4,7 +4,7 @@
  * 本文件的职责：
  * 1. 把 agent-core / runtime-node 组装成一个可被前端调用的 HTTP 服务。
  * 2. 提供 thread 管理、run 启动、SSE 事件订阅、工具审批回填等接口。
- * 3. 在 server 启动时恢复磁盘里保存过的 thread，让前端刷新后仍能看到历史会话。
+ * 3. 在 server 启动时扫描磁盘里的 thread 快照，旧数据直接跳过，新数据继续使用。
  *
  * 为什么不在这里引入 Express：
  * - 当前接口数量少，Node 原生 http 足够清楚。
@@ -15,9 +15,10 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   AgentPool,
-  IncrementalIdGenerator,
   RuntimeToolExecutor,
   encodeSseEvent,
+  UuidV7IdGenerator,
+  createUuidV7Id,
   runAgentTurn,
   systemClock,
   listProviderModels,
@@ -184,7 +185,7 @@ export async function createSimpAgentHttpServer(
   // 读取运行配置；测试可注入临时配置，避免读取真实 `simpagent.toml`。
   const config = options.config ?? (await loadNodeConfig());
   // ID 生成器（run/thread/turn/message 等）。
-  const idGenerator = new IncrementalIdGenerator();
+  const idGenerator = new UuidV7IdGenerator();
   // Node runtime 三件套。
   const fileRuntime = new NodeFileRuntime();
   const shellRuntime = new NodeShellRuntime();
@@ -202,6 +203,8 @@ export async function createSimpAgentHttpServer(
   const strategy = configToProviderStrategy(config);
   // 真实运行时使用全局 fetch；测试时可注入 mock fetch。
   const fetchFn = options.fetchFn ?? fetch;
+  // 默认 agent 也使用 UUID v7 作为主键，语义名字放在 name 里。
+  const agentId = createUuidV7Id();
 
   /**
    * 向 run 通道广播事件。
@@ -228,7 +231,7 @@ export async function createSimpAgentHttpServer(
 
   // 注册默认 agent，首版先固定 1 个角色。
   pool.registerAgent({
-    id: "agent_default",
+    id: agentId,
     name: "SimpAgent",
     description: "默认后端 agent，用于首版纵向跑通。",
     instructions: "你是 SimpAgent 的默认编码助手。",
@@ -239,7 +242,11 @@ export async function createSimpAgentHttpServer(
   // 启动时恢复已持久化 thread。恢复失败的坏数据会被跳过，避免单个文件阻断服务启动。
   for (const snapshot of await traceStore.listThreads()) {
     if (isThreadState(snapshot)) {
-      pool.restoreThread(snapshot as unknown as ThreadState);
+      try {
+        pool.restoreThread(snapshot as unknown as ThreadState);
+      } catch {
+        // 历史数据不做兼容，旧快照直接跳过。
+      }
     }
   }
 
@@ -253,7 +260,7 @@ export async function createSimpAgentHttpServer(
       if (method === "POST" && url.pathname === "/threads") {
         const body = await readJson<{ title?: string }>(request);
         const thread = pool.createThread({
-          agentId: "agent_default",
+          agentId,
           ...(body.title === undefined ? {} : { title: body.title })
         });
         await traceStore.saveThread(thread.id, thread as unknown as JsonObject);
@@ -344,8 +351,8 @@ export async function createSimpAgentHttpServer(
         await traceStore.saveThread(runnableThread.id, runnableThread as unknown as JsonObject);
 
         // 为本次运行分配 run/turn id。
-        const runId = idGenerator.nextId("run");
-        const turnId = idGenerator.nextId("turn");
+        const runId = idGenerator.nextId();
+        const turnId = idGenerator.nextId();
         // 初始化事件通道并登记。
         const channel: RunChannel = { clients: new Set(), events: [] };
         channels.set(runId, channel);

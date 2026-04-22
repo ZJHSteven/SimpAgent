@@ -9,7 +9,10 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
+import { createUuidV7Id } from "@simpagent/agent-core";
 import { JsonFileTraceStore, NodeFileRuntime, NodeShellRuntime, parseSimpleToml } from "./index.js";
+
+const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 describe("runtime-node", () => {
   it("解析简单 TOML 配置", () => {
@@ -56,11 +59,13 @@ describe("runtime-node", () => {
   it("trace store 会把 thread 与 trace 落盘", async () => {
     const dir = await mkdtemp(join(tmpdir(), "simpagent-"));
     const store = new JsonFileTraceStore(dir);
+    const threadId = createUuidV7Id();
+    const turnId = createUuidV7Id();
 
-    await store.saveThread("thread_1", { id: "thread_1", title: "测试" });
+    await store.saveThread(threadId, { id: threadId, title: "测试" });
     await store.saveTrace({
-      threadId: "thread_1",
-      turnId: "turn_1",
+      threadId,
+      turnId,
       createdAt: 1,
       responseEvents: [],
       toolApprovals: [],
@@ -69,8 +74,9 @@ describe("runtime-node", () => {
       metrics: {}
     });
 
-    expect(await store.loadThread("thread_1")).toEqual({ id: "thread_1", title: "测试" });
+    expect(threadId).toMatch(uuidV7Pattern);
+    expect(turnId).toMatch(uuidV7Pattern);
+    expect(await store.loadThread(threadId)).toEqual({ id: threadId, title: "测试" });
     expect(await store.listThreads()).toHaveLength(1);
   });
 });
-

@@ -4,6 +4,7 @@
  * - 工具协议面向模型保持稳定
  * - 具体执行下沉到 runtime 注入能力
  */
+import { createUuidV7Id } from "../types/common.js";
 import type { JsonObject } from "../types/common.js";
 import type { RuntimeServices } from "../runtime/interfaces.js";
 import type { ToolCallRequest, ToolDefinition, ToolExecutionResult, ToolExecutor } from "../types/tools.js";
@@ -54,22 +55,26 @@ const shellCommandSchema: JsonObject = {
 
 /**
  * 对外暴露给模型的内置工具列表。
+ *
+ * 注意：
+ * - `id` 只是内部主键，给程序做稳定标识用。
+ * - `name` 才是模型真正看到并调用的名字。
  */
 export const builtinToolDefinitions: readonly ToolDefinition[] = [
   {
-    id: "tool_read_file",
+    id: createUuidV7Id(),
     name: "read_file",
     description: "读取纯文本文件的指定行范围，并返回原文与基础元数据。",
     parameters: readFileSchema
   },
   {
-    id: "tool_edit_file",
+    id: createUuidV7Id(),
     name: "edit_file",
     description: "对单个文本文件执行精确文本替换、新建或删除操作。",
     parameters: editFileSchema
   },
   {
-    id: "tool_shell_command",
+    id: createUuidV7Id(),
     name: "shell_command",
     description: "在当前 runtime 中执行 shell 命令，并返回 stdout、stderr 与退出码。",
     parameters: shellCommandSchema
@@ -146,4 +151,3 @@ export class RuntimeToolExecutor implements ToolExecutor {
     };
   }
 }
-

@@ -6,8 +6,9 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
-  IncrementalIdGenerator,
+  createUuidV7Id,
   RuntimeToolExecutor,
+  UuidV7IdGenerator,
   runAgentTurn,
   type ApprovalRuntime,
   type FileRuntime,
@@ -32,6 +33,8 @@ function createMockTraceStore(): TraceStore & { traces: TraceRecord[] } {
     }
   };
 }
+
+const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 describe("agent loop human-in-loop", () => {
   it("approvalPolicy=deny 时不会执行工具，并回填固定拒绝错误", async () => {
@@ -63,15 +66,20 @@ describe("agent loop human-in-loop", () => {
     };
     const traceStore = createMockTraceStore();
     const events: unknown[] = [];
+    const idGenerator = new UuidV7IdGenerator();
+    const runId = idGenerator.nextId();
+    const threadId = idGenerator.nextId();
+    const turnId = idGenerator.nextId();
+    const strategyId = createUuidV7Id();
 
     const result = await runAgentTurn({
-      runId: "run_1",
-      threadId: "thread_1",
-      turnId: "turn_1",
+      runId,
+      threadId,
+      turnId,
       messages: [],
       userText: "读文件",
       strategy: {
-        id: "provider_1",
+        id: strategyId,
         name: "mock",
         provider: "deepseek-chat-completions",
         baseUrl: "https://example.test",
@@ -83,13 +91,18 @@ describe("agent loop human-in-loop", () => {
       traceStore,
       fetchFn,
       clock: { now: () => 1 },
-      idGenerator: new IncrementalIdGenerator(),
+      idGenerator,
       approvalPolicy: "deny",
       onEvent: (event) => {
         events.push(event);
       }
     });
 
+    expect(runId).toMatch(uuidV7Pattern);
+    expect(threadId).toMatch(uuidV7Pattern);
+    expect(turnId).toMatch(uuidV7Pattern);
+    expect(strategyId).toMatch(uuidV7Pattern);
+    expect(result.messages.every((message) => uuidV7Pattern.test(message.id))).toBe(true);
     expect(fileRuntime.readTextFile).not.toHaveBeenCalled();
     expect(result.messages.some((message) => String(message.content).includes("TOOL_EXECUTION_DENIED_BY_HUMAN"))).toBe(true);
     expect(result.messages.at(-1)?.content).toBe("已拒绝执行工具。");
@@ -137,15 +150,20 @@ describe("agent loop human-in-loop", () => {
     };
     const traceStore = createMockTraceStore();
     const events: unknown[] = [];
+    const idGenerator = new UuidV7IdGenerator();
+    const runId = idGenerator.nextId();
+    const threadId = idGenerator.nextId();
+    const turnId = idGenerator.nextId();
+    const strategyId = createUuidV7Id();
 
     const result = await runAgentTurn({
-      runId: "run_1",
-      threadId: "thread_1",
-      turnId: "turn_1",
+      runId,
+      threadId,
+      turnId,
       messages: [],
       userText: "读取缺失文件后继续处理",
       strategy: {
-        id: "provider_1",
+        id: strategyId,
         name: "mock",
         provider: "deepseek-chat-completions",
         baseUrl: "https://example.test",
@@ -157,13 +175,18 @@ describe("agent loop human-in-loop", () => {
       traceStore,
       fetchFn,
       clock: { now: () => 1 },
-      idGenerator: new IncrementalIdGenerator(),
+      idGenerator,
       approvalPolicy: "always_approve",
       onEvent: (event) => {
         events.push(event);
       }
     });
 
+    expect(runId).toMatch(uuidV7Pattern);
+    expect(threadId).toMatch(uuidV7Pattern);
+    expect(turnId).toMatch(uuidV7Pattern);
+    expect(strategyId).toMatch(uuidV7Pattern);
+    expect(result.messages.every((message) => uuidV7Pattern.test(message.id))).toBe(true);
     expect(fileRuntime.readTextFile).toHaveBeenCalledOnce();
     expect(fetchFn).toHaveBeenCalledTimes(2);
     expect(result.messages.some((message) => String(message.content).includes("TOOL_EXECUTION_ERROR"))).toBe(true);

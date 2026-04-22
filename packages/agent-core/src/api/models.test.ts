@@ -7,6 +7,7 @@
  * - 是否能把标准模型列表返回值正确解析出来
  */
 import { describe, expect, it, vi } from "vitest";
+import { createUuidV7Id } from "../types/common.js";
 import { listProviderModels } from "./models.js";
 
 describe("model list adapter", () => {
@@ -40,7 +41,7 @@ describe("model list adapter", () => {
 
     const result = await listProviderModels({
       strategy: {
-        id: "provider_1",
+        id: createUuidV7Id(),
         name: "DeepSeek",
         provider: "deepseek-chat-completions",
         baseUrl: "https://api.deepseek.com",
@@ -74,7 +75,7 @@ describe("model list adapter", () => {
     await expect(
       listProviderModels({
         strategy: {
-          id: "provider_1",
+          id: createUuidV7Id(),
           name: "DeepSeek",
           provider: "deepseek-chat-completions",
           baseUrl: "https://api.deepseek.com",

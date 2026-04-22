@@ -10,11 +10,13 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createUuidV7Id } from "@simpagent/agent-core";
 import { JsonFileTraceStore, type SimpAgentNodeConfig } from "@simpagent/runtime-node";
 import { createSimpAgentHttpServer, createThreadTitleFromUserText } from "./index.js";
 import type { Server } from "node:http";
 
 const servers: Server[] = [];
+const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * 生成测试专用配置。
@@ -92,13 +94,15 @@ afterEach(async () => {
 });
 
 describe("SimpAgent server", () => {
-  it("启动时会恢复已持久化 thread，并避免新建 thread id 覆盖历史会话", async () => {
+  it("启动时会跳过旧快照，但新建 thread 仍然使用 UUID v7", async () => {
     const storageDir = await mkdtemp(join(tmpdir(), "simpagent-server-"));
     const store = new JsonFileTraceStore(storageDir);
+    const oldThreadId = createUuidV7Id();
+    const oldAgentId = createUuidV7Id();
 
-    await store.saveThread("thread_1", {
-      id: "thread_1",
-      agentId: "agent_default",
+    await store.saveThread(oldThreadId, {
+      id: oldThreadId,
+      agentId: oldAgentId,
       title: "历史会话",
       createdAt: 1,
       updatedAt: 1,
@@ -113,7 +117,7 @@ describe("SimpAgent server", () => {
 
     const restored = await fetchJson(`${baseUrl}/threads`);
     expect(restored.status).toBe(200);
-    expect(restored.body).toEqual([expect.objectContaining({ id: "thread_1", title: "历史会话" })]);
+    expect(restored.body).toEqual([]);
 
     const created = await fetchJson(`${baseUrl}/threads`, {
       method: "POST",
@@ -121,7 +125,8 @@ describe("SimpAgent server", () => {
       headers: { "content-type": "application/json" }
     });
     expect(created.status).toBe(201);
-    expect(created.body.id).not.toBe("thread_1");
+    expect(created.body.id).toMatch(uuidV7Pattern);
+    expect(created.body.agentId).toMatch(uuidV7Pattern);
   });
 
   it("首次发送会生成标题，并通过 SSE 输出 run 事件", async () => {
@@ -139,6 +144,7 @@ describe("SimpAgent server", () => {
       headers: { "content-type": "application/json" }
     });
     const threadId = String(created.body.id);
+    expect(threadId).toMatch(uuidV7Pattern);
 
     const run = await fetchJson(`${baseUrl}/threads/${threadId}/runs`, {
       method: "POST",
@@ -146,6 +152,8 @@ describe("SimpAgent server", () => {
       headers: { "content-type": "application/json" }
     });
     expect(run.status).toBe(202);
+    expect(run.body.runId).toMatch(uuidV7Pattern);
+    expect(run.body.turnId).toMatch(uuidV7Pattern);
 
     const eventsResponse = await fetch(`${baseUrl}/runs/${run.body.runId}/events`);
     const eventsText = await eventsResponse.text();

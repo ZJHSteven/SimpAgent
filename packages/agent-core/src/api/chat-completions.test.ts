@@ -5,6 +5,7 @@
  * 3) 发送请求时的非流式响应处理
  */
 import { describe, expect, it, vi } from "vitest";
+import { createUuidV7Id } from "../types/common.js";
 import {
   assembleToolCalls,
   buildChatCompletionsRequest,
@@ -13,7 +14,7 @@ import {
 } from "../index.js";
 
 const strategy = {
-  id: "provider_1",
+  id: createUuidV7Id(),
   name: "DeepSeek",
   provider: "deepseek-chat-completions" as const,
   baseUrl: "https://api.deepseek.com",
@@ -36,7 +37,7 @@ describe("Chat Completions adapter", () => {
       ],
       tools: [
         {
-          id: "tool_1",
+          id: createUuidV7Id(),
           name: "read_file",
           description: "读取文件",
           parameters: { type: "object", properties: {}, additionalProperties: false }
@@ -77,6 +78,22 @@ describe("Chat Completions adapter", () => {
         argumentsText: "{\"path\":\"a.txt\"}"
       }
     ]);
+  });
+
+  it("当模型没有提供 tool call id 时会回退为 UUID v7", () => {
+    const events = parseSseText(
+      [
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"read_file","arguments":"{\\"path\\":\\"a.txt\\"}"}}]}}]}',
+        "",
+        "data: [DONE]",
+        "",
+        ""
+      ].join("\n")
+    );
+
+    expect(assembleToolCalls(events)[0]?.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    );
   });
 
   it("发送请求时支持 mock fetch 非流式响应", async () => {

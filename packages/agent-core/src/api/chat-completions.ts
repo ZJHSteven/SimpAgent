@@ -11,8 +11,10 @@ import type {
   FetchLike,
   ObservableHttpRequest
 } from "../types/api.js";
+import { createUuidV7Id } from "../types/common.js";
 import type { JsonObject, JsonValue, RuntimeClock } from "../types/common.js";
 import type { ContextContent, ContextMessage } from "../types/messages.js";
+import type { ToolCallRequest } from "../types/tools.js";
 import { readSseStream } from "./stream.js";
 
 interface WireMessage {
@@ -173,7 +175,7 @@ function parseNonStreamResponse(payload: JsonObject): AdapterStreamEvent[] {
  * 把 tool_call_delta 分片组装成完整工具调用列表。
  * 核心：按 index 聚合，同一 index 的参数片段顺序拼接。
  */
-export function assembleToolCalls(events: readonly AdapterStreamEvent[]) {
+export function assembleToolCalls(events: readonly AdapterStreamEvent[]): ToolCallRequest[] {
   const calls = new Map<number, MutableToolCallAssembly>();
 
   for (const event of events) {
@@ -198,8 +200,8 @@ export function assembleToolCalls(events: readonly AdapterStreamEvent[]) {
     calls.set(event.index, current);
   }
 
-  return [...calls.entries()].map(([index, value]) => ({
-    id: value.id ?? `tool_call_${index}`,
+  return [...calls.entries()].map(([, value]) => ({
+    id: value.id ?? createUuidV7Id(),
     name: value.name ?? "unknown_tool",
     argumentsText: value.argumentsText
   }));
