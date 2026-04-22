@@ -5,7 +5,8 @@ provider = "deepseek"
 baseUrl = "https://api.deepseek.com"
 apiKey = "sk-your-api-key"
 model = "deepseek-chat"
+smokeChatModel = "deepseek-chat"
+smokeReasoningModel = "deepseek-reasoner"
 approvalPolicy = "ask"
 storageDir = ".simpagent"
 timeoutMs = 60000
-

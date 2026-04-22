@@ -175,14 +175,14 @@ npm.cmd --prefix frontend run test:e2e
 ```
 
 `npm run test:smoke` 是单独的真 LLM smoke test 层，默认只收集 `.smoke.test.ts` 文件。
-它需要手工设置环境变量才会真正访问厂商 API：
+它直接读取仓库根目录的 `simpagent.toml`，需要在这个文件里填写 smoke 专用字段：
 
-- `SIMPAGENT_SMOKE_API_KEY`
-- `SIMPAGENT_SMOKE_CHAT_MODEL`
-- `SIMPAGENT_SMOKE_REASONING_MODEL`
-- 可选：`SIMPAGENT_SMOKE_BASE_URL`
+- `smokeChatModel`
+- `smokeReasoningModel`
+- 可选：`smokeBaseUrl`
+- 可选：`smokeApiKey`
 
-如果这些环境变量没有设置，smoke test 会自动跳过，不影响日常 `npm test`。
+如果这些字段没有设置，smoke test 会直接失败并提示缺少哪个配置，不会静默跳过。
 
 当前核心测试覆盖：
 
@@ -193,7 +193,7 @@ npm.cmd --prefix frontend run test:e2e
 - Node runtime 的配置、文件、shell、trace store。
 - HTTP Server 的 thread 恢复、标题生成、404/400 边界和 SSE 输出。
 - React 前端的真实 API mock、SSE 流式输出、工具审批、移动端侧栏和中文输入法组合态。
-- 真 LLM smoke test 会在有环境变量时额外验证非思考模型和思考模型的真实 SSE 流式返回。
+- 真 LLM smoke test 会在 `simpagent.toml` 配好 smoke 字段后额外验证非思考模型和思考模型的真实 SSE 流式返回。
 
 ## 常见问题
 

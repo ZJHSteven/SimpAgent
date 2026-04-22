@@ -8,56 +8,13 @@
  *
  * 运行方式：
  * - `npm run test:smoke`
- * - 需要预先设置 `SIMPAGENT_SMOKE_API_KEY`
- * - 建议同时设置 `SIMPAGENT_SMOKE_CHAT_MODEL` 和 `SIMPAGENT_SMOKE_REASONING_MODEL`
+ * - 直接读取仓库根目录 `simpagent.toml`
+ * - 需要在 TOML 里填写 `smokeChatModel` 和 `smokeReasoningModel`
  */
 import { describe, expect, it } from "vitest";
 import { sendChatCompletionsRequest, type ProviderStrategy } from "../index.js";
 import type { AdapterStreamEvent } from "../types/api.js";
-
-/**
- * 读取环境变量，并把空字符串统一视为未设置。
- */
-function readEnv(name: string): string | undefined {
-  const value = process.env[name]?.trim();
-
-  return value === undefined || value.length === 0 ? undefined : value;
-}
-
-/**
- * Smoke test 需要的最小配置。
- *
- * 说明：
- * - `chatModel` 用于验证普通 chat completion 的流式正文输出。
- * - `reasoningModel` 用于验证思考模型会产生 `thinking_delta`。
- * - `baseUrl` 默认指向 DeepSeek 官方 chat completions 地址，但允许手工覆盖。
- */
-function loadSmokeConfig():
-  | {
-      readonly baseUrl: string;
-      readonly apiKey: string;
-      readonly chatModel: string;
-      readonly reasoningModel: string;
-    }
-  | undefined {
-  const apiKey = readEnv("SIMPAGENT_SMOKE_API_KEY");
-  const chatModel = readEnv("SIMPAGENT_SMOKE_CHAT_MODEL");
-  const reasoningModel = readEnv("SIMPAGENT_SMOKE_REASONING_MODEL");
-
-  if (apiKey === undefined || chatModel === undefined || reasoningModel === undefined) {
-    return undefined;
-  }
-
-  return {
-    baseUrl: readEnv("SIMPAGENT_SMOKE_BASE_URL") ?? "https://api.deepseek.com",
-    apiKey,
-    chatModel,
-    reasoningModel
-  };
-}
-
-const smokeConfig = loadSmokeConfig();
-const smokeTest = smokeConfig === undefined ? it.skip : it;
+import { loadSmokeTestConfig } from "./smoke-config.js";
 
 /**
  * 组装一个最小的 provider strategy。
@@ -138,10 +95,8 @@ async function runRealStreamingSmoke(input: {
 }
 
 describe("真 LLM smoke test", () => {
-  smokeTest("非思考模型会真实流式返回 message_delta", async () => {
-    if (smokeConfig === undefined) {
-      return;
-    }
+  it("非思考模型会真实流式返回 message_delta", async () => {
+    const smokeConfig = await loadSmokeTestConfig();
 
     const { response, events } = await runRealStreamingSmoke({
       strategy: createStrategy(smokeConfig.chatModel, smokeConfig.apiKey, smokeConfig.baseUrl),
@@ -160,10 +115,8 @@ describe("真 LLM smoke test", () => {
     expect(response.events.some((event) => event.type === "done")).toBe(true);
   }, 120000);
 
-  smokeTest("思考模型会同时流式返回 thinking_delta 和 message_delta", async () => {
-    if (smokeConfig === undefined) {
-      return;
-    }
+  it("思考模型会同时流式返回 thinking_delta 和 message_delta", async () => {
+    const smokeConfig = await loadSmokeTestConfig();
 
     const { response, events } = await runRealStreamingSmoke({
       strategy: createStrategy(smokeConfig.reasoningModel, smokeConfig.apiKey, smokeConfig.baseUrl),

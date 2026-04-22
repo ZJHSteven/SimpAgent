@@ -2,7 +2,7 @@
 
 ## 当前目标
 - 保留现有 mock 单元测试和集成测试，继续负责稳定回归。
-- 单独新增一层真 LLM smoke test，只在手工指定环境变量时运行。
+- 单独新增一层真 LLM smoke test，直接从本地 `simpagent.toml` 读取配置运行。
 - smoke test 重点验证真实厂商 SSE 是否能持续吐出 `message_delta` / `thinking_delta`，而不是再去重复 mock 已经覆盖的路径。
 
 ## 执行步骤
@@ -11,16 +11,16 @@
    - 约定 `npm run test:smoke` 单独运行真实 API smoke。
 2. [x] **落地 smoke 配置与用例**
    - 新增专用 Vitest 配置，只收集 `.smoke.test.ts` 文件。
-   - 新增真 LLM smoke test，覆盖非思考模型和思考模型的真实流式返回。
+   - 新增真 LLM smoke test，覆盖非思考模型和思考模型的真实流式返回，并改为从 `simpagent.toml` 读取 smoke 配置。
 3. [x] **同步文档与状态**
    - 更新 `PROGRESS.md`，记录 smoke test 的运行方式和当前结论。
 4. [ ] **执行验证**
    - 运行普通 `npm test`。
-   - 运行 `npm run test:smoke`，在未配置环境变量时应明确跳过，在配置后应真实访问厂商 API。
+   - 运行 `npm run test:smoke`，在 `simpagent.toml` 配置完整时应真实访问厂商 API。
 
 ## 验收标准
 - 普通回归测试不依赖真实网络，保持稳定快速。
-- 真 LLM smoke test 只在显式开启时运行，不影响日常开发。
+- 真 LLM smoke test 不再静默跳过，而是要求 `simpagent.toml` 里的 smoke 字段完整。
 - smoke test 至少覆盖一个非思考模型和一个思考模型的真实 SSE 流式输出。
 - 计划和状态文档能让后续维护者一眼看懂测试分层。
 

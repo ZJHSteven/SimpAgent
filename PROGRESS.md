@@ -1,7 +1,7 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：SimpAgent 后端测试已经分成两层，现有 mock 测试继续负责稳定回归，正在新增真 LLM smoke test 作为手工触发的真实 API 验证层。
+- 现状：SimpChat 前端仍然是真实接后端的状态；SimpAgent 后端测试已经分成两层，现有 mock 测试继续负责稳定回归，真 LLM smoke test 已经改成从 `simpagent.toml` 读取配置，不再依赖环境变量。
 - 已完成：
   - [x] 后端 monorepo、agent-core、runtime、CLI/server、流式 token、工具错误回填与基础测试已完成。
   - [x] React 前端迁移、ChatGPT 风格布局、受控输入器、移动端侧栏和 focus 视觉回归已完成。
@@ -17,12 +17,13 @@
   - [x] 已确认现有后端测试主要是 mock/本地可控回归，适合稳定覆盖解析、流式转发和 trace 逻辑。
   - [x] 已决定新增独立的真 LLM smoke test 层，用于真实厂商 SSE 的手工验证。
   - [x] 已新增 `npm run test:smoke` 和专用 `vitest.smoke.config.ts`，默认只收集 `.smoke.test.ts` 文件。
-  - [x] 已把 smoke test 运行条件写入根目录 README，明确需要 `SIMPAGENT_SMOKE_API_KEY`、`SIMPAGENT_SMOKE_CHAT_MODEL` 和 `SIMPAGENT_SMOKE_REASONING_MODEL`。
+  - [x] 已新增 smoke 专用 TOML 读取器和普通单测，确认可从 `simpagent.toml` 读取 `smokeChatModel`、`smokeReasoningModel` 等字段。
+  - [x] 已把 smoke test 运行条件写入根目录 README，明确需要在 `simpagent.toml` 中填写 smoke 字段。
   - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
 - 正在做：
   - [x] 正在新增 smoke test 分层和真实 API 用例。
-- 下一步：等你提供真实 API 环境变量后，直接跑 `npm run test:smoke` 做一次真实 DeepSeek/LLM 验证。
+- 下一步：把本地 `simpagent.toml` 的 smoke 字段补齐后，直接跑 `npm run test:smoke` 做一次真实 DeepSeek/LLM 验证。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
