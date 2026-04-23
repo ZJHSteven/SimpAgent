@@ -20,7 +20,8 @@
   - [x] 已新增 smoke 专用 TOML 读取器和普通单测，确认可从 `simpagent.toml` 读取 `smokeChatModel`、`smokeReasoningModel` 等字段。
   - [x] 已新增 `GET /models` 接口，并在 smoke test 中先拉模型列表再校验配置里的模型是否可用。
   - [x] 已把 smoke test 运行条件写入根目录 README，明确需要在 `simpagent.toml` 中填写 smoke 字段。
-  - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
+- [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
+- [x] 已将 SimpAgent 默认后端端口从 `8787` 调整为 `8788`，并同步更新前端代理默认目标，避开本机上被其他服务占用的端口。
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
 - 正在做：
   - [x] 正在新增 smoke test 分层和真实 API 用例。
@@ -28,7 +29,7 @@
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
-- 决策B：前端默认使用 Vite `/api` proxy 连接 `http://127.0.0.1:8787`，并允许用 `SIMPAGENT_PROXY_TARGET` 改代理目标；不是在浏览器里直连裸后端地址。（原因：本地开发避免 CORS，默认端口被占用时也能换后端端口。）
+- 决策B：前端默认使用 Vite `/api` proxy 连接 `http://127.0.0.1:8788`，并允许用 `SIMPAGENT_PROXY_TARGET` 改代理目标；不是在浏览器里直连裸后端地址。（原因：本地开发避免 CORS，默认端口被占用时也能换后端端口。）
 - 决策C：前端不引入额外状态库，先用 `useSimpAgentChat` 管理真实连接状态。（原因：当前状态规模可控，少一层依赖更容易让初学者阅读。）
 - 决策D：run 完成后前端重新拉取 thread 快照，但保留本轮 live thought steps。（原因：后端 thread 快照有最终消息，live steps 有 trace 等可观测事件，两者不能互相覆盖。）
 - 决策E：server 在 `done/error` 后主动结束 SSE response。（原因：浏览器 EventSource 和自动化测试都不应无限挂着已结束 run 的连接。）

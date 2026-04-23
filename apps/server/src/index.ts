@@ -477,8 +477,9 @@ export async function createSimpAgentHttpServer(
  */
 async function main(): Promise<void> {
   const server = await createSimpAgentHttpServer();
-  // 默认端口 8787，可通过环境变量 PORT 覆盖。
-  const port = Number(process.env.PORT ?? 8787);
+  // 默认端口改成 8788，避开本机上已经被其他服务占用的 8787。
+  // 仍然保留 PORT 环境变量覆盖，这样调试时可以临时切到任意空闲端口。
+  const port = Number(process.env.PORT ?? 8788);
   server.listen(port, () => {
     process.stdout.write(`SimpAgent server listening on http://localhost:${port}\n`);
   });

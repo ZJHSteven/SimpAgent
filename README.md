@@ -80,7 +80,7 @@ npm run server
 默认监听：
 
 ```text
-http://localhost:8787
+http://localhost:8788
 ```
 
 常用接口：
@@ -96,7 +96,7 @@ http://localhost:8787
 最小调用示例：
 
 ```bash
-curl -X POST http://localhost:8787/threads `
+curl -X POST http://localhost:8788/threads `
   -H "content-type: application/json" `
   -d "{\"title\":\"本地测试\"}"
 ```
@@ -104,7 +104,7 @@ curl -X POST http://localhost:8787/threads `
 Windows PowerShell 里可以继续用返回的 `thread.id` 启动 run：
 
 ```bash
-curl -X POST http://localhost:8787/threads/thread_1/runs `
+curl -X POST http://localhost:8788/threads/thread_1/runs `
   -H "content-type: application/json" `
   -d "{\"input\":\"请用一句话介绍当前项目\"}"
 ```
@@ -132,8 +132,8 @@ http://127.0.0.1:5173
 前端请求规则：
 
 - 默认 API base 是 `/api`。
-- `frontend/vite.config.js` 会把 `/api/*` 代理到 `http://127.0.0.1:8787/*`。
-- 如果本机 `8787` 已被占用，可先用 `$env:PORT=8788; npm run server` 启动后端，再用 `$env:SIMPAGENT_PROXY_TARGET="http://127.0.0.1:8788"; npm.cmd --prefix frontend run dev -- --host 127.0.0.1 --port 5174` 启动前端。
+- `frontend/vite.config.js` 会把 `/api/*` 代理到 `http://127.0.0.1:8788/*`。
+- 如果本机 `8788` 已被占用，可先用 `$env:PORT=8789; npm run server` 启动后端，再用 `$env:SIMPAGENT_PROXY_TARGET="http://127.0.0.1:8789"; npm.cmd --prefix frontend run dev -- --host 127.0.0.1 --port 5174` 启动前端。
 - 如果部署到其它后端地址，可以设置 `VITE_SIMPAGENT_API_BASE` 覆盖。
 
 前端当前已接入：
