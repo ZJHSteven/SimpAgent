@@ -1,7 +1,7 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：SimpChat 前端仍然是真实接后端的状态；SimpAgent 后端测试已经分成两层，现有 mock 测试继续负责稳定回归，真 LLM smoke test 已经改成从 `simpagent.toml` 读取配置，不再依赖环境变量。
+- 现状：SimpChat 前端仍然是真实接后端的状态；当前正在把后端持久化从 per-thread JSON trace store 替换为事件中心 SQLite 底座。
 - 已完成：
   - [x] 后端 monorepo、agent-core、runtime、CLI/server、流式 token、工具错误回填与基础测试已完成。
   - [x] React 前端迁移、ChatGPT 风格布局、受控输入器、移动端侧栏和 focus 视觉回归已完成。
@@ -20,12 +20,14 @@
   - [x] 已新增 smoke 专用 TOML 读取器和普通单测，确认可从 `simpagent.toml` 读取 `smokeChatModel`、`smokeReasoningModel` 等字段。
   - [x] 已新增 `GET /models` 接口，并在 smoke test 中先拉模型列表再校验配置里的模型是否可用。
   - [x] 已把 smoke test 运行条件写入根目录 README，明确需要在 `simpagent.toml` 中填写 smoke 字段。
+  - [x] 已新增 `AGENTS.md`，规定 SQLite schema 改动必须先更新人类可读表结构文档。
+  - [x] 已新增 `docs/SQLite表结构.md`，明确 `conversations`、`nodes`、`edges`、`events` 和 payload tables 的字段。
 - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
 - [x] 已将 SimpAgent 默认后端端口从 `8787` 调整为 `8788`，并同步更新前端代理默认目标，避开本机上被其他服务占用的端口。
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
 - 正在做：
-  - [x] 正在新增 smoke test 分层和真实 API 用例。
-- 下一步：把本地 `simpagent.toml` 的 smoke 字段补齐后，直接跑 `npm run test:smoke` 做一次真实 DeepSeek/LLM 验证。
+  - [ ] 正在用 SQLite trace store 替换旧 `JsonFileTraceStore`。
+- 下一步：完成 SQLite schema 初始化、存储实现替换和后端回归测试。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
@@ -33,6 +35,8 @@
 - 决策C：前端不引入额外状态库，先用 `useSimpAgentChat` 管理真实连接状态。（原因：当前状态规模可控，少一层依赖更容易让初学者阅读。）
 - 决策D：run 完成后前端重新拉取 thread 快照，但保留本轮 live thought steps。（原因：后端 thread 快照有最终消息，live steps 有 trace 等可观测事件，两者不能互相覆盖。）
 - 决策E：server 在 `done/error` 后主动结束 SSE response。（原因：浏览器 EventSource 和自动化测试都不应无限挂着已结束 run 的连接。）
+- 决策F：SQLite 第一版不建立 `graphs`、`runs`、`turns` 表；graph 是 `nodes + edges` 的投影，运行事实统一进入 `events`。（原因：动态 handoff/discovery 是主线，固定 workflow 可由 node/edge 子图表达。）
+- 决策G：`docs/SQLite表结构.md` 是 schema 真源，任何 SQLite 表结构代码变更必须先改文档。（原因：SQLite 本身不适合人类直接 review，文档必须先于实现。）
 
 ## 常见坑 / 复现方法
 - 坑1：`chatgpt-temp/` 是视觉参考归档，不是当前 React 主应用入口。
@@ -41,4 +45,5 @@
 - 坑4：server 启动恢复历史 thread 后，`IncrementalIdGenerator` 会重新从 `thread_1` 开始；`AgentPool` 必须避让已有 thread id，避免新建会话覆盖历史。
 - 坑5：SSE 如果在 `done` 后不主动关闭，浏览器和测试都会留下长连接；server 现在在 `done/error` 后结束 SSE response。
 - 坑6：前端 run done 后会重新拉取 thread 快照；如果直接覆盖思考步骤，会丢掉 live `trace_snapshot` 等事件，所以刷新消息时保留本轮 live thought steps。
+- 坑7：SQLite 表结构不能只看建表 SQL；后续任何字段、索引、事件类型、节点类型变化都要先更新 `docs/SQLite表结构.md`。
 - 复测记录：本轮已通过 `npm run typecheck`、`npm test`、`npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。

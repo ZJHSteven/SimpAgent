@@ -1,3 +1,30 @@
+# ExecPlan：事件中心 SQLite 持久化底座
+
+## 当前目标
+- 用 SQLite 替换旧的 per-thread JSON trace store。
+- 新增人类可读的 SQLite 表结构文档，并把它设为 schema 改动前置真源。
+- 第一版先让现有 agent loop 通过 `TraceStore` 接口落入新 schema，后续再把 loop 改成原生细粒度 event 生成。
+
+## 执行步骤
+1. [x] **确定 schema 真源**
+   - 新增 `AGENTS.md`，规定任何 SQLite schema 改动必须先更新表结构文档。
+   - 新增 `docs/SQLite表结构.md`，记录 conversations、nodes、edges、events 和 payload tables。
+2. [ ] **替换存储实现**
+   - 新增 SQLite schema 初始化代码。
+   - 用 SQLite trace store 替换旧 `JsonFileTraceStore`。
+   - 保持 server/CLI 仍通过同一 `TraceStore` 抽象调用。
+3. [ ] **测试与状态同步**
+   - 更新 runtime-node 和 server 测试，验证 SQLite 文件、conversation 恢复和 trace 事件落库。
+   - 运行 `npm run typecheck`、`npm test`、`npm run build`、`npm run lint`。
+   - 更新 `PROGRESS.md`，记录 SQLite 底座当前结论。
+
+## 验收标准
+- `storageDir/simpagent.sqlite` 成为后端持久化主文件。
+- 不再依赖 `.simpagent/threads/*.json` 保存新会话和 trace。
+- schema 文档与实际建表 SQL 一致。
+- 不新增 `graphs`、`runs`、`turns` 真源表。
+- 普通回归测试全部通过。
+
 # ExecPlan：真 LLM smoke test 分层
 
 ## 当前目标
