@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createUuidV7Id } from "@simpagent/agent-core";
-import { JsonFileTraceStore, type SimpAgentNodeConfig } from "@simpagent/runtime-node";
+import { SqliteTraceStore, type SimpAgentNodeConfig } from "@simpagent/runtime-node";
 import { createSimpAgentHttpServer, createThreadTitleFromUserText } from "./index.js";
 import type { Server } from "node:http";
 
@@ -96,7 +96,7 @@ afterEach(async () => {
 describe("SimpAgent server", () => {
   it("启动时会跳过旧快照，但新建 thread 仍然使用 UUID v7", async () => {
     const storageDir = await mkdtemp(join(tmpdir(), "simpagent-server-"));
-    const store = new JsonFileTraceStore(storageDir);
+    const store = new SqliteTraceStore(storageDir);
     const oldThreadId = createUuidV7Id();
     const oldAgentId = createUuidV7Id();
 
@@ -108,6 +108,7 @@ describe("SimpAgent server", () => {
       updatedAt: 1,
       messages: []
     });
+    store.close();
 
     const server = await createSimpAgentHttpServer({
       config: createTestConfig(storageDir),

@@ -30,7 +30,7 @@ import {
 } from "@simpagent/agent-core";
 import {
   DeferredApprovalRuntime,
-  JsonFileTraceStore,
+  SqliteTraceStore,
   NodeFileRuntime,
   NodeShellRuntime,
   configToProviderStrategy,
@@ -194,7 +194,7 @@ export async function createSimpAgentHttpServer(
   // runtime 聚合对象，传给 core。
   const runtime = { fileRuntime, shellRuntime, approvalRuntime };
   // 本地 trace/thread 存储。
-  const traceStore = new JsonFileTraceStore(config.storageDir);
+  const traceStore = new SqliteTraceStore(config.storageDir);
   // 内存态 agent/thread 管理器。
   const pool = new AgentPool(systemClock, idGenerator);
   // runId -> channel 的事件通道映射。

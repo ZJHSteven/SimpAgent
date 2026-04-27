@@ -3,14 +3,15 @@
  * - 配置解析
  * - 文件读写/替换/删除
  * - shell 执行
- * - trace 落盘
+ * - SQLite trace 落盘
  */
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { createUuidV7Id } from "@simpagent/agent-core";
-import { JsonFileTraceStore, NodeFileRuntime, NodeShellRuntime, parseSimpleToml } from "./index.js";
+import { NodeFileRuntime, NodeShellRuntime, SqliteTraceStore, parseSimpleToml } from "./index.js";
 
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -56,17 +57,43 @@ describe("runtime-node", () => {
     expect(result.timedOut).toBe(false);
   });
 
-  it("trace store 会把 thread 与 trace 落盘", async () => {
+  it("SQLite trace store 会把 conversation、message 与 event 落库", async () => {
     const dir = await mkdtemp(join(tmpdir(), "simpagent-"));
-    const store = new JsonFileTraceStore(dir);
+    const store = new SqliteTraceStore(dir);
     const threadId = createUuidV7Id();
     const turnId = createUuidV7Id();
 
-    await store.saveThread(threadId, { id: threadId, title: "测试" });
+    await store.saveThread(threadId, {
+      id: threadId,
+      agentId: createUuidV7Id(),
+      title: "测试",
+      createdAt: 1,
+      updatedAt: 2,
+      messages: [
+        {
+          id: createUuidV7Id(),
+          role: "user",
+          content: "你好"
+        }
+      ]
+    });
     await store.saveTrace({
       threadId,
       turnId,
       createdAt: 1,
+      requests: [
+        {
+          url: "https://example.test/v1/chat/completions",
+          method: "POST",
+          headers: {
+            authorization: "Bearer secret"
+          },
+          body: {
+            model: "test-model",
+            messages: []
+          }
+        }
+      ],
       responseEvents: [],
       toolApprovals: [],
       toolResults: [],
@@ -76,7 +103,32 @@ describe("runtime-node", () => {
 
     expect(threadId).toMatch(uuidV7Pattern);
     expect(turnId).toMatch(uuidV7Pattern);
-    expect(await store.loadThread(threadId)).toEqual({ id: threadId, title: "测试" });
+    const databaseFile = await stat(join(dir, "simpagent.sqlite"));
+    expect(databaseFile.isFile()).toBe(true);
+    expect(await store.loadThread(threadId)).toMatchObject({ id: threadId, title: "测试" });
     expect(await store.listThreads()).toHaveLength(1);
+    store.close();
+
+    const db = new DatabaseSync(join(dir, "simpagent.sqlite"));
+    const tableRows = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as unknown as Array<{
+      readonly name: string;
+    }>;
+    const tableNames = tableRows.map((row) => row.name);
+    expect(tableNames).toContain("conversations");
+    expect(tableNames).toContain("nodes");
+    expect(tableNames).toContain("edges");
+    expect(tableNames).toContain("events");
+    expect(tableNames).not.toContain("graphs");
+    expect(tableNames).not.toContain("runs");
+    expect(tableNames).not.toContain("turns");
+
+    const llmCall = db.prepare("SELECT request_json FROM llm_calls LIMIT 1").get() as
+      | {
+          readonly request_json: string;
+        }
+      | undefined;
+    expect(llmCall?.request_json).toContain("[redacted]");
+    expect(llmCall?.request_json).not.toContain("Bearer secret");
+    db.close();
   });
 });

@@ -16,7 +16,7 @@ import {
 } from "@simpagent/agent-core";
 import {
   CliApprovalRuntime,
-  JsonFileTraceStore,
+  SqliteTraceStore,
   NodeFileRuntime,
   NodeShellRuntime,
   configToProviderStrategy,
@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   // 生成 run/thread/turn/message 等 UUID v7 ID。
   const idGenerator = new UuidV7IdGenerator();
   // trace 持久化到本地配置目录。
-  const traceStore = new JsonFileTraceStore(config.storageDir);
+  const traceStore = new SqliteTraceStore(config.storageDir);
 
   await runAgentTurn({
     // 每次执行都创建新的 run/thread/turn 标识。

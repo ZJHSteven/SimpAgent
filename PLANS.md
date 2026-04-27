@@ -9,14 +9,21 @@
 1. [x] **确定 schema 真源**
    - 新增 `AGENTS.md`，规定任何 SQLite schema 改动必须先更新表结构文档。
    - 新增 `docs/SQLite表结构.md`，记录 conversations、nodes、edges、events 和 payload tables。
-2. [ ] **替换存储实现**
+2. [x] **替换存储实现**
    - 新增 SQLite schema 初始化代码。
-   - 用 SQLite trace store 替换旧 `JsonFileTraceStore`。
+   - 用 `SqliteTraceStore` 替换旧 JSON trace store。
    - 保持 server/CLI 仍通过同一 `TraceStore` 抽象调用。
-3. [ ] **测试与状态同步**
+3. [x] **测试与状态同步**
    - 更新 runtime-node 和 server 测试，验证 SQLite 文件、conversation 恢复和 trace 事件落库。
    - 运行 `npm run typecheck`、`npm test`、`npm run build`、`npm run lint`。
    - 更新 `PROGRESS.md`，记录 SQLite 底座当前结论。
+
+## 当前结果
+- 已新增 `SqliteTraceStore`，默认写入 `storageDir/simpagent.sqlite`。
+- 已建立 `conversations`、`nodes`、`edges`、`events` 和 payload tables。
+- 已更新 CLI/server 使用 SQLite trace store。
+- 已补测试验证核心表存在、`graphs/runs/turns` 不存在、Authorization header 已脱敏。
+- 已通过 `npm run typecheck`、`npm test`、`npm run build`、`npm run lint`。
 
 ## 验收标准
 - `storageDir/simpagent.sqlite` 成为后端持久化主文件。
@@ -123,7 +130,7 @@
    - 更新本文件记录本轮前后端连接 ExecPlan。
    - 完成后更新 `PROGRESS.md`，记录真实连接后的运行方式、验证命令和当前结论。
 2. [x] **后端连接体验补强**
-   - 启动时从 `JsonFileTraceStore.listThreads()` 恢复已保存 thread。
+   - 启动时从 `TraceStore.listThreads()` 恢复已保存 thread。
    - 为新 thread 首次发送时自动生成简短标题。
    - 对不存在的 thread/run 返回稳定 404 JSON，而不是落到通用 500。
 3. [x] **前端 API 与状态层**

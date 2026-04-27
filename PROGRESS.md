@@ -22,12 +22,15 @@
   - [x] 已把 smoke test 运行条件写入根目录 README，明确需要在 `simpagent.toml` 中填写 smoke 字段。
   - [x] 已新增 `AGENTS.md`，规定 SQLite schema 改动必须先更新人类可读表结构文档。
   - [x] 已新增 `docs/SQLite表结构.md`，明确 `conversations`、`nodes`、`edges`、`events` 和 payload tables 的字段。
+  - [x] 已用 `SqliteTraceStore` 替换旧 `JsonFileTraceStore`，默认写入 `.simpagent/simpagent.sqlite`。
+  - [x] 已让现有 `TraceStore` 接口映射到 `conversations`、`messages`、`events`、`llm_calls`、`tool_calls`、`tool_approvals`。
+  - [x] 已在 SQLite 持久化中脱敏 HTTP `Authorization` header，避免 API key 明文落库。
 - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
 - [x] 已将 SimpAgent 默认后端端口从 `8787` 调整为 `8788`，并同步更新前端代理默认目标，避开本机上被其他服务占用的端口。
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
 - 正在做：
-  - [ ] 正在用 SQLite trace store 替换旧 `JsonFileTraceStore`。
-- 下一步：完成 SQLite schema 初始化、存储实现替换和后端回归测试。
+  - [x] SQLite 持久化底座本轮实现与验证已完成。
+- 下一步：把 agent loop 从“保存完 trace 后拆分”继续推进到“运行中直接生成细粒度 event”。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
@@ -42,8 +45,8 @@
 - 坑1：`chatgpt-temp/` 是视觉参考归档，不是当前 React 主应用入口。
 - 坑2：ChatGPT 兼容 CSS 很大，Vite build 会提示部分 `/cdn/assets/*.woff*` 运行时路径未解析，以及 `::scroll-button` 伪元素兼容警告；当前不阻断构建。
 - 坑3：输入框上下蓝线不是 `outline`，而是 `textarea.ProseMirror` focus 后继承的蓝色 `box-shadow`；只断言 `outline-style: none` 会漏测。
-- 坑4：server 启动恢复历史 thread 后，`IncrementalIdGenerator` 会重新从 `thread_1` 开始；`AgentPool` 必须避让已有 thread id，避免新建会话覆盖历史。
+- 坑4：历史文档或旧 `.simpagent` 数据里可能残留 `thread_1` / `run_1` / `turn_1` 示例；内部新 ID 必须继续使用 UUID v7。
 - 坑5：SSE 如果在 `done` 后不主动关闭，浏览器和测试都会留下长连接；server 现在在 `done/error` 后结束 SSE response。
 - 坑6：前端 run done 后会重新拉取 thread 快照；如果直接覆盖思考步骤，会丢掉 live `trace_snapshot` 等事件，所以刷新消息时保留本轮 live thought steps。
 - 坑7：SQLite 表结构不能只看建表 SQL；后续任何字段、索引、事件类型、节点类型变化都要先更新 `docs/SQLite表结构.md`。
-- 复测记录：本轮已通过 `npm run typecheck`、`npm test`、`npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。
+- 复测记录：SQLite 底座本轮已通过 `npm run typecheck`、`npm test`、`npm run build`、`npm run lint`。前端上一轮已通过 `npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。
