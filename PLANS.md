@@ -1,3 +1,33 @@
+# ExecPlan：SQLite 存储边界修正
+
+## 当前目标
+- 把 SQLite schema、trace 映射、JSON 脱敏等框架语义从 `runtime-node` 下沉到 `agent-core`。
+- `runtime-node` 只保留 `node:sqlite` 本地驱动薄适配层。
+- 删除旧 `threadSnapshot` 过渡债，不做旧 JSON/thread 历史迁移。
+- 将 tag 从 `tags_json` 改为可查询的关系表。
+
+## 执行步骤
+1. [ ] **先更新 schema 文档**
+   - 明确 tag 使用关系表，不再把 tag 作为 JSON 数组保存。
+   - 明确 `conversations.metadata_json` 不允许保存完整旧 thread 快照。
+2. [ ] **拆分 core/runtime 边界**
+   - 在 `agent-core` 新增 driver-agnostic 的 SQLite 存储逻辑。
+   - 在 `runtime-node` 只实现 `node:sqlite` executor 和文件路径管理。
+3. [ ] **删除过渡兼容债**
+   - `saveThread()` 直接写 `conversations/messages/tag` 表。
+   - `loadThread()` / `listThreads()` 从关系表重建当前 API 需要的视图，不读取旧快照。
+4. [ ] **验证**
+   - 补充测试确保没有 `threadSnapshot` 入库。
+   - 补充测试确保 tag 表可查询。
+   - 跑 `npm run typecheck`、`npm test`、`npm run build`、`npm run lint`。
+
+## 验收标准
+- `packages/runtime-node/src/trace-store.ts` 不再包含完整建表 SQL 和 trace 拆分逻辑。
+- schema 文档与实际 SQL 一致。
+- SQLite 中不再出现 `tags_json` 字段。
+- SQLite 中不再保存 `metadata_json.threadSnapshot`。
+- 普通回归测试全部通过。
+
 # ExecPlan：事件中心 SQLite 持久化底座
 
 ## 当前目标

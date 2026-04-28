@@ -15,8 +15,10 @@
 
 - 内部主键统一使用 UUID v7。
 - `id` 只负责唯一身份，不承载语义。
-- `name`、`display_name`、`description`、`tags_json` 才承载人类可读语义。
+- `name`、`display_name`、`description` 和 tag 关系表才承载人类可读语义。
 - 厂商返回的 `tool_call_id`、HTTP `x-request-id` 等外部协议 ID 不能混用为内部主键，只能保存在外部 ID 字段里。
+- tag 是查询重点，不能保存成 `tags_json`。所有可查询 tag 都必须进入 `tags` 和对应绑定表。
+- `metadata_json` 只保存非查询型补充信息，不能保存完整旧 thread 快照、旧 JSON trace 快照或其它兼容层大对象。
 
 ## 定义层
 
@@ -29,7 +31,6 @@
 | `id` | TEXT PRIMARY KEY | 是 | conversation 的 UUID v7。 |
 | `name` | TEXT | 否 | 人类可编辑名称。 |
 | `description` | TEXT | 否 | 人类可读说明。 |
-| `tags_json` | TEXT | 否 | JSON 数组字符串，用于标签。 |
 | `entry_node_id` | TEXT | 否 | 本会话默认入口 node。 |
 | `created_at` | INTEGER | 是 | 创建时间，Unix epoch 毫秒。 |
 | `updated_at` | INTEGER | 是 | 更新时间，Unix epoch 毫秒。 |
@@ -45,7 +46,6 @@
 | `node_type` | TEXT | 是 | 节点类型，例如 `agent`、`tool`、`prompt_unit`、`provider_strategy`、`workflow`。 |
 | `name` | TEXT | 是 | 稳定可读名称，不作为主键。 |
 | `description` | TEXT | 否 | 人类可读说明。 |
-| `tags_json` | TEXT | 否 | JSON 数组字符串。 |
 | `enabled` | INTEGER | 是 | 1 表示启用，0 表示禁用。 |
 | `created_at` | INTEGER | 是 | 创建时间。 |
 | `updated_at` | INTEGER | 是 | 更新时间。 |
@@ -61,6 +61,54 @@
 - `memory`
 - `code_function`
 - `external_agent`
+
+### `tags`
+
+可查询标签字典。tag 本身是稳定实体，绑定关系由下方多对多表表达。
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `id` | TEXT PRIMARY KEY | 是 | tag 的 UUID v7。 |
+| `name` | TEXT UNIQUE | 是 | 标签名，例如 `coding`、`research`。 |
+| `description` | TEXT | 否 | 人类可读说明。 |
+| `created_at` | INTEGER | 是 | 创建时间。 |
+| `updated_at` | INTEGER | 是 | 更新时间。 |
+
+### `conversation_tags`
+
+conversation 与 tag 的多对多绑定表。
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `conversation_id` | TEXT | 是 | 指向 `conversations.id`。 |
+| `tag_id` | TEXT | 是 | 指向 `tags.id`。 |
+| `created_at` | INTEGER | 是 | 绑定创建时间。 |
+
+主键：`(conversation_id, tag_id)`。
+
+### `node_tags`
+
+node 与 tag 的多对多绑定表。
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `node_id` | TEXT | 是 | 指向 `nodes.id`。 |
+| `tag_id` | TEXT | 是 | 指向 `tags.id`。 |
+| `created_at` | INTEGER | 是 | 绑定创建时间。 |
+
+主键：`(node_id, tag_id)`。
+
+### `message_tags`
+
+message 与 tag 的多对多绑定表。
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `message_id` | TEXT | 是 | 指向 `messages.id`。 |
+| `tag_id` | TEXT | 是 | 指向 `tags.id`。 |
+| `created_at` | INTEGER | 是 | 绑定创建时间。 |
+
+主键：`(message_id, tag_id)`。
 
 ### `agent_nodes`
 
@@ -196,7 +244,6 @@ tool 节点的专属 payload。tool 也是 node，区别只在于它有工具执
 | `tool_call_id` | TEXT | 否 | provider 工具调用 ID。 |
 | `name` | TEXT | 否 | tool role 等场景的 name。 |
 | `selector_json` | TEXT | 否 | 上下文定位信息。 |
-| `tags_json` | TEXT | 否 | JSON 数组字符串。 |
 | `metadata_json` | TEXT | 否 | 额外 JSON 元数据。 |
 | `created_at` | INTEGER | 是 | 创建时间。 |
 
@@ -294,8 +341,14 @@ tool 节点的专属 payload。tool 也是 node，区别只在于它有工具执
 
 第一版 SQLite 代码必须先替换旧 JSON trace store，并建立完整 schema。当前 agent loop 仍可先通过现有 `TraceStore` 接口写入：
 
-- `saveThread()` 映射为 `conversations` + `messages` 快照保存。
+- `saveThread()` 映射为 `conversations` + `messages` + tag 绑定表。
 - `saveTrace()` 映射为 `events` + `llm_calls` + `tool_calls` + `tool_approvals` 的基础记录。
 - 后续再把 agent loop 改成直接生成细粒度 event，而不是保存完 trace 后再拆分。
 
 这不是兼容旧架构，而是分阶段落地：先让 SQLite 成为持久化真源，再继续把运行时事件生成前移。
+
+明确禁止：
+
+- 不迁移旧 `.simpagent/threads/*.json` 历史。
+- 不在 `conversations.metadata_json` 保存 `threadSnapshot`。
+- 不为了兼容旧 MVP 而把完整 thread 快照塞进 JSON 字段。

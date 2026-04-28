@@ -1,7 +1,7 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：SimpChat 前端仍然是真实接后端的状态；当前正在把后端持久化从 per-thread JSON trace store 替换为事件中心 SQLite 底座。
+- 现状：SimpChat 前端仍然是真实接后端的状态；当前正在修正 SQLite 持久化边界，把 schema/trace 映射下沉到 `agent-core`，让 `runtime-node` 只保留 Node SQLite 驱动薄层。
 - 已完成：
   - [x] 后端 monorepo、agent-core、runtime、CLI/server、流式 token、工具错误回填与基础测试已完成。
   - [x] React 前端迁移、ChatGPT 风格布局、受控输入器、移动端侧栏和 focus 视觉回归已完成。
@@ -29,8 +29,10 @@
 - [x] 已将 SimpAgent 默认后端端口从 `8787` 调整为 `8788`，并同步更新前端代理默认目标，避开本机上被其他服务占用的端口。
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
 - 正在做：
-  - [x] SQLite 持久化底座本轮实现与验证已完成。
-- 下一步：把 agent loop 从“保存完 trace 后拆分”继续推进到“运行中直接生成细粒度 event”。
+  - [ ] 删除 `threadSnapshot` 过渡债。
+  - [ ] 把 tag 从 `tags_json` 改成可查询关系表。
+  - [ ] 把 SQLite schema/trace 映射逻辑从 `runtime-node` 拆到 `agent-core`。
+- 下一步：完成 SQLite 存储边界修正并跑完整回归。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
