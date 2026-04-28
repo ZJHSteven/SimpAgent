@@ -1,7 +1,7 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：SimpChat 前端仍然是真实接后端的状态；当前正在把 SQLite schema 继续收敛为 `nodes + edges` 两个顶层容器，conversation/event/message/tag/workflow 都作为 node payload。
+- 现状：SimpChat 前端仍然是真实接后端的状态；SQLite schema 已继续收敛为 `nodes + edges` 两个顶层容器，conversation/event/message/tag/workflow 都作为 node payload。
 - 已完成：
   - [x] 后端 monorepo、agent-core、runtime、CLI/server、流式 token、工具错误回填与基础测试已完成。
   - [x] React 前端迁移、ChatGPT 风格布局、受控输入器、移动端侧栏和 focus 视觉回归已完成。
@@ -29,14 +29,15 @@
   - [x] 已把 `runtime-node/src/trace-store.ts` 收缩为 `node:sqlite` 薄适配层。
   - [x] 已删除 `threadSnapshot` 过渡债，不再把完整旧 thread 快照写入 `metadata_json`。
   - [x] 已确认上一版 tag 关系表过重，本轮改为 tag node + `hashtag` edge。
+  - [x] 已删除 tag 专表和 tag 绑定表，tag 绑定统一走 `edges.edge_type = 'hashtag'`。
+  - [x] 已将 `conversations`、`events`、`messages` 改为 node payload 表。
+  - [x] 已删除 `edges.priority`，并保留 `idx_edges_source` / `idx_edges_target` 双向索引。
 - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
 - [x] 已将 SimpAgent 默认后端端口从 `8787` 调整为 `8788`，并同步更新前端代理默认目标，避开本机上被其他服务占用的端口。
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
 - 正在做：
-  - [ ] 删除 tag 专门绑定表。
-  - [ ] 将 conversation/event/message 改为 node payload 表。
-  - [ ] 删除 `edges.priority` 并补 edge 正反向索引。
-- 下一步：完成 Node/Edge 顶层统一存储后，继续推进 agent loop 原生细粒度 event。
+  - [x] Node/Edge 顶层统一存储本轮实现与验证已完成。
+- 下一步：继续推进 agent loop 原生细粒度 event。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
@@ -58,4 +59,5 @@
 - 坑5：SSE 如果在 `done` 后不主动关闭，浏览器和测试都会留下长连接；server 现在在 `done/error` 后结束 SSE response。
 - 坑6：前端 run done 后会重新拉取 thread 快照；如果直接覆盖思考步骤，会丢掉 live `trace_snapshot` 等事件，所以刷新消息时保留本轮 live thought steps。
 - 坑7：SQLite 表结构不能只看建表 SQL；后续任何字段、索引、事件类型、节点类型变化都要先更新 `docs/SQLite表结构.md`。
-- 复测记录：SQLite 存储边界修正本轮已通过 `npm run typecheck`、`npm test`、`npm run build`、`npm run lint`。前端上一轮已通过 `npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。
+- 坑8：当前 Vitest 会通过 workspace package 读取已构建输出；改动 `agent-core` 后先跑 `npm run build`，再跑 `npm test`，避免测试读到旧 `dist`。
+- 复测记录：Node/Edge 顶层统一存储本轮已通过 `npm run build`、`npm run lint`、`npm test`、`npm run typecheck`。前端上一轮已通过 `npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。

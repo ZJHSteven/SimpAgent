@@ -13,16 +13,16 @@
    - 明确 tag 是人工 node，绑定走 `hashtag` edge。
    - 明确 workflow 是 node，子图边界走 `contains` edge。
    - 明确必要索引清单。
-2. [ ] **调整 SQLite schema**
+2. [x] **调整 SQLite schema**
    - 把 `conversations`、`events`、`messages` 改成 node payload 表。
    - 删除 tag 专表与绑定表。
    - 删除 `edges.priority`。
-3. [ ] **调整 TraceStore 写入/读取**
+3. [x] **调整 TraceStore 写入/读取**
    - 保存 thread 时先写 conversation node，再写 conversation payload。
    - 保存 message 时先写 message node，再写 message payload。
    - 保存 trace 时先写 event node，再写 event payload 和事件专属 payload。
    - 显式 tags 通过 tag node + `hashtag` edge 保存。
-4. [ ] **验证**
+4. [x] **验证**
    - 测试不再出现 `conversation_tags` / `message_tags` / `node_tags` / `tags` 表。
    - 测试 `hashtag` edge 可正反查。
    - 跑 `npm run typecheck`、`npm test`、`npm run build`、`npm run lint`。
@@ -33,6 +33,13 @@
 - tag 不再有专门绑定表。
 - `edges` 有 source 和 target 两侧索引。
 - 普通回归测试全部通过。
+
+## 当前结果
+- 已把 `conversations`、`events`、`messages` 改成 node payload 表。
+- 已删除 tag 专表和 tag 绑定表。
+- 已删除 `edges.priority`。
+- 已补 `idx_edges_source` 和 `idx_edges_target`。
+- 已通过 `npm run build`、`npm run lint`、`npm test`、`npm run typecheck`。
 
 # ExecPlan：SQLite 存储边界修正
 

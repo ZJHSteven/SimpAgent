@@ -2,7 +2,7 @@
  * 本文件实现 driver-agnostic 的 SQLite TraceStore。
  *
  * 分层边界：
- * - 这里属于 `agent-core`，负责 schema 初始化、trace 拆分、tag 关系表、脱敏等框架语义。
+ * - 这里属于 `agent-core`，负责 schema 初始化、trace 拆分、tag 绑定、脱敏等框架语义。
  * - 这里不 import `node:sqlite`，也不关心数据库文件路径。
  * - 具体 runtime 只需要实现 `SqlDatabase`，再把执行器传进来。
  */
@@ -33,11 +33,12 @@ interface ConversationRow {
  */
 interface MessageRow {
   readonly id: string;
-  readonly parent_message_id: string | null;
+  readonly parent_message_node_id: string | null;
   readonly role: string;
   readonly content_json: string;
   readonly tool_call_id: string | null;
   readonly name: string | null;
+  readonly selector_json: string | null;
   readonly metadata_json: string | null;
   readonly created_at: number;
 }
@@ -100,17 +101,11 @@ function numberField(value: JsonObject, key: string): number | undefined {
 }
 
 /**
- * 从 JSON object 中读取 tag 数组。
+ * 从 JSON object 中读取人工 tag 数组。
  *
- * 输入：
- * - value: 可能带有 `tags` 字段的对象。
- *
- * 输出：
- * - 去重后的非空字符串 tag 列表。
- *
- * 核心逻辑：
- * - tag 是查询重点，写库时进入关系表。
- * - 非字符串、空白字符串会被忽略，避免污染 tag 字典。
+ * 重要边界：
+ * - 这里不会给日志自动加 tag。
+ * - 只有调用方显式传入 `tags` 字段，才会创建 tag node 和 `hashtag` edge。
  */
 function tagListFromField(value: JsonObject): string[] {
   const tags = value.tags;
@@ -149,7 +144,7 @@ function redactObservableRequest(value: unknown): unknown {
 }
 
 /**
- * 从 message metadata 中提取保存顺序。
+ * 从 node metadata 中提取保存顺序。
  */
 function snapshotIndexFromMetadata(value: string | null): number {
   const metadata = parseJsonObjectOrUndefined(value);
@@ -162,8 +157,8 @@ function snapshotIndexFromMetadata(value: string | null): number {
  *
  * 关键职责：
  * - 初始化完整 schema。
- * - 将 TraceStore 的 conversation 快照映射为 `conversations` + `messages` + tag 关系表。
- * - 将 TraceRecord 映射为 `events` + `llm_calls` / `tool_calls` / `tool_approvals`。
+ * - 将 TraceStore 的 conversation 快照映射为 conversation node + message node。
+ * - 将 TraceRecord 映射为 event node + llm/tool/approval payload。
  */
 export class SqliteTraceStore implements TraceStore {
   constructor(private readonly db: SqlDatabase) {
@@ -182,136 +177,222 @@ export class SqliteTraceStore implements TraceStore {
   }
 
   /**
-   * 确保 conversation 存在。
+   * 写入或更新 node。
    *
    * 输入：
-   * - conversationId: 当前旧接口中的 threadId，在新 schema 中就是 conversation id。
+   * - id: node 的 UUID v7。
+   * - nodeType: node 类型，例如 conversation / event / message / tag。
+   * - name: 可读名称，日志型 node 可以为空。
+   * - metadata: 非查询型补充信息。
+   *
+   * 核心逻辑：
+   * - 所有实体都先进入 `nodes`。
+   * - payload 表只保存该类型额外字段。
+   */
+  private upsertNode(input: {
+    readonly id: string;
+    readonly nodeType: string;
+    readonly name?: string | null;
+    readonly description?: string | null;
+    readonly enabled?: boolean;
+    readonly createdAt: number;
+    readonly updatedAt: number;
+    readonly metadata?: unknown;
+  }): void {
+    this.db
+      .prepare(
+        `
+        INSERT INTO nodes (id, node_type, name, description, enabled, created_at, updated_at, metadata_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          node_type = excluded.node_type,
+          name = excluded.name,
+          description = excluded.description,
+          enabled = excluded.enabled,
+          updated_at = excluded.updated_at,
+          metadata_json = excluded.metadata_json
+      `
+      )
+      .run(
+        input.id,
+        input.nodeType,
+        input.name ?? null,
+        input.description ?? null,
+        input.enabled === false ? 0 : 1,
+        input.createdAt,
+        input.updatedAt,
+        jsonOrNull(input.metadata)
+      );
+  }
+
+  /**
+   * 确保 conversation node 存在。
+   *
+   * 输入：
+   * - conversationId: 当前旧接口中的 threadId，在新 schema 中就是 conversation node id。
    * - now: 当前写入时间。
    *
    * 核心逻辑：
-   * - 如果 conversation 不存在，就创建一个最小记录。
-   * - 如果已经存在，只刷新 updated_at。
+   * - 如果 conversation 不存在，就创建一个最小 conversation node。
+   * - 如果已经存在，只刷新 node.updated_at，不覆盖人类可读名称。
    */
   private ensureConversation(conversationId: string, now: number): void {
     this.db
       .prepare(
         `
-        INSERT INTO conversations (id, name, created_at, updated_at)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO nodes (id, node_type, name, enabled, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at
       `
       )
-      .run(conversationId, "未命名会话", now, now);
-  }
-
-  /**
-   * 创建或复用 tag，并返回 tag id。
-   */
-  private getOrCreateTagId(tagName: string, now: number): string {
-    const tagId = createUuidV7Id();
+      .run(conversationId, "conversation", "未命名会话", 1, now, now);
 
     this.db
       .prepare(
         `
-        INSERT INTO tags (id, name, created_at, updated_at)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(name) DO UPDATE SET updated_at = excluded.updated_at
+        INSERT INTO conversations (node_id, entry_node_id)
+        VALUES (?, NULL)
+        ON CONFLICT(node_id) DO NOTHING
       `
       )
-      .run(tagId, tagName, now, now);
-
-    const row = this.db.prepare("SELECT id FROM tags WHERE name = ?").get(tagName) as { readonly id: string } | undefined;
-    if (row === undefined) {
-      throw new Error(`写入 tag 后无法读取 tag id：${tagName}`);
-    }
-
-    return row.id;
+      .run(conversationId);
   }
 
   /**
-   * 同步 conversation 的 tag 绑定。
+   * 确保引用到的 node 存在。
+   *
+   * 使用场景：
+   * - 当前 server/thread 快照里会带 `agentId`。
+   * - 在完整定义层落地前，这个 agent 可能还没有自己的 payload 记录。
+   * - 既然 schema 要求 edge 和外键都指向 node，这里先补一个最小 node，避免保存裸 ID。
    */
-  private syncConversationTags(conversationId: string, tags: readonly string[], now: number): void {
-    this.db.prepare("DELETE FROM conversation_tags WHERE conversation_id = ?").run(conversationId);
-
-    const insert = this.db.prepare(
+  private ensureReferencedNode(nodeId: string, nodeType: string, now: number): void {
+    this.db
+      .prepare(
+        `
+        INSERT INTO nodes (id, node_type, enabled, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at
       `
-      INSERT OR IGNORE INTO conversation_tags (conversation_id, tag_id, created_at)
-      VALUES (?, ?, ?)
-    `
-    );
+      )
+      .run(nodeId, nodeType, 1, now, now);
+  }
+
+  /**
+   * 创建或复用 tag node，并返回 tag node id。
+   *
+   * 注意：
+   * - tag 是普通 node，不再有 `tags` 专表。
+   * - 同名 tag 通过 `nodes(node_type, name)` 查询复用。
+   */
+  private getOrCreateTagNodeId(tagName: string, now: number): string {
+    const row = this.db.prepare("SELECT id FROM nodes WHERE node_type = ? AND name = ?").get("tag", tagName) as
+      | { readonly id: string }
+      | undefined;
+
+    if (row !== undefined) {
+      return row.id;
+    }
+
+    const tagNodeId = createUuidV7Id();
+    this.upsertNode({
+      id: tagNodeId,
+      nodeType: "tag",
+      name: tagName,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    return tagNodeId;
+  }
+
+  /**
+   * 写入 edge。
+   */
+  private insertEdge(input: {
+    readonly sourceNodeId: string;
+    readonly targetNodeId: string;
+    readonly edgeType: string;
+    readonly name?: string;
+    readonly description?: string;
+    readonly condition?: unknown;
+    readonly metadata?: unknown;
+    readonly now: number;
+  }): void {
+    this.db
+      .prepare(
+        `
+        INSERT INTO edges (
+          id, source_node_id, target_node_id, edge_type, name, description,
+          enabled, condition_json, metadata_json, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `
+      )
+      .run(
+        createUuidV7Id(),
+        input.sourceNodeId,
+        input.targetNodeId,
+        input.edgeType,
+        input.name ?? null,
+        input.description ?? null,
+        1,
+        jsonOrNull(input.condition),
+        jsonOrNull(input.metadata),
+        input.now,
+        input.now
+      );
+  }
+
+  /**
+   * 同步某个 node 的人工 tag 绑定。
+   *
+   * 核心逻辑：
+   * - 删除该 node 现有 `hashtag` edge。
+   * - 为显式传入的 tag 创建 tag node，并写 `source -> tag` edge。
+   */
+  private syncNodeHashtags(sourceNodeId: string, tags: readonly string[], now: number): void {
+    this.db.prepare("DELETE FROM edges WHERE source_node_id = ? AND edge_type = ?").run(sourceNodeId, "hashtag");
 
     for (const tag of tags) {
-      insert.run(conversationId, this.getOrCreateTagId(tag, now), now);
+      this.insertEdge({
+        sourceNodeId,
+        targetNodeId: this.getOrCreateTagNodeId(tag, now),
+        edgeType: "hashtag",
+        now
+      });
     }
   }
 
   /**
-   * 同步 message 的 tag 绑定。
+   * 读取某个 node 的人工 tag 名称。
    */
-  private syncMessageTags(messageId: string, tags: readonly string[], now: number): void {
-    this.db.prepare("DELETE FROM message_tags WHERE message_id = ?").run(messageId);
-
-    const insert = this.db.prepare(
-      `
-      INSERT OR IGNORE INTO message_tags (message_id, tag_id, created_at)
-      VALUES (?, ?, ?)
-    `
-    );
-
-    for (const tag of tags) {
-      insert.run(messageId, this.getOrCreateTagId(tag, now), now);
-    }
-  }
-
-  /**
-   * 读取某条 message 的 tag 名称。
-   */
-  private listMessageTags(messageId: string): string[] {
+  private listNodeHashtags(sourceNodeId: string): string[] {
     const rows = this.db
       .prepare(
         `
-        SELECT tags.name AS name
-        FROM message_tags
-        JOIN tags ON tags.id = message_tags.tag_id
-        WHERE message_tags.message_id = ?
-        ORDER BY tags.name
+        SELECT target_nodes.name AS name
+        FROM edges
+        JOIN nodes AS target_nodes ON target_nodes.id = edges.target_node_id
+        WHERE edges.source_node_id = ?
+          AND edges.edge_type = ?
+          AND target_nodes.node_type = ?
+        ORDER BY target_nodes.name
       `
       )
-      .all(messageId) as unknown as Array<{ readonly name: string }>;
+      .all(sourceNodeId, "hashtag", "tag") as unknown as Array<{ readonly name: string | null }>;
 
-    return rows.map((row) => row.name);
+    return rows.flatMap((row) => (row.name === null ? [] : [row.name]));
   }
 
   /**
-   * 读取某个 conversation 的 tag 名称。
-   */
-  private listConversationTags(conversationId: string): string[] {
-    const rows = this.db
-      .prepare(
-        `
-        SELECT tags.name AS name
-        FROM conversation_tags
-        JOIN tags ON tags.id = conversation_tags.tag_id
-        WHERE conversation_tags.conversation_id = ?
-        ORDER BY tags.name
-      `
-      )
-      .all(conversationId) as unknown as Array<{ readonly name: string }>;
-
-    return rows.map((row) => row.name);
-  }
-
-  /**
-   * 写入事件总表。
+   * 写入事件 node 和 event payload。
    */
   private insertEvent(input: {
     readonly id: string;
     readonly conversationId: string;
     readonly parentEventId?: string;
     readonly causedByEventId?: string;
-    readonly nodeId?: string;
-    readonly edgeId?: string;
     readonly eventType: string;
     readonly status: EventStatus;
     readonly startedAt: number;
@@ -321,38 +402,61 @@ export class SqliteTraceStore implements TraceStore {
     readonly error?: unknown;
     readonly metadata?: unknown;
   }): void {
+    const completedAt = input.completedAt ?? input.startedAt;
+
+    this.upsertNode({
+      id: input.id,
+      nodeType: "event",
+      createdAt: input.startedAt,
+      updatedAt: completedAt,
+      metadata: input.metadata
+    });
+
     this.db
       .prepare(
         `
         INSERT OR REPLACE INTO events (
-          id, conversation_id, parent_event_id, caused_by_event_id, node_id, edge_id,
-          event_type, status, started_at, completed_at, input_json, output_json, error_json, metadata_json
+          node_id, conversation_node_id, event_type, status, started_at, completed_at,
+          input_json, output_json, error_json
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `
       )
       .run(
         input.id,
         input.conversationId,
-        input.parentEventId ?? null,
-        input.causedByEventId ?? null,
-        input.nodeId ?? null,
-        input.edgeId ?? null,
         input.eventType,
         input.status,
         input.startedAt,
         input.completedAt ?? null,
         jsonOrNull(input.input),
         jsonOrNull(input.output),
-        jsonOrNull(input.error),
-        jsonOrNull(input.metadata)
+        jsonOrNull(input.error)
       );
+
+    if (input.parentEventId !== undefined) {
+      this.insertEdge({
+        sourceNodeId: input.parentEventId,
+        targetNodeId: input.id,
+        edgeType: "event_child",
+        now: completedAt
+      });
+    }
+
+    if (input.causedByEventId !== undefined) {
+      this.insertEdge({
+        sourceNodeId: input.causedByEventId,
+        targetNodeId: input.id,
+        edgeType: "event_caused_by",
+        now: completedAt
+      });
+    }
   }
 
   /**
    * 保存 conversation 快照。
    *
-   * 当前 HTTP 层仍把顶层会话称作 thread；SQLite 层把它映射为 conversation。
+   * 当前 HTTP 层仍把顶层会话称作 thread；SQLite 层把它映射为 conversation node。
    * 这里不保存完整 `threadSnapshot`，因为旧快照兼容债已经明确删除。
    */
   async saveThread(threadId: string, snapshot: JsonObject): Promise<void> {
@@ -366,30 +470,45 @@ export class SqliteTraceStore implements TraceStore {
 
     this.db.exec("BEGIN");
     try {
+      if (agentId !== null) {
+        this.ensureReferencedNode(agentId, "agent", updatedAt);
+      }
+
+      this.upsertNode({
+        id: threadId,
+        nodeType: "conversation",
+        name: title,
+        createdAt,
+        updatedAt,
+        metadata
+      });
       this.db
         .prepare(
           `
-          INSERT INTO conversations (id, name, entry_node_id, created_at, updated_at, metadata_json)
-          VALUES (?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET
-            name = excluded.name,
-            entry_node_id = excluded.entry_node_id,
-            updated_at = excluded.updated_at,
-            metadata_json = excluded.metadata_json
+          INSERT INTO conversations (node_id, entry_node_id)
+          VALUES (?, ?)
+          ON CONFLICT(node_id) DO UPDATE SET entry_node_id = excluded.entry_node_id
         `
         )
-        .run(threadId, title, agentId, createdAt, updatedAt, jsonOrNull(metadata));
+        .run(threadId, agentId);
+      this.syncNodeHashtags(threadId, tagListFromField(snapshot), updatedAt);
 
-      this.syncConversationTags(threadId, tagListFromField(snapshot), updatedAt);
-      this.db.prepare("DELETE FROM messages WHERE conversation_id = ?").run(threadId);
+      const oldMessageRows = this.db
+        .prepare("SELECT node_id FROM messages WHERE conversation_node_id = ?")
+        .all(threadId) as unknown as Array<{ readonly node_id: string }>;
+      const deleteNode = this.db.prepare("DELETE FROM nodes WHERE id = ?");
+
+      for (const row of oldMessageRows) {
+        deleteNode.run(row.node_id);
+      }
 
       const insertMessage = this.db.prepare(
         `
         INSERT INTO messages (
-          id, conversation_id, event_id, parent_message_id, role, content_json,
-          tool_call_id, name, selector_json, metadata_json, created_at
+          node_id, conversation_node_id, event_node_id, parent_message_node_id, role,
+          content_json, tool_call_id, name, selector_json, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `
       );
 
@@ -405,6 +524,15 @@ export class SqliteTraceStore implements TraceStore {
           snapshotIndex: index
         };
 
+        this.upsertNode({
+          id: messageId,
+          nodeType: "message",
+          name: stringField(message, "name") ?? null,
+          createdAt: updatedAt,
+          updatedAt,
+          metadata: messageMetadata
+        });
+
         insertMessage.run(
           messageId,
           threadId,
@@ -415,11 +543,10 @@ export class SqliteTraceStore implements TraceStore {
           stringField(message, "toolCallId") ?? null,
           stringField(message, "name") ?? null,
           jsonOrNull(message.selector),
-          jsonOrNull(messageMetadata),
           updatedAt
         );
 
-        this.syncMessageTags(messageId, tagListFromField(message), updatedAt);
+        this.syncNodeHashtags(messageId, tagListFromField(message), updatedAt);
       });
 
       this.db.exec("COMMIT");
@@ -434,7 +561,20 @@ export class SqliteTraceStore implements TraceStore {
    */
   async loadThread(threadId: string): Promise<JsonObject | undefined> {
     const row = this.db
-      .prepare("SELECT * FROM conversations WHERE id = ?")
+      .prepare(
+        `
+        SELECT
+          nodes.id AS id,
+          nodes.name AS name,
+          conversations.entry_node_id AS entry_node_id,
+          nodes.created_at AS created_at,
+          nodes.updated_at AS updated_at,
+          nodes.metadata_json AS metadata_json
+        FROM nodes
+        JOIN conversations ON conversations.node_id = nodes.id
+        WHERE nodes.id = ?
+      `
+      )
       .get(threadId) as ConversationRow | undefined;
 
     if (row === undefined) {
@@ -444,10 +584,20 @@ export class SqliteTraceStore implements TraceStore {
     const messageRows = this.db
       .prepare(
         `
-        SELECT *
+        SELECT
+          messages.node_id AS id,
+          messages.parent_message_node_id AS parent_message_node_id,
+          messages.role AS role,
+          messages.content_json AS content_json,
+          messages.tool_call_id AS tool_call_id,
+          messages.name AS name,
+          messages.selector_json AS selector_json,
+          nodes.metadata_json AS metadata_json,
+          messages.created_at AS created_at
         FROM messages
-        WHERE conversation_id = ?
-        ORDER BY created_at, id
+        JOIN nodes ON nodes.id = messages.node_id
+        WHERE messages.conversation_node_id = ?
+        ORDER BY messages.created_at, messages.node_id
       `
       )
       .all(threadId) as unknown as MessageRow[];
@@ -457,20 +607,21 @@ export class SqliteTraceStore implements TraceStore {
       .map((message): JsonObject => {
         const metadata = parseJsonObjectOrUndefined(message.metadata_json);
         const { snapshotIndex: _snapshotIndex, ...publicMetadata } = metadata ?? {};
-        const tags = this.listMessageTags(message.id);
+        const tags = this.listNodeHashtags(message.id);
 
         return {
           id: message.id,
           role: message.role,
           content: parseJson(message.content_json) as JsonValue,
-          ...(message.parent_message_id === null ? {} : { parentId: message.parent_message_id }),
+          ...(message.parent_message_node_id === null ? {} : { parentId: message.parent_message_node_id }),
           ...(message.tool_call_id === null ? {} : { toolCallId: message.tool_call_id }),
           ...(message.name === null ? {} : { name: message.name }),
+          ...(message.selector_json === null ? {} : { selector: parseJson(message.selector_json) as JsonValue }),
           ...(tags.length === 0 ? {} : { tags }),
           ...(Object.keys(publicMetadata).length === 0 ? {} : { metadata: publicMetadata })
         };
       });
-    const tags = this.listConversationTags(row.id);
+    const tags = this.listNodeHashtags(row.id);
     const metadata = parseJsonObjectOrUndefined(row.metadata_json);
 
     return {
@@ -490,8 +641,16 @@ export class SqliteTraceStore implements TraceStore {
    */
   async listThreads(): Promise<readonly JsonObject[]> {
     const rows = this.db
-      .prepare("SELECT * FROM conversations ORDER BY updated_at DESC")
-      .all() as unknown as ConversationRow[];
+      .prepare(
+        `
+        SELECT nodes.id AS id
+        FROM nodes
+        JOIN conversations ON conversations.node_id = nodes.id
+        WHERE nodes.node_type = ?
+        ORDER BY nodes.updated_at DESC
+      `
+      )
+      .all("conversation") as unknown as Array<{ readonly id: string }>;
     const threads: JsonObject[] = [];
 
     for (const row of rows) {
@@ -571,7 +730,7 @@ export class SqliteTraceStore implements TraceStore {
           .prepare(
             `
             INSERT OR REPLACE INTO llm_calls (
-              event_id, provider_strategy_node_id, provider, model, request_json, response_json,
+              event_node_id, provider_strategy_node_id, provider, model, request_json, response_json,
               stream_events_json, status_code, request_id, first_token_ms, total_ms, usage_json
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -626,7 +785,7 @@ export class SqliteTraceStore implements TraceStore {
           .prepare(
             `
             INSERT OR REPLACE INTO tool_calls (
-              event_id, tool_node_id, provider_tool_call_id, tool_name, arguments_json,
+              event_node_id, tool_node_id, provider_tool_call_id, tool_name, arguments_json,
               arguments_text, result_json, ok
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -651,11 +810,14 @@ export class SqliteTraceStore implements TraceStore {
         const requestToolCall = isJsonObject(request.toolCall) ? request.toolCall : {};
         const providerToolCallId = stringField(requestToolCall, "id");
         const approvalEventId = createUuidV7Id();
+        const toolCallEventId =
+          providerToolCallId === undefined ? trace.turnId : (toolCallEventIds.get(providerToolCallId) ?? trace.turnId);
 
         this.insertEvent({
           id: approvalEventId,
           conversationId: trace.threadId,
           parentEventId: trace.turnId,
+          causedByEventId: toolCallEventId,
           eventType: "tool_approval",
           status: "completed",
           startedAt: trace.createdAt,
@@ -671,14 +833,14 @@ export class SqliteTraceStore implements TraceStore {
           .prepare(
             `
             INSERT OR REPLACE INTO tool_approvals (
-              event_id, tool_call_event_id, risk_summary, decision, reason, requested_at, resolved_at
+              event_node_id, tool_call_event_node_id, risk_summary, decision, reason, requested_at, resolved_at
             )
             VALUES (?, ?, ?, ?, ?, ?, ?)
           `
           )
           .run(
             approvalEventId,
-            providerToolCallId === undefined ? trace.turnId : (toolCallEventIds.get(providerToolCallId) ?? trace.turnId),
+            toolCallEventId,
             stringField(request, "riskSummary") ?? "工具审批请求",
             stringField(approval, "decision") ?? null,
             stringField(approval, "reason") ?? null,

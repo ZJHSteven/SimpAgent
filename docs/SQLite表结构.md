@@ -52,6 +52,8 @@
 - `code_function`
 - `external_agent`
 - `tag`
+- `side_effect`
+- `runtime_log`
 
 ### `edges`
 

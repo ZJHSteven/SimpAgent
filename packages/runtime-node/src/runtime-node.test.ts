@@ -133,44 +133,71 @@ describe("runtime-node", () => {
     const tableNames = tableRows.map((row) => row.name);
     expect(tableNames).toContain("conversations");
     expect(tableNames).toContain("nodes");
-    expect(tableNames).toContain("tags");
-    expect(tableNames).toContain("conversation_tags");
-    expect(tableNames).toContain("message_tags");
     expect(tableNames).toContain("edges");
     expect(tableNames).toContain("events");
+    expect(tableNames).not.toContain("tags");
+    expect(tableNames).not.toContain("conversation_tags");
+    expect(tableNames).not.toContain("node_tags");
+    expect(tableNames).not.toContain("message_tags");
     expect(tableNames).not.toContain("graphs");
     expect(tableNames).not.toContain("runs");
     expect(tableNames).not.toContain("turns");
 
-    const conversationColumns = db.prepare("PRAGMA table_info(conversations)").all() as unknown as Array<{
+    const nodeColumns = db.prepare("PRAGMA table_info(nodes)").all() as unknown as Array<{
       readonly name: string;
     }>;
-    const messageColumns = db.prepare("PRAGMA table_info(messages)").all() as unknown as Array<{
+    const edgeColumns = db.prepare("PRAGMA table_info(edges)").all() as unknown as Array<{
       readonly name: string;
     }>;
-    expect(conversationColumns.map((row) => row.name)).not.toContain("tags_json");
-    expect(messageColumns.map((row) => row.name)).not.toContain("tags_json");
+    expect(nodeColumns.map((row) => row.name)).toContain("name");
+    expect(edgeColumns.map((row) => row.name)).not.toContain("priority");
 
-    const conversationMetadata = db.prepare("SELECT metadata_json FROM conversations WHERE id = ?").get(threadId) as
+    const conversationNode = db.prepare("SELECT node_type, metadata_json FROM nodes WHERE id = ?").get(threadId) as
       | {
+          readonly node_type: string;
           readonly metadata_json: string | null;
         }
       | undefined;
-    expect(conversationMetadata?.metadata_json).toContain("unit-test");
-    expect(conversationMetadata?.metadata_json).not.toContain("threadSnapshot");
+    expect(conversationNode?.node_type).toBe("conversation");
+    expect(conversationNode?.metadata_json).toContain("unit-test");
+    expect(conversationNode?.metadata_json).not.toContain("threadSnapshot");
 
     const tagRows = db
       .prepare(
         `
-        SELECT tags.name AS name
-        FROM conversation_tags
-        JOIN tags ON tags.id = conversation_tags.tag_id
-        WHERE conversation_tags.conversation_id = ?
-        ORDER BY tags.name
+        SELECT tag_nodes.name AS name
+        FROM edges
+        JOIN nodes AS tag_nodes ON tag_nodes.id = edges.target_node_id
+        WHERE edges.source_node_id = ?
+          AND edges.edge_type = 'hashtag'
+          AND tag_nodes.node_type = 'tag'
+        ORDER BY tag_nodes.name
       `
       )
       .all(threadId) as unknown as Array<{ readonly name: string }>;
     expect(tagRows.map((row) => row.name)).toEqual(["coding", "review"]);
+
+    const reverseTagRows = db
+      .prepare(
+        `
+        SELECT source_nodes.id AS id
+        FROM edges
+        JOIN nodes AS source_nodes ON source_nodes.id = edges.source_node_id
+        JOIN nodes AS tag_nodes ON tag_nodes.id = edges.target_node_id
+        WHERE tag_nodes.name = ?
+          AND tag_nodes.node_type = 'tag'
+          AND edges.edge_type = 'hashtag'
+      `
+      )
+      .all("coding") as unknown as Array<{ readonly id: string }>;
+    expect(reverseTagRows.map((row) => row.id)).toContain(threadId);
+
+    const indexRows = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all() as unknown as Array<{
+      readonly name: string;
+    }>;
+    const indexNames = indexRows.map((row) => row.name);
+    expect(indexNames).toContain("idx_edges_source");
+    expect(indexNames).toContain("idx_edges_target");
 
     const llmCall = db.prepare("SELECT request_json FROM llm_calls LIMIT 1").get() as
       | {
