@@ -149,8 +149,27 @@ describe("runtime-node", () => {
     const edgeColumns = db.prepare("PRAGMA table_info(edges)").all() as unknown as Array<{
       readonly name: string;
     }>;
+    const foreignKeysEnabled = db.prepare("PRAGMA foreign_keys").get() as
+      | {
+          readonly foreign_keys: number;
+        }
+      | undefined;
     expect(nodeColumns.map((row) => row.name)).toContain("name");
     expect(edgeColumns.map((row) => row.name)).not.toContain("priority");
+    expect(foreignKeysEnabled?.foreign_keys).toBe(1);
+
+    expect(() =>
+      db
+        .prepare(
+          `
+          INSERT INTO edges (
+            id, source_node_id, target_node_id, edge_type, enabled, created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `
+        )
+        .run(createUuidV7Id(), "missing-source", "missing-target", "has_tag", 1, 1, 1)
+    ).toThrow();
 
     const conversationNode = db.prepare("SELECT node_type, metadata_json FROM nodes WHERE id = ?").get(threadId) as
       | {
@@ -169,7 +188,7 @@ describe("runtime-node", () => {
         FROM edges
         JOIN nodes AS tag_nodes ON tag_nodes.id = edges.target_node_id
         WHERE edges.source_node_id = ?
-          AND edges.edge_type = 'hashtag'
+          AND edges.edge_type = 'has_tag'
           AND tag_nodes.node_type = 'tag'
         ORDER BY tag_nodes.name
       `
@@ -186,7 +205,7 @@ describe("runtime-node", () => {
         JOIN nodes AS tag_nodes ON tag_nodes.id = edges.target_node_id
         WHERE tag_nodes.name = ?
           AND tag_nodes.node_type = 'tag'
-          AND edges.edge_type = 'hashtag'
+          AND edges.edge_type = 'has_tag'
       `
       )
       .all("coding") as unknown as Array<{ readonly id: string }>;
@@ -198,6 +217,17 @@ describe("runtime-node", () => {
     const indexNames = indexRows.map((row) => row.name);
     expect(indexNames).toContain("idx_edges_source");
     expect(indexNames).toContain("idx_edges_target");
+    expect(indexNames).toContain("idx_conversations_entry_node");
+    expect(indexNames).toContain("idx_messages_event");
+    expect(indexNames).toContain("idx_messages_parent");
+    expect(indexNames).toContain("idx_prompt_compilations_agent");
+    expect(indexNames).toContain("idx_llm_calls_strategy");
+    expect(indexNames).toContain("idx_tool_calls_tool");
+    expect(indexNames).toContain("idx_tool_approvals_tool_call");
+    expect(indexNames).toContain("idx_side_effects_conversation");
+    expect(indexNames).toContain("idx_side_effects_event");
+    expect(indexNames).toContain("idx_runtime_logs_conversation");
+    expect(indexNames).toContain("idx_runtime_logs_event");
 
     const llmCall = db.prepare("SELECT request_json FROM llm_calls LIMIT 1").get() as
       | {

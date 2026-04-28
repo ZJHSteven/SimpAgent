@@ -28,10 +28,11 @@
   - [x] 已把 SQLite schema、tag 关系表、trace 拆分和脱敏规则下沉到 `agent-core/src/storage`。
   - [x] 已把 `runtime-node/src/trace-store.ts` 收缩为 `node:sqlite` 薄适配层。
   - [x] 已删除 `threadSnapshot` 过渡债，不再把完整旧 thread 快照写入 `metadata_json`。
-  - [x] 已确认上一版 tag 关系表过重，本轮改为 tag node + `hashtag` edge。
-  - [x] 已删除 tag 专表和 tag 绑定表，tag 绑定统一走 `edges.edge_type = 'hashtag'`。
+  - [x] 已确认上一版 tag 关系表过重，本轮改为 tag node + `has_tag` edge。
+  - [x] 已删除 tag 专表和 tag 绑定表，tag 绑定统一走 `edges.edge_type = 'has_tag'`。
   - [x] 已将 `conversations`、`events`、`messages` 改为 node payload 表。
   - [x] 已删除 `edges.priority`，并保留 `idx_edges_source` / `idx_edges_target` 双向索引。
+  - [x] 已补消息、审批、日志和提示词编译相关的高频 child key 索引，避免只依赖 `edges` 的双向索引。
 - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
 - [x] 已将 SimpAgent 默认后端端口从 `8787` 调整为 `8788`，并同步更新前端代理默认目标，避开本机上被其他服务占用的端口。
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
@@ -47,7 +48,7 @@
 - 决策E：server 在 `done/error` 后主动结束 SSE response。（原因：浏览器 EventSource 和自动化测试都不应无限挂着已结束 run 的连接。）
 - 决策F：SQLite 第一版不建立 `graphs`、`runs`、`turns` 表；graph 是 `nodes + edges` 的投影，运行事实统一进入 `events`。（原因：动态 handoff/discovery 是主线，固定 workflow 可由 node/edge 子图表达。）
 - 决策G：`docs/SQLite表结构.md` 是 schema 真源，任何 SQLite 表结构代码变更必须先改文档。（原因：SQLite 本身不适合人类直接 review，文档必须先于实现。）
-- 决策H：tag 是 `nodes.node_type = 'tag'` 的普通 node，绑定关系走 `edges.edge_type = 'hashtag'`。（原因：避免为每类实体扩散出独立 tag 绑定表。）
+- 决策H：tag 是 `nodes.node_type = 'tag'` 的普通 node，绑定关系走 `edges.edge_type = 'has_tag'`。（原因：避免为每类实体扩散出独立 tag 绑定表。）
 - 决策I：SQLite schema/trace 映射属于 `agent-core`，`runtime-node` 只负责 Node SQLite driver。（原因：SQLite 存储语义需要被 Node、Cloudflare Worker、Tauri 等 runtime 复用。）
 - 决策J：顶层身份统一在 `nodes`，关系统一在 `edges`；conversation、event、message、workflow、memory 等只保留 payload 分表。（原因：保持图模型一致，避免泛型 edge 连接裸表 ID。）
 
@@ -61,3 +62,4 @@
 - 坑7：SQLite 表结构不能只看建表 SQL；后续任何字段、索引、事件类型、节点类型变化都要先更新 `docs/SQLite表结构.md`。
 - 坑8：当前 Vitest 会通过 workspace package 读取已构建输出；改动 `agent-core` 后先跑 `npm run build`，再跑 `npm test`，避免测试读到旧 `dist`。
 - 复测记录：Node/Edge 顶层统一存储本轮已通过 `npm run build`、`npm run lint`、`npm test`、`npm run typecheck`。前端上一轮已通过 `npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。
+- 复测记录补充：本轮已确认 SQLite `PRAGMA foreign_keys = 1`，并验证坏的 `edges` 插入会直接失败。

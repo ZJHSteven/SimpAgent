@@ -75,7 +75,7 @@
 
 当前第一版允许的 `edge_type`：
 
-- `hashtag`：人工 tag 绑定，例如 `conversation -> tag`、`event -> tag`。
+- `has_tag`：人工 tag 绑定，例如 `conversation -> tag`、`event -> tag`。
 - `contains`：子图边界，例如 `workflow -> step node`。
 - `parent_of`：父子关系，例如 `tag -> child tag`。
 - `discoverable`：agent 可发现另一个 agent 或 node。
@@ -294,7 +294,7 @@ message 节点的专属 payload。用户消息、助手消息、工具消息、t
 ## Tag 规则
 
 - tag 是 `nodes.node_type = 'tag'` 的普通 node。
-- tag 绑定使用 `edges.edge_type = 'hashtag'`。
+- tag 绑定使用 `edges.edge_type = 'has_tag'`。
 - tag 只能由人类显式添加、修改或删除。
 - 运行日志、模型请求、工具调用、prompt compile 不得默认自动写 tag。
 - tag 层级第一版优先使用命名空间字符串，例如 `project::simpagent`。如果未来需要显式层级图，再用 `edges.edge_type = 'parent_of'` 表达。
@@ -315,10 +315,21 @@ message 节点的专属 payload。用户消息、助手消息、工具消息、t
 - `idx_nodes_name`：`nodes(node_type, name)`，用于按类型和名称查定义层节点或人工 tag。
 - `idx_edges_source`：`edges(source_node_id, edge_type)`，用于正向查关系。
 - `idx_edges_target`：`edges(target_node_id, edge_type)`，用于反向查关系。
+- `idx_conversations_entry_node`：`conversations(entry_node_id)`，用于按默认入口 node 反查会话。
 - `idx_events_conversation`：`events(conversation_node_id, started_at)`，用于按会话读取事件流。
 - `idx_messages_conversation`：`messages(conversation_node_id, created_at)`，用于按会话读取消息。
+- `idx_messages_event`：`messages(event_node_id, created_at)`，用于按事件回溯消息。
+- `idx_messages_parent`：`messages(parent_message_node_id, created_at)`，用于消息 fork / targeting。
+- `idx_prompt_compilations_agent`：`prompt_compilations(agent_node_id, event_node_id)`，用于按 agent 找提示词编译记录。
+- `idx_llm_calls_strategy`：`llm_calls(provider_strategy_node_id, event_node_id)`，用于按模型路由策略找调用记录。
+- `idx_tool_calls_tool`：`tool_calls(tool_node_id, event_node_id)`，用于按工具 node 找调用记录。
+- `idx_tool_approvals_tool_call`：`tool_approvals(tool_call_event_node_id, event_node_id)`，用于按被审批的工具调用找审批记录。
+- `idx_side_effects_conversation`：`side_effects(conversation_node_id, created_at)`，用于按会话加载副作用。
+- `idx_side_effects_event`：`side_effects(event_node_id)`，用于按事件反查副作用。
+- `idx_runtime_logs_conversation`：`runtime_logs(conversation_node_id, created_at)`，用于按会话加载运行日志。
+- `idx_runtime_logs_event`：`runtime_logs(event_node_id, created_at)`，用于按事件反查运行日志。
 
-暂不为所有 payload 表建立额外索引。后续只有当真实查询路径稳定出现，再补对应索引。
+暂不为所有 payload 表建立额外索引。短期只给高频 child key 和常见反查路径加索引，其他字段等真实查询稳定后再补。
 
 ## 第一版实现边界
 
@@ -326,7 +337,7 @@ message 节点的专属 payload。用户消息、助手消息、工具消息、t
 
 - `saveThread()` 映射为 conversation node + conversation payload + message nodes + message payload。
 - `saveTrace()` 映射为 event nodes + event payload + `llm_calls` + `tool_calls` + `tool_approvals`。
-- 只有输入快照里显式带 `tags` 时，才写入 tag node 和 `hashtag` edge。
+- 只有输入快照里显式带 `tags` 时，才写入 tag node 和 `has_tag` edge。
 - 后续再把 agent loop 改成直接生成细粒度 event，而不是保存完 trace 后再拆分。
 
 明确禁止：

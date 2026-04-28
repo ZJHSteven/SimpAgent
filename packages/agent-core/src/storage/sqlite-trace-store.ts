@@ -105,7 +105,7 @@ function numberField(value: JsonObject, key: string): number | undefined {
  *
  * 重要边界：
  * - 这里不会给日志自动加 tag。
- * - 只有调用方显式传入 `tags` 字段，才会创建 tag node 和 `hashtag` edge。
+ * - 只有调用方显式传入 `tags` 字段，才会创建 tag node 和 `has_tag` edge。
  */
 function tagListFromField(value: JsonObject): string[] {
   const tags = value.tags;
@@ -348,17 +348,17 @@ export class SqliteTraceStore implements TraceStore {
    * 同步某个 node 的人工 tag 绑定。
    *
    * 核心逻辑：
-   * - 删除该 node 现有 `hashtag` edge。
+   * - 删除该 node 现有 `has_tag` edge。
    * - 为显式传入的 tag 创建 tag node，并写 `source -> tag` edge。
    */
-  private syncNodeHashtags(sourceNodeId: string, tags: readonly string[], now: number): void {
-    this.db.prepare("DELETE FROM edges WHERE source_node_id = ? AND edge_type = ?").run(sourceNodeId, "hashtag");
+  private syncNodeTags(sourceNodeId: string, tags: readonly string[], now: number): void {
+    this.db.prepare("DELETE FROM edges WHERE source_node_id = ? AND edge_type = ?").run(sourceNodeId, "has_tag");
 
     for (const tag of tags) {
       this.insertEdge({
         sourceNodeId,
         targetNodeId: this.getOrCreateTagNodeId(tag, now),
-        edgeType: "hashtag",
+        edgeType: "has_tag",
         now
       });
     }
@@ -367,7 +367,7 @@ export class SqliteTraceStore implements TraceStore {
   /**
    * 读取某个 node 的人工 tag 名称。
    */
-  private listNodeHashtags(sourceNodeId: string): string[] {
+  private listNodeTags(sourceNodeId: string): string[] {
     const rows = this.db
       .prepare(
         `
@@ -380,7 +380,7 @@ export class SqliteTraceStore implements TraceStore {
         ORDER BY target_nodes.name
       `
       )
-      .all(sourceNodeId, "hashtag", "tag") as unknown as Array<{ readonly name: string | null }>;
+      .all(sourceNodeId, "has_tag", "tag") as unknown as Array<{ readonly name: string | null }>;
 
     return rows.flatMap((row) => (row.name === null ? [] : [row.name]));
   }
@@ -491,7 +491,7 @@ export class SqliteTraceStore implements TraceStore {
         `
         )
         .run(threadId, agentId);
-      this.syncNodeHashtags(threadId, tagListFromField(snapshot), updatedAt);
+      this.syncNodeTags(threadId, tagListFromField(snapshot), updatedAt);
 
       const oldMessageRows = this.db
         .prepare("SELECT node_id FROM messages WHERE conversation_node_id = ?")
@@ -546,7 +546,7 @@ export class SqliteTraceStore implements TraceStore {
           updatedAt
         );
 
-        this.syncNodeHashtags(messageId, tagListFromField(message), updatedAt);
+        this.syncNodeTags(messageId, tagListFromField(message), updatedAt);
       });
 
       this.db.exec("COMMIT");
@@ -607,7 +607,7 @@ export class SqliteTraceStore implements TraceStore {
       .map((message): JsonObject => {
         const metadata = parseJsonObjectOrUndefined(message.metadata_json);
         const { snapshotIndex: _snapshotIndex, ...publicMetadata } = metadata ?? {};
-        const tags = this.listNodeHashtags(message.id);
+        const tags = this.listNodeTags(message.id);
 
         return {
           id: message.id,
@@ -621,7 +621,7 @@ export class SqliteTraceStore implements TraceStore {
           ...(Object.keys(publicMetadata).length === 0 ? {} : { metadata: publicMetadata })
         };
       });
-    const tags = this.listNodeHashtags(row.id);
+    const tags = this.listNodeTags(row.id);
     const metadata = parseJsonObjectOrUndefined(row.metadata_json);
 
     return {
