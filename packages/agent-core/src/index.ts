@@ -16,3 +16,6 @@ export * from "./api/models.js";
 export * from "./tools/builtin-tools.js";
 export * from "./loop/agent-loop.js";
 export * from "./pool/agent-pool.js";
+export * from "./storage/sql-executor.js";
+export * from "./storage/sqlite-schema.js";
+export * from "./storage/sqlite-trace-store.js";

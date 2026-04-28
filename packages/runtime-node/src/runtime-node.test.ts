@@ -67,13 +67,18 @@ describe("runtime-node", () => {
       id: threadId,
       agentId: createUuidV7Id(),
       title: "测试",
+      tags: ["coding", "review"],
       createdAt: 1,
       updatedAt: 2,
+      metadata: {
+        source: "unit-test"
+      },
       messages: [
         {
           id: createUuidV7Id(),
           role: "user",
-          content: "你好"
+          content: "你好",
+          tags: ["question"]
         }
       ]
     });
@@ -105,7 +110,19 @@ describe("runtime-node", () => {
     expect(turnId).toMatch(uuidV7Pattern);
     const databaseFile = await stat(join(dir, "simpagent.sqlite"));
     expect(databaseFile.isFile()).toBe(true);
-    expect(await store.loadThread(threadId)).toMatchObject({ id: threadId, title: "测试" });
+    expect(await store.loadThread(threadId)).toMatchObject({
+      id: threadId,
+      title: "测试",
+      tags: ["coding", "review"],
+      metadata: { source: "unit-test" },
+      messages: [
+        {
+          role: "user",
+          content: "你好",
+          tags: ["question"]
+        }
+      ]
+    });
     expect(await store.listThreads()).toHaveLength(1);
     store.close();
 
@@ -116,11 +133,44 @@ describe("runtime-node", () => {
     const tableNames = tableRows.map((row) => row.name);
     expect(tableNames).toContain("conversations");
     expect(tableNames).toContain("nodes");
+    expect(tableNames).toContain("tags");
+    expect(tableNames).toContain("conversation_tags");
+    expect(tableNames).toContain("message_tags");
     expect(tableNames).toContain("edges");
     expect(tableNames).toContain("events");
     expect(tableNames).not.toContain("graphs");
     expect(tableNames).not.toContain("runs");
     expect(tableNames).not.toContain("turns");
+
+    const conversationColumns = db.prepare("PRAGMA table_info(conversations)").all() as unknown as Array<{
+      readonly name: string;
+    }>;
+    const messageColumns = db.prepare("PRAGMA table_info(messages)").all() as unknown as Array<{
+      readonly name: string;
+    }>;
+    expect(conversationColumns.map((row) => row.name)).not.toContain("tags_json");
+    expect(messageColumns.map((row) => row.name)).not.toContain("tags_json");
+
+    const conversationMetadata = db.prepare("SELECT metadata_json FROM conversations WHERE id = ?").get(threadId) as
+      | {
+          readonly metadata_json: string | null;
+        }
+      | undefined;
+    expect(conversationMetadata?.metadata_json).toContain("unit-test");
+    expect(conversationMetadata?.metadata_json).not.toContain("threadSnapshot");
+
+    const tagRows = db
+      .prepare(
+        `
+        SELECT tags.name AS name
+        FROM conversation_tags
+        JOIN tags ON tags.id = conversation_tags.tag_id
+        WHERE conversation_tags.conversation_id = ?
+        ORDER BY tags.name
+      `
+      )
+      .all(threadId) as unknown as Array<{ readonly name: string }>;
+    expect(tagRows.map((row) => row.name)).toEqual(["coding", "review"]);
 
     const llmCall = db.prepare("SELECT request_json FROM llm_calls LIMIT 1").get() as
       | {
