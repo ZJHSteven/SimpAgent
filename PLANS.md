@@ -1,3 +1,39 @@
+# ExecPlan：Node/Edge 顶层统一存储
+
+## 当前目标
+- 将 conversation、event、message、tag、workflow 等实体统一收敛为 node + payload 分表。
+- 删除 `tags`、`conversation_tags`、`node_tags`、`message_tags` 专门绑定表。
+- tag 绑定改为 `edges.edge_type = "hashtag"`。
+- 删除 `edges.priority`，只保留 edge 主表的通用关系字段。
+- 为 edge 正反向查询补必要索引。
+
+## 执行步骤
+1. [x] **先更新 schema 文档**
+   - 明确顶层只有 `nodes` 和 `edges`。
+   - 明确 tag 是人工 node，绑定走 `hashtag` edge。
+   - 明确 workflow 是 node，子图边界走 `contains` edge。
+   - 明确必要索引清单。
+2. [ ] **调整 SQLite schema**
+   - 把 `conversations`、`events`、`messages` 改成 node payload 表。
+   - 删除 tag 专表与绑定表。
+   - 删除 `edges.priority`。
+3. [ ] **调整 TraceStore 写入/读取**
+   - 保存 thread 时先写 conversation node，再写 conversation payload。
+   - 保存 message 时先写 message node，再写 message payload。
+   - 保存 trace 时先写 event node，再写 event payload 和事件专属 payload。
+   - 显式 tags 通过 tag node + `hashtag` edge 保存。
+4. [ ] **验证**
+   - 测试不再出现 `conversation_tags` / `message_tags` / `node_tags` / `tags` 表。
+   - 测试 `hashtag` edge 可正反查。
+   - 跑 `npm run typecheck`、`npm test`、`npm run build`、`npm run lint`。
+
+## 验收标准
+- SQLite 顶层身份统一在 `nodes`。
+- `edges` 只连接 `nodes.id`。
+- tag 不再有专门绑定表。
+- `edges` 有 source 和 target 两侧索引。
+- 普通回归测试全部通过。
+
 # ExecPlan：SQLite 存储边界修正
 
 ## 当前目标

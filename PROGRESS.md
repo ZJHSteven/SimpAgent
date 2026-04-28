@@ -1,7 +1,7 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：SimpChat 前端仍然是真实接后端的状态；SQLite 持久化边界修正已完成，schema/trace 映射已下沉到 `agent-core`，`runtime-node` 只保留 Node SQLite 驱动薄层。
+- 现状：SimpChat 前端仍然是真实接后端的状态；当前正在把 SQLite schema 继续收敛为 `nodes + edges` 两个顶层容器，conversation/event/message/tag/workflow 都作为 node payload。
 - 已完成：
   - [x] 后端 monorepo、agent-core、runtime、CLI/server、流式 token、工具错误回填与基础测试已完成。
   - [x] React 前端迁移、ChatGPT 风格布局、受控输入器、移动端侧栏和 focus 视觉回归已完成。
@@ -28,13 +28,15 @@
   - [x] 已把 SQLite schema、tag 关系表、trace 拆分和脱敏规则下沉到 `agent-core/src/storage`。
   - [x] 已把 `runtime-node/src/trace-store.ts` 收缩为 `node:sqlite` 薄适配层。
   - [x] 已删除 `threadSnapshot` 过渡债，不再把完整旧 thread 快照写入 `metadata_json`。
-  - [x] 已把 tag 从 `tags_json` 改成 `tags`、`conversation_tags`、`node_tags`、`message_tags` 关系表。
+  - [x] 已确认上一版 tag 关系表过重，本轮改为 tag node + `hashtag` edge。
 - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
 - [x] 已将 SimpAgent 默认后端端口从 `8787` 调整为 `8788`，并同步更新前端代理默认目标，避开本机上被其他服务占用的端口。
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
 - 正在做：
-  - [x] SQLite 存储边界修正本轮实现与验证已完成。
-- 下一步：通过最终回归后，把 agent loop 从“保存完 trace 后拆分”继续推进到“运行中直接生成细粒度 event”。
+  - [ ] 删除 tag 专门绑定表。
+  - [ ] 将 conversation/event/message 改为 node payload 表。
+  - [ ] 删除 `edges.priority` 并补 edge 正反向索引。
+- 下一步：完成 Node/Edge 顶层统一存储后，继续推进 agent loop 原生细粒度 event。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
@@ -44,8 +46,9 @@
 - 决策E：server 在 `done/error` 后主动结束 SSE response。（原因：浏览器 EventSource 和自动化测试都不应无限挂着已结束 run 的连接。）
 - 决策F：SQLite 第一版不建立 `graphs`、`runs`、`turns` 表；graph 是 `nodes + edges` 的投影，运行事实统一进入 `events`。（原因：动态 handoff/discovery 是主线，固定 workflow 可由 node/edge 子图表达。）
 - 决策G：`docs/SQLite表结构.md` 是 schema 真源，任何 SQLite 表结构代码变更必须先改文档。（原因：SQLite 本身不适合人类直接 review，文档必须先于实现。）
-- 决策H：tag 不再使用 `tags_json`，统一进入 tag 字典和多对多绑定表。（原因：tag 是后续查询、筛选和管理的重点字段。）
+- 决策H：tag 是 `nodes.node_type = 'tag'` 的普通 node，绑定关系走 `edges.edge_type = 'hashtag'`。（原因：避免为每类实体扩散出独立 tag 绑定表。）
 - 决策I：SQLite schema/trace 映射属于 `agent-core`，`runtime-node` 只负责 Node SQLite driver。（原因：SQLite 存储语义需要被 Node、Cloudflare Worker、Tauri 等 runtime 复用。）
+- 决策J：顶层身份统一在 `nodes`，关系统一在 `edges`；conversation、event、message、workflow、memory 等只保留 payload 分表。（原因：保持图模型一致，避免泛型 edge 连接裸表 ID。）
 
 ## 常见坑 / 复现方法
 - 坑1：`chatgpt-temp/` 是视觉参考归档，不是当前 React 主应用入口。
