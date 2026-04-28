@@ -32,7 +32,6 @@
   - [x] 已删除 tag 专表和 tag 绑定表，tag 绑定统一走 `edges.edge_type = 'has_tag'`。
   - [x] 已将 `conversations`、`events`、`messages` 改为 node payload 表。
   - [x] 已删除 `edges.priority`，并保留 `idx_edges_source` / `idx_edges_target` 双向索引。
-  - [x] 已补消息、审批、日志和提示词编译相关的高频 child key 索引，避免只依赖 `edges` 的双向索引。
 - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
 - [x] 已将 SimpAgent 默认后端端口从 `8787` 调整为 `8788`，并同步更新前端代理默认目标，避开本机上被其他服务占用的端口。
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。

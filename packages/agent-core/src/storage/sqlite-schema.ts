@@ -190,17 +190,6 @@ export const SQLITE_SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes(node_type, name);
   CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_node_id, edge_type);
   CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_node_id, edge_type);
-  CREATE INDEX IF NOT EXISTS idx_conversations_entry_node ON conversations(entry_node_id);
   CREATE INDEX IF NOT EXISTS idx_events_conversation ON events(conversation_node_id, started_at);
   CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_node_id, created_at);
-  CREATE INDEX IF NOT EXISTS idx_messages_event ON messages(event_node_id, created_at);
-  CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_message_node_id, created_at);
-  CREATE INDEX IF NOT EXISTS idx_prompt_compilations_agent ON prompt_compilations(agent_node_id, event_node_id);
-  CREATE INDEX IF NOT EXISTS idx_llm_calls_strategy ON llm_calls(provider_strategy_node_id, event_node_id);
-  CREATE INDEX IF NOT EXISTS idx_tool_calls_tool ON tool_calls(tool_node_id, event_node_id);
-  CREATE INDEX IF NOT EXISTS idx_tool_approvals_tool_call ON tool_approvals(tool_call_event_node_id, event_node_id);
-  CREATE INDEX IF NOT EXISTS idx_side_effects_conversation ON side_effects(conversation_node_id, created_at);
-  CREATE INDEX IF NOT EXISTS idx_side_effects_event ON side_effects(event_node_id);
-  CREATE INDEX IF NOT EXISTS idx_runtime_logs_conversation ON runtime_logs(conversation_node_id, created_at);
-  CREATE INDEX IF NOT EXISTS idx_runtime_logs_event ON runtime_logs(event_node_id, created_at);
 `;

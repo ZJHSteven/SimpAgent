@@ -217,17 +217,6 @@ describe("runtime-node", () => {
     const indexNames = indexRows.map((row) => row.name);
     expect(indexNames).toContain("idx_edges_source");
     expect(indexNames).toContain("idx_edges_target");
-    expect(indexNames).toContain("idx_conversations_entry_node");
-    expect(indexNames).toContain("idx_messages_event");
-    expect(indexNames).toContain("idx_messages_parent");
-    expect(indexNames).toContain("idx_prompt_compilations_agent");
-    expect(indexNames).toContain("idx_llm_calls_strategy");
-    expect(indexNames).toContain("idx_tool_calls_tool");
-    expect(indexNames).toContain("idx_tool_approvals_tool_call");
-    expect(indexNames).toContain("idx_side_effects_conversation");
-    expect(indexNames).toContain("idx_side_effects_event");
-    expect(indexNames).toContain("idx_runtime_logs_conversation");
-    expect(indexNames).toContain("idx_runtime_logs_event");
 
     const llmCall = db.prepare("SELECT request_json FROM llm_calls LIMIT 1").get() as
       | {

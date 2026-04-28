@@ -315,21 +315,10 @@ message 节点的专属 payload。用户消息、助手消息、工具消息、t
 - `idx_nodes_name`：`nodes(node_type, name)`，用于按类型和名称查定义层节点或人工 tag。
 - `idx_edges_source`：`edges(source_node_id, edge_type)`，用于正向查关系。
 - `idx_edges_target`：`edges(target_node_id, edge_type)`，用于反向查关系。
-- `idx_conversations_entry_node`：`conversations(entry_node_id)`，用于按默认入口 node 反查会话。
 - `idx_events_conversation`：`events(conversation_node_id, started_at)`，用于按会话读取事件流。
 - `idx_messages_conversation`：`messages(conversation_node_id, created_at)`，用于按会话读取消息。
-- `idx_messages_event`：`messages(event_node_id, created_at)`，用于按事件回溯消息。
-- `idx_messages_parent`：`messages(parent_message_node_id, created_at)`，用于消息 fork / targeting。
-- `idx_prompt_compilations_agent`：`prompt_compilations(agent_node_id, event_node_id)`，用于按 agent 找提示词编译记录。
-- `idx_llm_calls_strategy`：`llm_calls(provider_strategy_node_id, event_node_id)`，用于按模型路由策略找调用记录。
-- `idx_tool_calls_tool`：`tool_calls(tool_node_id, event_node_id)`，用于按工具 node 找调用记录。
-- `idx_tool_approvals_tool_call`：`tool_approvals(tool_call_event_node_id, event_node_id)`，用于按被审批的工具调用找审批记录。
-- `idx_side_effects_conversation`：`side_effects(conversation_node_id, created_at)`，用于按会话加载副作用。
-- `idx_side_effects_event`：`side_effects(event_node_id)`，用于按事件反查副作用。
-- `idx_runtime_logs_conversation`：`runtime_logs(conversation_node_id, created_at)`，用于按会话加载运行日志。
-- `idx_runtime_logs_event`：`runtime_logs(event_node_id, created_at)`，用于按事件反查运行日志。
 
-暂不为所有 payload 表建立额外索引。短期只给高频 child key 和常见反查路径加索引，其他字段等真实查询稳定后再补。
+暂不为所有 payload 表建立额外索引。第一版只保留顶层图关系和会话流的必要索引，其他字段等真实查询稳定后再补。
 
 ## 第一版实现边界
 

@@ -38,7 +38,7 @@
 - 已把 `conversations`、`events`、`messages` 改成 node payload 表。
 - 已删除 tag 专表和 tag 绑定表。
 - 已删除 `edges.priority`。
-- 已补 `idx_edges_source`、`idx_edges_target`、`idx_conversations_entry_node`，以及消息、审批、日志相关的高频 child key 索引。
+- 已补 `idx_edges_source`、`idx_edges_target`。
 - 已验证 `PRAGMA foreign_keys = 1`，坏的 `edges` 写入会被 SQLite 拒绝。
 - 已通过 `npm run build`、`npm run lint`、`npm test`、`npm run typecheck`。
 
