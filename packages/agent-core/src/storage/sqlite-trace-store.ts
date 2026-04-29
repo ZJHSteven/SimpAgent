@@ -453,7 +453,17 @@ export class SqliteTraceStore implements TraceStore {
    * 判断数据库里是否已经有定义层 agent。
    */
   hasPresetAgents(): boolean {
-    const row = this.db.prepare("SELECT id FROM nodes WHERE node_type = ? LIMIT 1").get("agent") as
+    const row = this.db
+      .prepare(
+        `
+        SELECT nodes.id AS id
+        FROM nodes
+        JOIN agent_nodes ON agent_nodes.node_id = nodes.id
+        WHERE nodes.node_type = ?
+        LIMIT 1
+      `
+      )
+      .get("agent") as
       | { readonly id: string }
       | undefined;
     return row !== undefined;
