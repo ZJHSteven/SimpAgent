@@ -103,13 +103,6 @@ function jsonOrNull(value: unknown): string | null {
 }
 
 /**
- * 解析 SQLite JSON TEXT；NULL 则返回 undefined。
- */
-function parseJsonOrUndefined(value: string | null): JsonValue | undefined {
-  return value === null ? undefined : (parseJson(value) as JsonValue);
-}
-
-/**
  * 解析 SQLite 中的 JSON TEXT。
  *
  * 异常策略：

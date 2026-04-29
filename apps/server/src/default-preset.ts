@@ -97,7 +97,6 @@ export function createDefaultPreset(input: {
     BUILTIN_TOOL_HANDOFF_ID
   ];
   const agentIds = [DEFAULT_AGENT_A_ID, DEFAULT_AGENT_B_ID, DEFAULT_AGENT_C_ID];
-  const promptIds = [DEFAULT_PROMPT_A_ID, DEFAULT_PROMPT_B_ID, DEFAULT_PROMPT_C_ID];
   const toolAccessEdges = agentIds.flatMap((agentId, agentIndex) =>
     toolIds.map((toolId, toolIndex) =>
       edge({
