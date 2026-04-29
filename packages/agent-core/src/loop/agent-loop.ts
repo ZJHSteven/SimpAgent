@@ -5,7 +5,7 @@
  */
 import { assembleToolCalls, sendChatCompletionsRequest } from "../api/chat-completions.js";
 import type { AdapterStreamEvent, FetchLike, ProviderStrategy } from "../types/api.js";
-import type { IdGenerator, RuntimeClock } from "../types/common.js";
+import type { IdGenerator, JsonObject, RuntimeClock } from "../types/common.js";
 import { createTextMessage, type ContextMessage } from "../types/messages.js";
 import type { AgentEvent } from "../types/events.js";
 import type { TraceRecord, TraceStore } from "../types/trace.js";
@@ -25,6 +25,9 @@ export interface RunAgentTurnInput {
   readonly turnId: string;
   readonly messages: readonly ContextMessage[];
   readonly userText: string;
+  readonly agentNodeId?: string;
+  readonly promptPrefixMessages?: readonly ContextMessage[];
+  readonly promptCompilation?: JsonObject;
   readonly strategy: ProviderStrategy;
   readonly toolExecutor: ToolExecutor;
   readonly runtime: RuntimeServices;
@@ -157,6 +160,13 @@ function stringifyToolResult(value: unknown): string {
 }
 
 /**
+ * 判断工具结果是否是对象，便于读取 handoff 结构化返回。
+ */
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
  * 执行单次 Agent turn。
  * 说明：
  * - maxToolIterations 用于防止异常循环导致无限调用工具。
@@ -229,7 +239,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     const adapterResponse = await sendChatCompletionsRequest({
       adapterInput: {
         strategy: input.strategy,
-        messages: currentMessages,
+        messages: [...(input.promptPrefixMessages ?? []), ...currentMessages],
         tools: input.toolExecutor.listTools(),
         stream: true
       },
@@ -313,6 +323,18 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
 
       toolResults.push({ toolCall, result });
 
+      if (toolCall.name === "handoff" && result.ok && isJsonObject(result.content)) {
+        await input.onEvent({
+          type: "handoff",
+          threadId: input.threadId,
+          turnId: input.turnId,
+          toolCallId: toolCall.id,
+          targetNodeId: String(result.content.targetNodeId ?? ""),
+          inputMarkdown: String(result.content.inputMarkdown ?? ""),
+          returnMode: String(result.content.returnMode ?? "return_to_caller")
+        });
+      }
+
       currentMessages.push(
         // 工具结果通过 tool 角色消息回填给模型，驱动下一轮继续推理。
         createTextMessage({
@@ -347,7 +369,9 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     toolResults: toolResults as never,
     errors: errors as never,
     metrics: {
-      requestCount: requests.length
+      requestCount: requests.length,
+      ...(input.agentNodeId === undefined ? {} : { agentNodeId: input.agentNodeId }),
+      ...(input.promptCompilation === undefined ? {} : { promptCompilation: input.promptCompilation })
     }
   };
   const trace: TraceRecord =

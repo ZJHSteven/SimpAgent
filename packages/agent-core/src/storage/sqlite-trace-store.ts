@@ -8,6 +8,16 @@
  */
 import { createUuidV7Id, type JsonObject, type JsonValue } from "../types/common.js";
 import type { TraceRecord, TraceStore } from "../types/trace.js";
+import type { ToolDefinition } from "../types/tools.js";
+import type {
+  PresetAgentNodeRow,
+  PresetBundle,
+  PresetEdgeRow,
+  PresetNodeRow,
+  PresetPromptUnitRow,
+  PresetProviderStrategyRow,
+  PresetToolNodeRow
+} from "../preset/preset.js";
 import type { SqlDatabase } from "./sql-executor.js";
 import { SQLITE_SCHEMA_SQL } from "./sqlite-schema.js";
 
@@ -43,6 +53,37 @@ interface MessageRow {
   readonly created_at: number;
 }
 
+interface AgentDefinitionRow {
+  readonly node_id: string;
+  readonly name: string | null;
+  readonly description: string | null;
+  readonly prompt_binding_json: string;
+  readonly provider_strategy_node_id: string | null;
+}
+
+interface PromptUnitRow {
+  readonly node_id: string;
+  readonly role: string;
+  readonly content_template: string;
+  readonly variables_json: string | null;
+}
+
+interface EventDetailRow {
+  readonly node_id: string;
+  readonly conversation_node_id: string;
+  readonly actor_node_id: string | null;
+  readonly parent_event_node_id: string | null;
+  readonly caused_by_event_node_id: string | null;
+  readonly previous_event_node_id: string | null;
+  readonly event_type: string;
+  readonly status: string;
+  readonly started_at: number;
+  readonly completed_at: number | null;
+  readonly input_json: string | null;
+  readonly output_json: string | null;
+  readonly error_json: string | null;
+}
+
 /**
  * 判断 unknown 是否为普通 JSON 对象。
  */
@@ -59,6 +100,13 @@ function isJsonObject(value: unknown): value is JsonObject {
  */
 function jsonOrNull(value: unknown): string | null {
   return value === undefined ? null : JSON.stringify(value);
+}
+
+/**
+ * 解析 SQLite JSON TEXT；NULL 则返回 undefined。
+ */
+function parseJsonOrUndefined(value: string | null): JsonValue | undefined {
+  return value === null ? undefined : (parseJson(value) as JsonValue);
 }
 
 /**
@@ -174,6 +222,401 @@ export class SqliteTraceStore implements TraceStore {
    */
   private initializeSchema(): void {
     this.db.exec(SQLITE_SCHEMA_SQL);
+  }
+
+  /**
+   * 按表 JSON 导入 preset。
+   *
+   * 输入：
+   * - preset: 字段名与 SQLite 表列名保持一致的 JSON。
+   *
+   * 核心逻辑：
+   * - 先写 nodes，再写 provider/prompt/tool/agent payload，最后写 edges。
+   * - 这样所有外键都能找到目标行。
+   */
+  importPreset(preset: PresetBundle): void {
+    this.db.exec("BEGIN");
+    try {
+      const insertNode = this.db.prepare(
+        `
+        INSERT OR REPLACE INTO nodes (id, node_type, name, description, enabled, created_at, updated_at, metadata_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `
+      );
+      const insertProvider = this.db.prepare(
+        `
+        INSERT OR REPLACE INTO provider_strategies (
+          node_id, provider, base_url, model, strategy_json, parameters_json
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+      `
+      );
+      const insertPromptUnit = this.db.prepare(
+        `
+        INSERT OR REPLACE INTO prompt_units (node_id, role, content_template, variables_json)
+        VALUES (?, ?, ?, ?)
+      `
+      );
+      const insertTool = this.db.prepare(
+        `
+        INSERT OR REPLACE INTO tool_nodes (
+          node_id, tool_name, description, parameters_json, executor_kind, approval_policy, config_json
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `
+      );
+      const insertAgent = this.db.prepare(
+        `
+        INSERT OR REPLACE INTO agent_nodes (
+          node_id, prompt_binding_json, tool_policy_json, provider_strategy_node_id, memory_policy_json
+        )
+        VALUES (?, ?, ?, ?, ?)
+      `
+      );
+      const insertEdge = this.db.prepare(
+        `
+        INSERT OR REPLACE INTO edges (
+          id, source_node_id, target_node_id, edge_type, name, description,
+          enabled, condition_json, metadata_json, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `
+      );
+
+      for (const row of preset.nodes) {
+        insertNode.run(
+          row.id,
+          row.node_type,
+          row.name,
+          row.description,
+          row.enabled,
+          row.created_at,
+          row.updated_at,
+          row.metadata_json
+        );
+      }
+
+      for (const row of preset.provider_strategies) {
+        insertProvider.run(row.node_id, row.provider, row.base_url, row.model, row.strategy_json, row.parameters_json);
+      }
+
+      for (const row of preset.prompt_units) {
+        insertPromptUnit.run(row.node_id, row.role, row.content_template, row.variables_json);
+      }
+
+      for (const row of preset.tool_nodes) {
+        insertTool.run(
+          row.node_id,
+          row.tool_name,
+          row.description,
+          row.parameters_json,
+          row.executor_kind,
+          row.approval_policy,
+          row.config_json
+        );
+      }
+
+      for (const row of preset.agent_nodes) {
+        insertAgent.run(
+          row.node_id,
+          row.prompt_binding_json,
+          row.tool_policy_json,
+          row.provider_strategy_node_id,
+          row.memory_policy_json
+        );
+      }
+
+      for (const row of preset.edges) {
+        insertEdge.run(
+          row.id,
+          row.source_node_id,
+          row.target_node_id,
+          row.edge_type,
+          row.name,
+          row.description,
+          row.enabled,
+          row.condition_json,
+          row.metadata_json,
+          row.created_at,
+          row.updated_at
+        );
+      }
+
+      this.db.exec("COMMIT");
+    } catch (error: unknown) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  /**
+   * 清空 SQLite 后重新导入 preset。
+   *
+   * 注意：
+   * - 这是开发态 reset，不做历史兼容。
+   * - 删除 nodes 会通过外键级联删除所有 payload 表和 edges。
+   */
+  resetAndImportPreset(preset: PresetBundle): void {
+    this.db.exec("BEGIN");
+    try {
+      this.db.prepare("DELETE FROM nodes").run();
+      this.db.exec("COMMIT");
+    } catch (error: unknown) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+
+    this.importPreset(preset);
+  }
+
+  /**
+   * 导出当前定义层 preset。
+   */
+  exportPreset(): PresetBundle {
+    const definitionTypes = ["agent", "tool", "prompt_unit", "provider_strategy", "workflow", "memory", "tag"];
+    const placeholders = definitionTypes.map(() => "?").join(", ");
+    const nodes = this.db
+      .prepare(
+        `
+        SELECT id, node_type, name, description, enabled, created_at, updated_at, metadata_json
+        FROM nodes
+        WHERE node_type IN (${placeholders})
+        ORDER BY node_type, name, id
+      `
+      )
+      .all(...definitionTypes) as unknown as PresetNodeRow[];
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    const allEdges = this.db
+      .prepare(
+        `
+        SELECT
+          id, source_node_id, target_node_id, edge_type, name, description,
+          enabled, condition_json, metadata_json, created_at, updated_at
+        FROM edges
+        ORDER BY edge_type, source_node_id, target_node_id
+      `
+      )
+      .all() as unknown as PresetEdgeRow[];
+
+    return {
+      nodes,
+      edges: allEdges.filter((edge) => nodeIds.has(edge.source_node_id) && nodeIds.has(edge.target_node_id)),
+      agent_nodes: this.db
+        .prepare(
+          "SELECT node_id, prompt_binding_json, tool_policy_json, provider_strategy_node_id, memory_policy_json FROM agent_nodes ORDER BY node_id"
+        )
+        .all() as unknown as PresetAgentNodeRow[],
+      tool_nodes: this.db
+        .prepare(
+          "SELECT node_id, tool_name, description, parameters_json, executor_kind, approval_policy, config_json FROM tool_nodes ORDER BY tool_name"
+        )
+        .all() as unknown as PresetToolNodeRow[],
+      prompt_units: this.db
+        .prepare("SELECT node_id, role, content_template, variables_json FROM prompt_units ORDER BY node_id")
+        .all() as unknown as PresetPromptUnitRow[],
+      provider_strategies: this.db
+        .prepare("SELECT node_id, provider, base_url, model, strategy_json, parameters_json FROM provider_strategies ORDER BY node_id")
+        .all() as unknown as PresetProviderStrategyRow[]
+    };
+  }
+
+  /**
+   * 判断数据库里是否已经有定义层 agent。
+   */
+  hasPresetAgents(): boolean {
+    const row = this.db.prepare("SELECT id FROM nodes WHERE node_type = ? LIMIT 1").get("agent") as
+      | { readonly id: string }
+      | undefined;
+    return row !== undefined;
+  }
+
+  /**
+   * 读取可注册到 AgentPool 的 agent 定义。
+   */
+  listAgentDefinitions(): Array<{
+    readonly id: string;
+    readonly name: string;
+    readonly description: string;
+    readonly instructions: string;
+    readonly toolNames: readonly string[];
+    readonly providerStrategyId: string;
+    readonly promptBindingJson: string;
+  }> {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT
+          nodes.id AS node_id,
+          nodes.name AS name,
+          nodes.description AS description,
+          agent_nodes.prompt_binding_json AS prompt_binding_json,
+          agent_nodes.provider_strategy_node_id AS provider_strategy_node_id
+        FROM nodes
+        JOIN agent_nodes ON agent_nodes.node_id = nodes.id
+        WHERE nodes.node_type = ? AND nodes.enabled = 1
+        ORDER BY nodes.name, nodes.id
+      `
+      )
+      .all("agent") as unknown as AgentDefinitionRow[];
+
+    return rows.map((row) => ({
+      id: row.node_id,
+      name: row.name ?? row.node_id,
+      description: row.description ?? "",
+      instructions: row.description ?? "",
+      toolNames: this.listToolDefinitionsForAgent(row.node_id).map((tool) => tool.name),
+      providerStrategyId: row.provider_strategy_node_id ?? "",
+      promptBindingJson: row.prompt_binding_json
+    }));
+  }
+
+  /**
+   * 读取 agent 通过 tool_access edge 可见的工具。
+   */
+  listToolDefinitionsForAgent(agentNodeId: string): ToolDefinition[] {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT tool_nodes.node_id AS id, tool_nodes.tool_name AS name, tool_nodes.description AS description,
+               tool_nodes.parameters_json AS parameters_json
+        FROM edges
+        JOIN tool_nodes ON tool_nodes.node_id = edges.target_node_id
+        JOIN nodes ON nodes.id = tool_nodes.node_id
+        WHERE edges.source_node_id = ?
+          AND edges.edge_type = ?
+          AND edges.enabled = 1
+          AND nodes.enabled = 1
+        ORDER BY tool_nodes.tool_name
+      `
+      )
+      .all(agentNodeId, "tool_access") as unknown as Array<{
+      readonly id: string;
+      readonly name: string;
+      readonly description: string;
+      readonly parameters_json: string;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      parameters: parseJson(row.parameters_json) as JsonObject
+    }));
+  }
+
+  /**
+   * 读取 agent 通过 prompt_binding edge 绑定的 prompt units。
+   */
+  listPromptUnitsForAgent(agentNodeId: string): Array<{
+    readonly nodeId: string;
+    readonly role: string;
+    readonly contentTemplate: string;
+    readonly variables?: JsonObject;
+  }> {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT prompt_units.node_id AS node_id, prompt_units.role AS role,
+               prompt_units.content_template AS content_template, prompt_units.variables_json AS variables_json
+        FROM edges
+        JOIN prompt_units ON prompt_units.node_id = edges.target_node_id
+        JOIN nodes ON nodes.id = prompt_units.node_id
+        WHERE edges.source_node_id = ?
+          AND edges.edge_type = ?
+          AND edges.enabled = 1
+          AND nodes.enabled = 1
+        ORDER BY edges.created_at, edges.id
+      `
+      )
+      .all(agentNodeId, "prompt_binding") as unknown as PromptUnitRow[];
+
+    return rows.map((row) => ({
+      nodeId: row.node_id,
+      role: row.role,
+      contentTemplate: row.content_template,
+      ...(row.variables_json === null ? {} : { variables: parseJson(row.variables_json) as JsonObject })
+    }));
+  }
+
+  /**
+   * 读取 agent 可以发现的目标 node id。
+   */
+  listDiscoverableNodeIds(agentNodeId: string): string[] {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT target_node_id
+        FROM edges
+        WHERE source_node_id = ?
+          AND edge_type = ?
+          AND enabled = 1
+        ORDER BY target_node_id
+      `
+      )
+      .all(agentNodeId, "discoverable") as unknown as Array<{ readonly target_node_id: string }>;
+    return rows.map((row) => row.target_node_id);
+  }
+
+  /**
+   * 读取任意 event 的完整调试 payload。
+   */
+  getEventDetail(eventNodeId: string): JsonObject | undefined {
+    const row = this.db
+      .prepare(
+        `
+        SELECT
+          node_id, conversation_node_id, actor_node_id, parent_event_node_id,
+          caused_by_event_node_id, previous_event_node_id, event_type, status,
+          started_at, completed_at, input_json, output_json, error_json
+        FROM events
+        WHERE node_id = ?
+      `
+      )
+      .get(eventNodeId) as EventDetailRow | undefined;
+
+    if (row === undefined) {
+      return undefined;
+    }
+
+    return this.eventRowToJson(row);
+  }
+
+  /**
+   * 读取某个 conversation 的完整事件流。
+   */
+  listConversationEvents(conversationNodeId: string): JsonObject[] {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT
+          node_id, conversation_node_id, actor_node_id, parent_event_node_id,
+          caused_by_event_node_id, previous_event_node_id, event_type, status,
+          started_at, completed_at, input_json, output_json, error_json
+        FROM events
+        WHERE conversation_node_id = ?
+        ORDER BY started_at, node_id
+      `
+      )
+      .all(conversationNodeId) as unknown as EventDetailRow[];
+    return rows.map((row) => this.eventRowToJson(row));
+  }
+
+  private eventRowToJson(row: EventDetailRow): JsonObject {
+    return {
+      id: row.node_id,
+      conversationNodeId: row.conversation_node_id,
+      ...(row.actor_node_id === null ? {} : { actorNodeId: row.actor_node_id }),
+      ...(row.parent_event_node_id === null ? {} : { parentEventNodeId: row.parent_event_node_id }),
+      ...(row.caused_by_event_node_id === null ? {} : { causedByEventNodeId: row.caused_by_event_node_id }),
+      ...(row.previous_event_node_id === null ? {} : { previousEventNodeId: row.previous_event_node_id }),
+      eventType: row.event_type,
+      status: row.status,
+      startedAt: row.started_at,
+      ...(row.completed_at === null ? {} : { completedAt: row.completed_at }),
+      ...(row.input_json === null ? {} : { input: parseJsonOrUndefined(row.input_json) }),
+      ...(row.output_json === null ? {} : { output: parseJsonOrUndefined(row.output_json) }),
+      ...(row.error_json === null ? {} : { error: parseJsonOrUndefined(row.error_json) })
+    };
   }
 
   /**
@@ -391,8 +834,10 @@ export class SqliteTraceStore implements TraceStore {
   private insertEvent(input: {
     readonly id: string;
     readonly conversationId: string;
+    readonly actorNodeId?: string;
     readonly parentEventId?: string;
     readonly causedByEventId?: string;
+    readonly previousEventId?: string;
     readonly eventType: string;
     readonly status: EventStatus;
     readonly startedAt: number;
@@ -416,15 +861,20 @@ export class SqliteTraceStore implements TraceStore {
       .prepare(
         `
         INSERT OR REPLACE INTO events (
-          node_id, conversation_node_id, event_type, status, started_at, completed_at,
+          node_id, conversation_node_id, actor_node_id, parent_event_node_id,
+          caused_by_event_node_id, previous_event_node_id, event_type, status, started_at, completed_at,
           input_json, output_json, error_json
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `
       )
       .run(
         input.id,
         input.conversationId,
+        input.actorNodeId ?? null,
+        input.parentEventId ?? null,
+        input.causedByEventId ?? null,
+        input.previousEventId ?? null,
         input.eventType,
         input.status,
         input.startedAt,
@@ -434,23 +884,6 @@ export class SqliteTraceStore implements TraceStore {
         jsonOrNull(input.error)
       );
 
-    if (input.parentEventId !== undefined) {
-      this.insertEdge({
-        sourceNodeId: input.parentEventId,
-        targetNodeId: input.id,
-        edgeType: "event_child",
-        now: completedAt
-      });
-    }
-
-    if (input.causedByEventId !== undefined) {
-      this.insertEdge({
-        sourceNodeId: input.causedByEventId,
-        targetNodeId: input.id,
-        edgeType: "event_caused_by",
-        now: completedAt
-      });
-    }
   }
 
   /**
@@ -676,14 +1109,21 @@ export class SqliteTraceStore implements TraceStore {
     const now = Date.now();
     const completedAt = now;
     const requests = trace.requests ?? (trace.request === undefined ? [] : [trace.request]);
+    const actorNodeId = stringField(trace.metrics, "agentNodeId");
+    let previousEventId: string | undefined;
 
     this.db.exec("BEGIN");
     try {
       this.ensureConversation(trace.threadId, now);
 
+      if (actorNodeId !== undefined) {
+        this.ensureReferencedNode(actorNodeId, "agent", now);
+      }
+
       this.insertEvent({
         id: trace.turnId,
         conversationId: trace.threadId,
+        actorNodeId,
         eventType: "agent_invocation",
         status: "completed",
         startedAt: trace.createdAt,
@@ -702,6 +1142,47 @@ export class SqliteTraceStore implements TraceStore {
           source: "TraceRecord"
         }
       });
+      previousEventId = trace.turnId;
+
+      if (isJsonObject(trace.metrics.promptCompilation)) {
+        const promptEventId = createUuidV7Id();
+
+        this.insertEvent({
+          id: promptEventId,
+          conversationId: trace.threadId,
+          actorNodeId,
+          parentEventId: trace.turnId,
+          previousEventId,
+          eventType: "prompt_compile",
+          status: "completed",
+          startedAt: trace.createdAt,
+          completedAt,
+          input: trace.metrics.promptCompilation.input,
+          output: trace.metrics.promptCompilation.output,
+          metadata: {
+            source: "TraceRecord.promptCompilation"
+          }
+        });
+
+        this.db
+          .prepare(
+            `
+            INSERT OR REPLACE INTO prompt_compilations (
+              event_node_id, agent_node_id, input_json, assembly_plan_json, rendered_messages_json, trace_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+          `
+          )
+          .run(
+            promptEventId,
+            actorNodeId ?? null,
+            JSON.stringify(trace.metrics.promptCompilation.input ?? {}),
+            jsonOrNull(trace.metrics.promptCompilation.assemblyPlan),
+            JSON.stringify(trace.metrics.promptCompilation.renderedMessages ?? []),
+            jsonOrNull(trace.metrics.promptCompilation.trace)
+          );
+        previousEventId = promptEventId;
+      }
 
       requests.forEach((request, index) => {
         const llmEventId = createUuidV7Id();
@@ -711,7 +1192,9 @@ export class SqliteTraceStore implements TraceStore {
         this.insertEvent({
           id: llmEventId,
           conversationId: trace.threadId,
+          actorNodeId,
           parentEventId: trace.turnId,
+          previousEventId,
           eventType: "llm_call",
           status: "completed",
           startedAt: trace.createdAt,
@@ -725,6 +1208,7 @@ export class SqliteTraceStore implements TraceStore {
             requestIndex: index
           }
         });
+        previousEventId = llmEventId;
 
         this.db
           .prepare(
@@ -769,7 +1253,9 @@ export class SqliteTraceStore implements TraceStore {
         this.insertEvent({
           id: toolEventId,
           conversationId: trace.threadId,
+          actorNodeId,
           parentEventId: trace.turnId,
+          previousEventId,
           eventType: "tool_call",
           status: result?.ok === false ? "failed" : "completed",
           startedAt: trace.createdAt,
@@ -780,6 +1266,7 @@ export class SqliteTraceStore implements TraceStore {
             source: "TraceRecord.toolResults"
           }
         });
+        previousEventId = toolEventId;
 
         this.db
           .prepare(
@@ -816,8 +1303,10 @@ export class SqliteTraceStore implements TraceStore {
         this.insertEvent({
           id: approvalEventId,
           conversationId: trace.threadId,
+          actorNodeId,
           parentEventId: trace.turnId,
           causedByEventId: toolCallEventId,
+          previousEventId,
           eventType: "tool_approval",
           status: "completed",
           startedAt: trace.createdAt,
@@ -828,6 +1317,7 @@ export class SqliteTraceStore implements TraceStore {
             source: "TraceRecord.toolApprovals"
           }
         });
+        previousEventId = approvalEventId;
 
         this.db
           .prepare(

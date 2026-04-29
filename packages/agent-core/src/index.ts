@@ -14,6 +14,8 @@ export * from "./api/stream.js";
 export * from "./api/chat-completions.js";
 export * from "./api/models.js";
 export * from "./tools/builtin-tools.js";
+export * from "./preset/preset.js";
+export * from "./prompt/prompt-compiler.js";
 export * from "./loop/agent-loop.js";
 export * from "./pool/agent-pool.js";
 export * from "./storage/sql-executor.js";

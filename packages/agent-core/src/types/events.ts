@@ -46,6 +46,15 @@ export type AgentEvent =
       readonly result: ToolExecutionResult;
     }
   | {
+      readonly type: "handoff";
+      readonly threadId: SimpAgentId;
+      readonly turnId: SimpAgentId;
+      readonly toolCallId: string;
+      readonly targetNodeId: string;
+      readonly inputMarkdown: string;
+      readonly returnMode: string;
+    }
+  | {
       readonly type: "trace_snapshot";
       readonly threadId: SimpAgentId;
       readonly turnId: SimpAgentId;
@@ -75,4 +84,3 @@ export type AgentEvent =
 export function encodeSseEvent(event: AgentEvent): string {
   return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
 }
-

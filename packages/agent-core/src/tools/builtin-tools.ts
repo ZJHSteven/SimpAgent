@@ -4,10 +4,14 @@
  * - 工具协议面向模型保持稳定
  * - 具体执行下沉到 runtime 注入能力
  */
-import { createUuidV7Id } from "../types/common.js";
 import type { JsonObject } from "../types/common.js";
 import type { RuntimeServices } from "../runtime/interfaces.js";
 import type { ToolCallRequest, ToolDefinition, ToolExecutionResult, ToolExecutor } from "../types/tools.js";
+
+export const BUILTIN_TOOL_READ_FILE_ID = "00000000-0000-7000-8000-000000000101";
+export const BUILTIN_TOOL_EDIT_FILE_ID = "00000000-0000-7000-8000-000000000102";
+export const BUILTIN_TOOL_SHELL_COMMAND_ID = "00000000-0000-7000-8000-000000000103";
+export const BUILTIN_TOOL_HANDOFF_ID = "00000000-0000-7000-8000-000000000104";
 
 const readFileSchema: JsonObject = {
   type: "object",
@@ -53,6 +57,32 @@ const shellCommandSchema: JsonObject = {
   additionalProperties: false
 };
 
+const handoffSchema: JsonObject = {
+  type: "object",
+  properties: {
+    target_node_id: { type: "string", description: "要交接给的目标 agent/workflow node id。" },
+    input_markdown: { type: "string", description: "交接给目标节点的任务说明，支持 Markdown。" },
+    context_selector: {
+      type: "object",
+      description: "选择要附带的上下文，第一版避免直接暴露内部 message UUID。",
+      properties: {
+        mode: { type: "string", enum: ["none", "latest_n", "full_branch", "manual_markdown"] },
+        count: { type: "number", description: "mode=latest_n 时附带最近多少条消息。" },
+        markdown: { type: "string", description: "mode=manual_markdown 时由模型手写的上下文。" }
+      },
+      required: ["mode"],
+      additionalProperties: false
+    },
+    return_mode: {
+      type: "string",
+      enum: ["return_to_caller", "transfer"],
+      description: "return_to_caller 表示子 agent 完成后回到当前 agent；transfer 表示直接转交。"
+    }
+  },
+  required: ["target_node_id", "input_markdown", "context_selector"],
+  additionalProperties: false
+};
+
 /**
  * 对外暴露给模型的内置工具列表。
  *
@@ -62,22 +92,28 @@ const shellCommandSchema: JsonObject = {
  */
 export const builtinToolDefinitions: readonly ToolDefinition[] = [
   {
-    id: createUuidV7Id(),
+    id: BUILTIN_TOOL_READ_FILE_ID,
     name: "read_file",
     description: "读取纯文本文件的指定行范围，并返回原文与基础元数据。",
     parameters: readFileSchema
   },
   {
-    id: createUuidV7Id(),
+    id: BUILTIN_TOOL_EDIT_FILE_ID,
     name: "edit_file",
     description: "对单个文本文件执行精确文本替换、新建或删除操作。",
     parameters: editFileSchema
   },
   {
-    id: createUuidV7Id(),
+    id: BUILTIN_TOOL_SHELL_COMMAND_ID,
     name: "shell_command",
     description: "在当前 runtime 中执行 shell 命令，并返回 stdout、stderr 与退出码。",
     parameters: shellCommandSchema
+  },
+  {
+    id: BUILTIN_TOOL_HANDOFF_ID,
+    name: "handoff",
+    description: "将任务交接给当前图中可发现的另一个 agent 或 workflow。",
+    parameters: handoffSchema
   }
 ];
 
@@ -138,6 +174,20 @@ export class RuntimeToolExecutor implements ToolExecutor {
         ...(typeof args.timeoutMs === "number" ? { timeoutMs: args.timeoutMs } : {})
       });
       return { ok: result.exitCode === 0, content: result as unknown as JsonObject };
+    }
+
+    if (toolCall.name === "handoff") {
+      return {
+        ok: true,
+        content: {
+          ok: true,
+          kind: "handoff_request",
+          targetNodeId: String(args.target_node_id),
+          inputMarkdown: String(args.input_markdown),
+          contextSelector: args.context_selector,
+          returnMode: typeof args.return_mode === "string" ? args.return_mode : "return_to_caller"
+        }
+      };
     }
 
     // 未知工具不抛异常，返回结构化错误，便于模型在下一轮自我修正。
