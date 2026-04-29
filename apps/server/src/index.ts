@@ -3,8 +3,8 @@
  *
  * 本文件的职责：
  * 1. 把 agent-core / runtime-node 组装成一个可被前端调用的 HTTP 服务。
- * 2. 提供 thread 管理、run 启动、SSE 事件订阅、工具审批回填等接口。
- * 3. 在 server 启动时扫描磁盘里的 thread 快照，旧数据直接跳过，新数据继续使用。
+ * 2. 提供 conversation 管理、run 启动、SSE 事件订阅、工具审批回填等接口。
+ * 3. 在 server 启动时导入默认 preset，再恢复磁盘里的 conversation 快照。
  *
  * 为什么不在这里引入 Express：
  * - 当前接口数量少，Node 原生 http 足够清楚。
@@ -16,17 +16,22 @@ import { fileURLToPath } from "node:url";
 import {
   AgentPool,
   RuntimeToolExecutor,
+  compileAgentPrompt,
   encodeSseEvent,
   UuidV7IdGenerator,
-  createUuidV7Id,
   runAgentTurn,
   systemClock,
   listProviderModels,
   type AgentEvent,
+  type ContextRole,
   type FetchLike,
   type JsonObject,
   type SimpAgentId,
-  type ThreadState
+  type ThreadState,
+  type ToolCallRequest,
+  type ToolDefinition,
+  type ToolExecutionResult,
+  type ToolExecutor
 } from "@simpagent/agent-core";
 import {
   DeferredApprovalRuntime,
@@ -37,6 +42,7 @@ import {
   loadNodeConfig,
   type SimpAgentNodeConfig
 } from "@simpagent/runtime-node";
+import { DEFAULT_AGENT_A_ID, createDefaultPreset } from "./default-preset.js";
 
 /**
  * 每个 run 对应一个事件通道。
@@ -166,6 +172,29 @@ function tryGetThread(pool: AgentPool, threadId: SimpAgentId): ThreadState | und
 }
 
 /**
+ * server 侧工具执行器。
+ *
+ * 为什么需要这一层：
+ * - RuntimeToolExecutor 知道“工具怎么执行”。
+ * - SQLite 图谱知道“当前 agent 能看见哪些工具”。
+ * - 这里把二者合在一起，让 listTools() 只暴露 tool_access 允许的工具。
+ */
+class ServerToolExecutor implements ToolExecutor {
+  constructor(
+    private readonly inner: ToolExecutor,
+    private readonly visibleTools: readonly ToolDefinition[]
+  ) {}
+
+  listTools(): readonly ToolDefinition[] {
+    return this.visibleTools;
+  }
+
+  executeTool(toolCall: ToolCallRequest): Promise<ToolExecutionResult> {
+    return this.inner.executeTool(toolCall);
+  }
+}
+
+/**
  * 判断 SSE 事件是否代表一次 run 已经结束。
  */
 function isTerminalRunEvent(event: AgentEvent): boolean {
@@ -193,9 +222,19 @@ export async function createSimpAgentHttpServer(
   const approvalRuntime = new DeferredApprovalRuntime();
   // runtime 聚合对象，传给 core。
   const runtime = { fileRuntime, shellRuntime, approvalRuntime };
-  // 本地 trace/thread 存储。
+  // 本地 SQLite 存储。
   const traceStore = new SqliteTraceStore(config.storageDir);
-  // 内存态 agent/thread 管理器。
+  const defaultPreset = createDefaultPreset({
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    model: config.model
+  });
+
+  if (!traceStore.hasPresetAgents()) {
+    traceStore.importPreset(defaultPreset);
+  }
+
+  // 内存态 agent/conversation 管理器。
   const pool = new AgentPool(systemClock, idGenerator);
   // runId -> channel 的事件通道映射。
   const channels = new Map<string, RunChannel>();
@@ -203,8 +242,11 @@ export async function createSimpAgentHttpServer(
   const strategy = configToProviderStrategy(config);
   // 真实运行时使用全局 fetch；测试时可注入 mock fetch。
   const fetchFn = options.fetchFn ?? fetch;
-  // 默认 agent 也使用 UUID v7 作为主键，语义名字放在 name 里。
-  const agentId = createUuidV7Id();
+  const agentDefinitions = traceStore.listAgentDefinitions();
+  const agentDefinitionById = new Map(agentDefinitions.map((agent) => [agent.id, agent]));
+  const defaultAgentId = agentDefinitionById.has(DEFAULT_AGENT_A_ID)
+    ? DEFAULT_AGENT_A_ID
+    : (agentDefinitions[0]?.id ?? DEFAULT_AGENT_A_ID);
 
   /**
    * 向 run 通道广播事件。
@@ -229,15 +271,9 @@ export async function createSimpAgentHttpServer(
     }
   }
 
-  // 注册默认 agent，首版先固定 1 个角色。
-  pool.registerAgent({
-    id: agentId,
-    name: "SimpAgent",
-    description: "默认后端 agent，用于首版纵向跑通。",
-    instructions: "你是 SimpAgent 的默认编码助手。",
-    toolNames: ["read_file", "edit_file", "shell_command"],
-    providerStrategyId: strategy.id
-  });
+  for (const agent of agentDefinitions) {
+    pool.registerAgent(agent);
+  }
 
   // 启动时恢复已持久化 thread。恢复失败的坏数据会被跳过，避免单个文件阻断服务启动。
   for (const snapshot of await traceStore.listThreads()) {
@@ -256,11 +292,18 @@ export async function createSimpAgentHttpServer(
       const method = request.method ?? "GET";
       const url = new URL(request.url ?? "/", "http://localhost");
 
-      // POST /threads: 创建新会话。
-      if (method === "POST" && url.pathname === "/threads") {
-        const body = await readJson<{ title?: string }>(request);
+      // POST /conversations: 创建新会话。
+      if (method === "POST" && url.pathname === "/conversations") {
+        const body = await readJson<{ title?: string; entryNodeId?: string }>(request);
+        const entryNodeId = body.entryNodeId ?? defaultAgentId;
+        try {
+          pool.getAgent(entryNodeId);
+        } catch {
+          badRequest(response, `entryNodeId 不存在：${entryNodeId}`);
+          return;
+        }
         const thread = pool.createThread({
-          agentId,
+          agentId: entryNodeId,
           ...(body.title === undefined ? {} : { title: body.title })
         });
         await traceStore.saveThread(thread.id, thread as unknown as JsonObject);
@@ -268,9 +311,20 @@ export async function createSimpAgentHttpServer(
         return;
       }
 
-      // GET /threads: 列出内存中的会话。
-      if (method === "GET" && url.pathname === "/threads") {
-        sendJson(response, 200, pool.listThreads());
+      // GET /conversations: 列出轻量会话目录。
+      if (method === "GET" && url.pathname === "/conversations") {
+        sendJson(
+          response,
+          200,
+          pool.listThreads().map((thread) => ({
+            id: thread.id,
+            title: thread.title,
+            entryNodeId: thread.agentId,
+            createdAt: thread.createdAt,
+            updatedAt: thread.updatedAt,
+            messageCount: thread.messages.length
+          }))
+        );
         return;
       }
 
@@ -284,9 +338,9 @@ export async function createSimpAgentHttpServer(
         return;
       }
 
-      const threadMatch = url.pathname.match(/^\/threads\/([^/]+)$/);
+      const threadMatch = url.pathname.match(/^\/conversations\/([^/]+)$/);
 
-      // GET /threads/:id: 查询单个会话。
+      // GET /conversations/:id: 查询前端默认聊天视图。
       if (method === "GET" && threadMatch?.[1] !== undefined) {
         const thread = tryGetThread(pool, threadMatch[1]);
 
@@ -295,13 +349,19 @@ export async function createSimpAgentHttpServer(
           return;
         }
 
-        sendJson(response, 200, thread);
+        sendJson(response, 200, {
+          ...thread,
+          entryNodeId: thread.agentId,
+          messages: thread.messages.filter(
+            (message) => message.role === "user" || message.role === "assistant" || message.role === "tool"
+          )
+        });
         return;
       }
 
-      const forkMatch = url.pathname.match(/^\/threads\/([^/]+)\/fork$/);
+      const forkMatch = url.pathname.match(/^\/conversations\/([^/]+)\/fork$/);
 
-      // POST /threads/:id/fork: 从指定消息分叉新会话。
+      // POST /conversations/:id/fork: 从指定消息分叉新会话。
       if (method === "POST" && forkMatch?.[1] !== undefined) {
         if (tryGetThread(pool, forkMatch[1]) === undefined) {
           notFound(response, `thread 不存在：${forkMatch[1]}`);
@@ -325,9 +385,9 @@ export async function createSimpAgentHttpServer(
         return;
       }
 
-      const runMatch = url.pathname.match(/^\/threads\/([^/]+)\/runs$/);
+      const runMatch = url.pathname.match(/^\/conversations\/([^/]+)\/runs$/);
 
-      // POST /threads/:id/runs: 启动一次异步运行。
+      // POST /conversations/:id/runs: 启动一次异步运行。
       if (method === "POST" && runMatch?.[1] !== undefined) {
         const body = await readJson<{ input: string }>(request);
 
@@ -349,6 +409,12 @@ export async function createSimpAgentHttpServer(
             ? pool.updateThreadTitle(thread.id, createThreadTitleFromUserText(body.input))
             : thread;
         await traceStore.saveThread(runnableThread.id, runnableThread as unknown as JsonObject);
+        traceStore.recordEvent({
+          conversationId: runnableThread.id,
+          actorNodeId: runnableThread.agentId,
+          eventType: "user_message",
+          input: { text: body.input }
+        });
 
         // 为本次运行分配 run/turn id。
         const runId = idGenerator.nextId();
@@ -356,6 +422,26 @@ export async function createSimpAgentHttpServer(
         // 初始化事件通道并登记。
         const channel: RunChannel = { clients: new Set(), events: [] };
         channels.set(runId, channel);
+        const agent = pool.getAgent(runnableThread.agentId);
+        const agentDefinition = agentDefinitionById.get(agent.id);
+
+        if (agentDefinition === undefined) {
+          throw new Error(`找不到 agent 定义：${agent.id}`);
+        }
+
+        const promptUnits = traceStore.listPromptUnitsForAgent(agent.id).map((unit) => ({
+          ...unit,
+          role: unit.role as ContextRole
+        }));
+        const promptCompileResult = compileAgentPrompt({
+          agentNodeId: agent.id,
+          promptBindingJson: agentDefinition.promptBindingJson,
+          promptUnits,
+          history: [],
+          currentUserInput: body.input,
+          idGenerator
+        });
+        const visibleTools = traceStore.listToolDefinitionsForAgent(agent.id);
 
         // 后台执行 run，不阻塞当前 HTTP 请求。
         void runAgentTurn({
@@ -364,8 +450,19 @@ export async function createSimpAgentHttpServer(
           turnId,
           messages: runnableThread.messages,
           userText: body.input,
+          agentNodeId: agent.id,
+          promptPrefixMessages: promptCompileResult.messages,
+          promptCompilation: {
+            input: {
+              agentNodeId: agent.id,
+              currentUserInput: body.input
+            },
+            assemblyPlan: promptCompileResult.assemblyPlan,
+            renderedMessages: promptCompileResult.messages as unknown as never,
+            trace: promptCompileResult.trace
+          },
           strategy,
-          toolExecutor: new RuntimeToolExecutor(runtime),
+          toolExecutor: new ServerToolExecutor(new RuntimeToolExecutor(runtime), visibleTools),
           runtime,
           traceStore,
           fetchFn,
@@ -380,6 +477,12 @@ export async function createSimpAgentHttpServer(
             // 运行完成后写回 thread 最新消息快照。
             const updated = pool.replaceThreadMessages(runnableThread.id, result.messages);
             await traceStore.saveThread(runnableThread.id, updated as unknown as JsonObject);
+            traceStore.recordEvent({
+              conversationId: runnableThread.id,
+              actorNodeId: agent.id,
+              eventType: "assistant_message",
+              output: { messageCount: result.messages.length }
+            });
           })
           .catch((error: unknown) => {
             // 出错时转成标准 error 事件继续广播。
@@ -456,6 +559,42 @@ export async function createSimpAgentHttpServer(
           ...(body.reason === undefined ? {} : { reason: body.reason })
         });
         sendJson(response, ok ? 200 : 404, { ok });
+        return;
+      }
+
+      const conversationEventsMatch = url.pathname.match(/^\/conversations\/([^/]+)\/events$/);
+
+      // GET /conversations/:id/events: 开发调试接口，读取完整事件流。
+      if (method === "GET" && conversationEventsMatch?.[1] !== undefined) {
+        sendJson(response, 200, traceStore.listConversationEvents(conversationEventsMatch[1]));
+        return;
+      }
+
+      const eventMatch = url.pathname.match(/^\/events\/([^/]+)$/);
+
+      // GET /events/:id: 开发调试接口，读取任意 event payload。
+      if (method === "GET" && eventMatch?.[1] !== undefined) {
+        const event = traceStore.getEventDetail(eventMatch[1]);
+
+        if (event === undefined) {
+          notFound(response, `event 不存在：${eventMatch[1]}`);
+          return;
+        }
+
+        sendJson(response, 200, event);
+        return;
+      }
+
+      // GET /preset/export: 导出当前定义层 preset。
+      if (method === "GET" && url.pathname === "/preset/export") {
+        sendJson(response, 200, traceStore.exportPreset());
+        return;
+      }
+
+      // POST /preset/reset: 清空 SQLite 后按 server 默认 preset 重建。
+      if (method === "POST" && url.pathname === "/preset/reset") {
+        traceStore.resetAndImportPreset(defaultPreset);
+        sendJson(response, 200, { ok: true });
         return;
       }
 
