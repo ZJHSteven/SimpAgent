@@ -222,6 +222,42 @@ export class SqliteTraceStore implements TraceStore {
    */
   private initializeSchema(): void {
     this.db.exec(SQLITE_SCHEMA_SQL);
+    this.ensureDevelopmentSchemaColumns();
+  }
+
+  /**
+   * 开发态 schema 自修正。
+   *
+   * 背景：
+   * - 当前项目明确不背旧数据兼容债，但本机开发库可能已经创建过旧列名。
+   * - 这里不迁移历史业务数据，只把表结构修正到当前文档真源，避免启动时卡在旧列名。
+   */
+  private ensureDevelopmentSchemaColumns(): void {
+    const agentColumns = this.db.prepare("PRAGMA table_info(agent_nodes)").all() as unknown as Array<{
+      readonly name: string;
+    }>;
+    const agentColumnNames = new Set(agentColumns.map((column) => column.name));
+
+    if (agentColumnNames.has("prompt_bonding_json") && !agentColumnNames.has("prompt_binding_json")) {
+      this.db.exec("ALTER TABLE agent_nodes RENAME COLUMN prompt_bonding_json TO prompt_binding_json");
+    }
+
+    const eventColumns = this.db.prepare("PRAGMA table_info(events)").all() as unknown as Array<{
+      readonly name: string;
+    }>;
+    const eventColumnNames = new Set(eventColumns.map((column) => column.name));
+    const eventColumnsToAdd = [
+      ["actor_node_id", "TEXT REFERENCES nodes(id) ON DELETE SET NULL"],
+      ["parent_event_node_id", "TEXT REFERENCES events(node_id) ON DELETE SET NULL"],
+      ["caused_by_event_node_id", "TEXT REFERENCES events(node_id) ON DELETE SET NULL"],
+      ["previous_event_node_id", "TEXT REFERENCES events(node_id) ON DELETE SET NULL"]
+    ] as const;
+
+    for (const [name, sql] of eventColumnsToAdd) {
+      if (!eventColumnNames.has(name)) {
+        this.db.exec(`ALTER TABLE events ADD COLUMN ${name} ${sql}`);
+      }
+    }
   }
 
   /**
@@ -884,6 +920,71 @@ export class SqliteTraceStore implements TraceStore {
         jsonOrNull(input.error)
       );
 
+  }
+
+  /**
+   * 读取某个 conversation 最后一条 event。
+   */
+  private getLatestEventId(conversationId: string): string | undefined {
+    const row = this.db
+      .prepare(
+        `
+        SELECT node_id
+        FROM events
+        WHERE conversation_node_id = ?
+        ORDER BY started_at DESC, node_id DESC
+        LIMIT 1
+      `
+      )
+      .get(conversationId) as { readonly node_id: string } | undefined;
+    return row?.node_id;
+  }
+
+  /**
+   * 记录一个轻量运行事件。
+   *
+   * 使用场景：
+   * - server 收到用户输入时写 user_message。
+   * - fork / patch message 等控制面动作需要进入事件流。
+   */
+  recordEvent(input: {
+    readonly conversationId: string;
+    readonly actorNodeId?: string;
+    readonly eventType: string;
+    readonly status?: EventStatus;
+    readonly input?: unknown;
+    readonly output?: unknown;
+    readonly error?: unknown;
+    readonly startedAt?: number;
+  }): string {
+    const now = input.startedAt ?? Date.now();
+    const eventId = createUuidV7Id();
+
+    this.db.exec("BEGIN");
+    try {
+      this.ensureConversation(input.conversationId, now);
+      if (input.actorNodeId !== undefined) {
+        this.ensureReferencedNode(input.actorNodeId, "agent", now);
+      }
+      this.insertEvent({
+        id: eventId,
+        conversationId: input.conversationId,
+        actorNodeId: input.actorNodeId,
+        previousEventId: this.getLatestEventId(input.conversationId),
+        eventType: input.eventType,
+        status: input.status ?? "completed",
+        startedAt: now,
+        completedAt: now,
+        input: input.input,
+        output: input.output,
+        error: input.error
+      });
+      this.db.exec("COMMIT");
+      return eventId;
+    } catch (error: unknown) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   /**
