@@ -22,7 +22,7 @@ export const DEFAULT_SQLITE_FILE_NAME = "simpagent.sqlite";
  *
  * 核心逻辑：
  * - 顶层表只有 `nodes` 和 `edges`。
- * - conversation / event / message 等实体都是 node payload 分表。
+ * - conversation / event / message / agent / prompt unit 等实体都是 node payload 分表。
  * - edge 建 source 和 target 两侧索引，因为图查询会频繁正查和反查。
  */
 export const SQLITE_SCHEMA_SQL = `
@@ -61,10 +61,9 @@ export const SQLITE_SCHEMA_SQL = `
 
   CREATE TABLE IF NOT EXISTS agent_nodes (
     node_id TEXT PRIMARY KEY REFERENCES nodes(id) ON DELETE CASCADE,
-    instruction TEXT NOT NULL,
-    context_policy_json TEXT,
+    prompt_bonding_json TEXT NOT NULL,
     tool_policy_json TEXT,
-    model_policy_json TEXT,
+    provider_strategy_node_id TEXT REFERENCES provider_strategies(node_id) ON DELETE SET NULL,
     memory_policy_json TEXT
   );
 
@@ -82,8 +81,7 @@ export const SQLITE_SCHEMA_SQL = `
     node_id TEXT PRIMARY KEY REFERENCES nodes(id) ON DELETE CASCADE,
     role TEXT NOT NULL,
     content_template TEXT NOT NULL,
-    variables_json TEXT,
-    priority INTEGER NOT NULL
+    variables_json TEXT
   );
 
   CREATE TABLE IF NOT EXISTS provider_strategies (
@@ -131,7 +129,7 @@ export const SQLITE_SCHEMA_SQL = `
 
   CREATE TABLE IF NOT EXISTS llm_calls (
     event_node_id TEXT PRIMARY KEY REFERENCES events(node_id) ON DELETE CASCADE,
-    provider_strategy_node_id TEXT REFERENCES nodes(id) ON DELETE SET NULL,
+    provider_strategy_node_id TEXT REFERENCES provider_strategies(node_id) ON DELETE SET NULL,
     provider TEXT NOT NULL,
     model TEXT NOT NULL,
     request_json TEXT NOT NULL,

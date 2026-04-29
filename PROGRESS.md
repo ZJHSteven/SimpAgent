@@ -32,6 +32,9 @@
   - [x] 已删除 tag 专表和 tag 绑定表，tag 绑定统一走 `edges.edge_type = 'has_tag'`。
   - [x] 已将 `conversations`、`events`、`messages` 改为 node payload 表。
   - [x] 已删除 `edges.priority`，并保留 `idx_edges_source` / `idx_edges_target` 双向索引。
+  - [x] 已把 `agent_nodes` 收敛为 `prompt_bonding_json`、`tool_policy_json`、`provider_strategy_node_id`、`memory_policy_json`，并删除旧的 `instruction/context_policy_json/model_policy_json`。
+  - [x] 已删除 `prompt_units.priority`，让 prompt unit 只保留最小字段集。
+  - [x] 已把 `llm_calls.provider_strategy_node_id` 直接指向 `provider_strategies.node_id`。
 - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
 - [x] 已将 SimpAgent 默认后端端口从 `8787` 调整为 `8788`，并同步更新前端代理默认目标，避开本机上被其他服务占用的端口。
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
@@ -59,6 +62,7 @@
 - 坑5：SSE 如果在 `done` 后不主动关闭，浏览器和测试都会留下长连接；server 现在在 `done/error` 后结束 SSE response。
 - 坑6：前端 run done 后会重新拉取 thread 快照；如果直接覆盖思考步骤，会丢掉 live `trace_snapshot` 等事件，所以刷新消息时保留本轮 live thought steps。
 - 坑7：SQLite 表结构不能只看建表 SQL；后续任何字段、索引、事件类型、节点类型变化都要先更新 `docs/SQLite表结构.md`。
-- 坑8：当前 Vitest 会通过 workspace package 读取已构建输出；改动 `agent-core` 后先跑 `npm run build`，再跑 `npm test`，避免测试读到旧 `dist`。
+- 坑8：`agent_nodes.provider_strategy_node_id` 现在直接引用 `provider_strategies.node_id`，不要再把旧 `model_policy_json` 当真源。
+- 坑9：当前 Vitest 会通过 workspace package 读取已构建输出；改动 `agent-core` 后先跑 `npm run build`，再跑 `npm test`，避免测试读到旧 `dist`。
 - 复测记录：Node/Edge 顶层统一存储本轮已通过 `npm run build`、`npm run lint`、`npm test`、`npm run typecheck`。前端上一轮已通过 `npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。
 - 复测记录补充：本轮已确认 SQLite `PRAGMA foreign_keys = 1`，并验证坏的 `edges` 插入会直接失败。

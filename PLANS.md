@@ -140,6 +140,28 @@
 - smoke test 至少覆盖一个非思考模型和一个思考模型的真实 SSE 流式输出。
 - 计划和状态文档能让后续维护者一眼看懂测试分层。
 
+# ExecPlan：agent_nodes 与 prompt_units 字段收敛
+
+## 当前目标
+- 把 `agent_nodes` 从旧的 `instruction/context/model policy` 形态收敛为 `prompt_bonding_json`、`tool_policy_json`、`provider_strategy_node_id`、`memory_policy_json`。
+- 把模型路由直接指向 `provider_strategies.node_id`，不再在 agent payload 里重复一份模型策略 JSON。
+- 删除 `prompt_units.priority`，让第一版 prompt unit 只保留最小必要字段。
+
+## 执行步骤
+1. [x] **先更新 schema 文档**
+   - 修改 `docs/SQLite表结构.md`，先把字段真源改掉。
+2. [x] **再更新真实建表 SQL**
+   - 修改 `packages/agent-core/src/storage/sqlite-schema.ts`。
+   - 同步把 `llm_calls.provider_strategy_node_id` 指向 `provider_strategies.node_id`。
+3. [x] **补最小回归测试**
+   - 在 `packages/runtime-node/src/runtime-node.test.ts` 里断言新旧字段差异。
+4. [x] **验证与收尾**
+   - 跑 schema 相关测试和必要的整体回归。
+   - 更新 `PROGRESS.md` 记录当前结果。
+
+## 当前结果
+- 已完成本轮字段收敛改动，并通过 `npm run build`、`npm run lint`、`npm run typecheck`、`npm test` 验证。
+
 # ExecPlan：SimpChat 静态页无感知迁移到 React
 
 ## 当前目标

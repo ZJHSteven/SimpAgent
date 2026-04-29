@@ -146,8 +146,24 @@ describe("runtime-node", () => {
     const nodeColumns = db.prepare("PRAGMA table_info(nodes)").all() as unknown as Array<{
       readonly name: string;
     }>;
+    const agentColumns = db.prepare("PRAGMA table_info(agent_nodes)").all() as unknown as Array<{
+      readonly name: string;
+    }>;
+    const promptUnitColumns = db.prepare("PRAGMA table_info(prompt_units)").all() as unknown as Array<{
+      readonly name: string;
+    }>;
+    const llmForeignKeys = db.prepare("PRAGMA foreign_key_list(llm_calls)").all() as unknown as Array<{
+      readonly table: string;
+      readonly from: string;
+      readonly to: string;
+    }>;
     const edgeColumns = db.prepare("PRAGMA table_info(edges)").all() as unknown as Array<{
       readonly name: string;
+    }>;
+    const agentForeignKeys = db.prepare("PRAGMA foreign_key_list(agent_nodes)").all() as unknown as Array<{
+      readonly table: string;
+      readonly from: string;
+      readonly to: string;
     }>;
     const foreignKeysEnabled = db.prepare("PRAGMA foreign_keys").get() as
       | {
@@ -155,6 +171,39 @@ describe("runtime-node", () => {
         }
       | undefined;
     expect(nodeColumns.map((row) => row.name)).toContain("name");
+    expect(agentColumns.map((row) => row.name)).toEqual([
+      "node_id",
+      "prompt_bonding_json",
+      "tool_policy_json",
+      "provider_strategy_node_id",
+      "memory_policy_json"
+    ]);
+    expect(agentColumns.map((row) => row.name)).not.toContain("instruction");
+    expect(agentColumns.map((row) => row.name)).not.toContain("context_policy_json");
+    expect(agentColumns.map((row) => row.name)).not.toContain("model_policy_json");
+    expect(promptUnitColumns.map((row) => row.name)).toEqual([
+      "node_id",
+      "role",
+      "content_template",
+      "variables_json"
+    ]);
+    expect(promptUnitColumns.map((row) => row.name)).not.toContain("priority");
+    expect(
+      agentForeignKeys.filter((row) => row.from === "provider_strategy_node_id")
+    ).toMatchObject([
+      {
+        table: "provider_strategies",
+        from: "provider_strategy_node_id",
+        to: "node_id"
+      }
+    ]);
+    expect(llmForeignKeys.filter((row) => row.from === "provider_strategy_node_id")).toMatchObject([
+      {
+        table: "provider_strategies",
+        from: "provider_strategy_node_id",
+        to: "node_id"
+      }
+    ]);
     expect(edgeColumns.map((row) => row.name)).not.toContain("priority");
     expect(foreignKeysEnabled?.foreign_keys).toBe(1);
 
