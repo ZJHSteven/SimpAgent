@@ -61,7 +61,7 @@ export const SQLITE_SCHEMA_SQL = `
 
   CREATE TABLE IF NOT EXISTS agent_nodes (
     node_id TEXT PRIMARY KEY REFERENCES nodes(id) ON DELETE CASCADE,
-    prompt_bonding_json TEXT NOT NULL,
+    prompt_binding_json TEXT NOT NULL,
     tool_policy_json TEXT,
     provider_strategy_node_id TEXT REFERENCES provider_strategies(node_id) ON DELETE SET NULL,
     memory_policy_json TEXT
@@ -96,6 +96,10 @@ export const SQLITE_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS events (
     node_id TEXT PRIMARY KEY REFERENCES nodes(id) ON DELETE CASCADE,
     conversation_node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    actor_node_id TEXT REFERENCES nodes(id) ON DELETE SET NULL,
+    parent_event_node_id TEXT REFERENCES events(node_id) ON DELETE SET NULL,
+    caused_by_event_node_id TEXT REFERENCES events(node_id) ON DELETE SET NULL,
+    previous_event_node_id TEXT REFERENCES events(node_id) ON DELETE SET NULL,
     event_type TEXT NOT NULL,
     status TEXT NOT NULL,
     started_at INTEGER NOT NULL,

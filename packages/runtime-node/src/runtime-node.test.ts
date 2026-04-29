@@ -173,7 +173,7 @@ describe("runtime-node", () => {
     expect(nodeColumns.map((row) => row.name)).toContain("name");
     expect(agentColumns.map((row) => row.name)).toEqual([
       "node_id",
-      "prompt_bonding_json",
+      "prompt_binding_json",
       "tool_policy_json",
       "provider_strategy_node_id",
       "memory_policy_json"
@@ -205,6 +205,24 @@ describe("runtime-node", () => {
       }
     ]);
     expect(edgeColumns.map((row) => row.name)).not.toContain("priority");
+    const eventColumns = db.prepare("PRAGMA table_info(events)").all() as unknown as Array<{
+      readonly name: string;
+    }>;
+    expect(eventColumns.map((row) => row.name)).toEqual([
+      "node_id",
+      "conversation_node_id",
+      "actor_node_id",
+      "parent_event_node_id",
+      "caused_by_event_node_id",
+      "previous_event_node_id",
+      "event_type",
+      "status",
+      "started_at",
+      "completed_at",
+      "input_json",
+      "output_json",
+      "error_json"
+    ]);
     expect(foreignKeysEnabled?.foreign_keys).toBe(1);
 
     expect(() =>
