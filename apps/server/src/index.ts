@@ -385,6 +385,54 @@ export async function createSimpAgentHttpServer(
         return;
       }
 
+      const messagePatchMatch = url.pathname.match(/^\/messages\/([^/]+)$/);
+
+      // PATCH /messages/:id: 修改历史消息，并从该消息创建新的 conversation 分支。
+      if (method === "PATCH" && messagePatchMatch?.[1] !== undefined) {
+        const body = await readJson<{ content: string; title?: string }>(request);
+
+        if (typeof body.content !== "string") {
+          badRequest(response, "content 必须是字符串");
+          return;
+        }
+
+        const sourceThread = pool
+          .listThreads()
+          .find((thread) => thread.messages.some((message) => message.id === messagePatchMatch[1]));
+
+        if (sourceThread === undefined) {
+          notFound(response, `message 不存在：${messagePatchMatch[1]}`);
+          return;
+        }
+
+        const forked = pool.forkThread({
+          sourceThreadId: sourceThread.id,
+          fromMessageId: messagePatchMatch[1],
+          ...(body.title === undefined ? {} : { title: body.title })
+        });
+        const patchedMessages = forked.messages.map((message) =>
+          message.id === messagePatchMatch[1] ? { ...message, content: body.content } : message
+        );
+        const patchedThread = pool.replaceThreadMessages(forked.id, patchedMessages);
+
+        await traceStore.saveThread(patchedThread.id, patchedThread as unknown as JsonObject);
+        traceStore.recordEvent({
+          conversationId: patchedThread.id,
+          actorNodeId: patchedThread.agentId,
+          eventType: "message_patch",
+          input: {
+            sourceConversationId: sourceThread.id,
+            messageId: messagePatchMatch[1],
+            content: body.content
+          },
+          output: {
+            conversationId: patchedThread.id
+          }
+        });
+        sendJson(response, 201, patchedThread);
+        return;
+      }
+
       const runMatch = url.pathname.match(/^\/conversations\/([^/]+)\/runs$/);
 
       // POST /conversations/:id/runs: 启动一次异步运行。

@@ -3,7 +3,7 @@
  *
  * 测试目标：
  * 1. 不启动真实端口 8788，而是用随机端口跑同一套 HTTP server。
- * 2. 验证 thread 持久化恢复、404/400 边界、首次发送自动标题、SSE 事件输出。
+ * 2. 验证 conversation 持久化恢复、404/400 边界、首次发送自动标题、SSE 事件输出。
  * 3. 用 mock fetch 模拟模型流式响应，避免测试依赖真实 API key 或外部网络。
  */
 import { mkdtemp } from "node:fs/promises";
@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createUuidV7Id } from "@simpagent/agent-core";
 import { SqliteTraceStore, type SimpAgentNodeConfig } from "@simpagent/runtime-node";
 import { createSimpAgentHttpServer, createThreadTitleFromUserText } from "./index.js";
+import { DEFAULT_AGENT_A_ID, DEFAULT_AGENT_B_ID, DEFAULT_AGENT_C_ID } from "./default-preset.js";
 import type { Server } from "node:http";
 
 const servers: Server[] = [];
@@ -94,7 +95,7 @@ afterEach(async () => {
 });
 
 describe("SimpAgent server", () => {
-  it("启动时会跳过旧快照，但新建 thread 仍然使用 UUID v7", async () => {
+  it("启动时会导入默认 preset，并跳过无法匹配 agent 的旧快照", async () => {
     const storageDir = await mkdtemp(join(tmpdir(), "simpagent-server-"));
     const store = new SqliteTraceStore(storageDir);
     const oldThreadId = createUuidV7Id();
@@ -116,18 +117,31 @@ describe("SimpAgent server", () => {
     });
     const baseUrl = await listenOnRandomPort(server);
 
-    const restored = await fetchJson(`${baseUrl}/threads`);
+    const restored = await fetchJson(`${baseUrl}/conversations`);
     expect(restored.status).toBe(200);
     expect(restored.body).toEqual([]);
 
-    const created = await fetchJson(`${baseUrl}/threads`, {
+    const preset = await fetchJson(`${baseUrl}/preset/export`);
+    expect(preset.status).toBe(200);
+    expect(preset.body.agent_nodes).toHaveLength(3);
+    const discoverableEdges = preset.body.edges.filter((edge: any) => edge.edge_type === "discoverable");
+    expect(discoverableEdges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source_node_id: DEFAULT_AGENT_A_ID, target_node_id: DEFAULT_AGENT_B_ID }),
+        expect.objectContaining({ source_node_id: DEFAULT_AGENT_A_ID, target_node_id: DEFAULT_AGENT_C_ID }),
+        expect.objectContaining({ source_node_id: DEFAULT_AGENT_B_ID, target_node_id: DEFAULT_AGENT_A_ID }),
+        expect.objectContaining({ source_node_id: DEFAULT_AGENT_C_ID, target_node_id: DEFAULT_AGENT_B_ID })
+      ])
+    );
+
+    const created = await fetchJson(`${baseUrl}/conversations`, {
       method: "POST",
       body: JSON.stringify({}),
       headers: { "content-type": "application/json" }
     });
     expect(created.status).toBe(201);
     expect(created.body.id).toMatch(uuidV7Pattern);
-    expect(created.body.agentId).toMatch(uuidV7Pattern);
+    expect(created.body.agentId).toBe(DEFAULT_AGENT_A_ID);
   });
 
   it("首次发送会生成标题，并通过 SSE 输出 run 事件", async () => {
@@ -139,7 +153,7 @@ describe("SimpAgent server", () => {
     });
     const baseUrl = await listenOnRandomPort(server);
 
-    const created = await fetchJson(`${baseUrl}/threads`, {
+    const created = await fetchJson(`${baseUrl}/conversations`, {
       method: "POST",
       body: JSON.stringify({}),
       headers: { "content-type": "application/json" }
@@ -147,7 +161,7 @@ describe("SimpAgent server", () => {
     const threadId = String(created.body.id);
     expect(threadId).toMatch(uuidV7Pattern);
 
-    const run = await fetchJson(`${baseUrl}/threads/${threadId}/runs`, {
+    const run = await fetchJson(`${baseUrl}/conversations/${threadId}/runs`, {
       method: "POST",
       body: JSON.stringify({ input: "  这是第一次真实发送的消息  " }),
       headers: { "content-type": "application/json" }
@@ -164,8 +178,18 @@ describe("SimpAgent server", () => {
     expect(eventsText).toContain("event: message_delta");
     expect(eventsText).toContain("event: done");
 
-    const updated = await fetchJson(`${baseUrl}/threads/${threadId}`);
+    const updated = await fetchJson(`${baseUrl}/conversations/${threadId}`);
     expect(updated.body.title).toBe("这是第一次真实发送的消息");
+    expect(updated.body.messages.map((message: any) => message.role)).toEqual(["user", "assistant"]);
+    const eventRows = await fetchJson(`${baseUrl}/conversations/${threadId}/events`);
+    expect(eventRows.status).toBe(200);
+    expect(eventRows.body.map((event: any) => event.eventType)).toEqual(
+      expect.arrayContaining(["user_message", "agent_invocation", "prompt_compile", "llm_call", "assistant_message"])
+    );
+    const promptCompileEvent = eventRows.body.find((event: any) => event.eventType === "prompt_compile");
+    const eventDetail = await fetchJson(`${baseUrl}/events/${promptCompileEvent.id}`);
+    expect(eventDetail.status).toBe(200);
+    expect(eventDetail.body.eventType).toBe("prompt_compile");
     expect(fetchFn).toHaveBeenCalledOnce();
   });
 
@@ -210,12 +234,12 @@ describe("SimpAgent server", () => {
     });
     const baseUrl = await listenOnRandomPort(server);
 
-    await expect(fetchJson(`${baseUrl}/threads/thread_missing`)).resolves.toMatchObject({
+    await expect(fetchJson(`${baseUrl}/conversations/thread_missing`)).resolves.toMatchObject({
       status: 404,
       body: { ok: false, errorCode: "NOT_FOUND" }
     });
     await expect(
-      fetchJson(`${baseUrl}/threads/thread_missing/runs`, {
+      fetchJson(`${baseUrl}/conversations/thread_missing/runs`, {
         method: "POST",
         body: JSON.stringify({ input: "hi" }),
         headers: { "content-type": "application/json" }
@@ -229,13 +253,13 @@ describe("SimpAgent server", () => {
       body: { ok: false, errorCode: "NOT_FOUND" }
     });
 
-    const created = await fetchJson(`${baseUrl}/threads`, {
+    const created = await fetchJson(`${baseUrl}/conversations`, {
       method: "POST",
       body: JSON.stringify({}),
       headers: { "content-type": "application/json" }
     });
     await expect(
-      fetchJson(`${baseUrl}/threads/${created.body.id}/runs`, {
+      fetchJson(`${baseUrl}/conversations/${created.body.id}/runs`, {
         method: "POST",
         body: JSON.stringify({ input: "   " }),
         headers: { "content-type": "application/json" }
