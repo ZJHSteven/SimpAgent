@@ -322,12 +322,15 @@ message 节点的专属 payload。用户消息、助手消息、工具消息、t
 
 ## 第一版实现边界
 
-第一版 SQLite 代码必须先替换旧 JSON trace store，并建立完整 schema。当前 agent loop 仍可先通过现有 `TraceStore` 接口写入：
+第一版 SQLite 代码已经替换旧 JSON trace store，并建立完整 schema。当前实现边界：
 
 - `saveThread()` 映射为 conversation node + conversation payload + message nodes + message payload。
-- `saveTrace()` 映射为 event nodes + event payload + `llm_calls` + `tool_calls` + `tool_approvals`。
+- `saveTrace()` 映射为 event nodes + event payload + `prompt_compilations` + `llm_calls` + `tool_calls` + `tool_approvals`。
+- server 启动时可通过 core preset importer 导入默认 3-agent 图谱。
+- `GET /preset/export` 可按表 JSON 导出定义层 nodes、edges、agent_nodes、tool_nodes、prompt_units、provider_strategies。
+- `POST /preset/reset` 会清空 SQLite 后按默认 preset 重建，属于开发态 reset，不迁移旧历史。
 - 只有输入快照里显式带 `tags` 时，才写入 tag node 和 `has_tag` edge。
-- 后续再把 agent loop 改成直接生成细粒度 event，而不是保存完 trace 后再拆分。
+- 实时 SSE 从 server 内存通道广播；SQLite 按 user message、prompt compile、llm call、tool call、tool approval、assistant message 等阶段写入，不按 token 写库。
 
 明确禁止：
 

@@ -1,7 +1,7 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：SimpChat 前端仍然是真实接后端的状态；SQLite schema 已继续收敛为 `nodes + edges` 两个顶层容器，conversation/event/message/tag/workflow 都作为 node payload。
+- 现状：后端 API 已切到 `conversation` 命名；SQLite schema 已继续收敛为 `nodes + edges` 两个顶层容器，conversation/event/message/agent/tool/prompt unit/tag/workflow 都作为 node payload。
 - 已完成：
   - [x] 后端 monorepo、agent-core、runtime、CLI/server、流式 token、工具错误回填与基础测试已完成。
   - [x] React 前端迁移、ChatGPT 风格布局、受控输入器、移动端侧栏和 focus 视觉回归已完成。
@@ -32,7 +32,14 @@
   - [x] 已删除 tag 专表和 tag 绑定表，tag 绑定统一走 `edges.edge_type = 'has_tag'`。
   - [x] 已将 `conversations`、`events`、`messages` 改为 node payload 表。
   - [x] 已删除 `edges.priority`，并保留 `idx_edges_source` / `idx_edges_target` 双向索引。
-  - [x] 已把 `agent_nodes` 收敛为 `prompt_bonding_json`、`tool_policy_json`、`provider_strategy_node_id`、`memory_policy_json`，并删除旧的 `instruction/context_policy_json/model_policy_json`。
+  - [x] 已把 `agent_nodes` 收敛为 `prompt_binding_json`、`tool_policy_json`、`provider_strategy_node_id`、`memory_policy_json`，并删除旧的 `instruction/context_policy_json/model_policy_json`。
+  - [x] 已把字段名从误写的 `prompt_bonding_json` 更正为 `prompt_binding_json`。
+  - [x] 已为 `events` 增加 `actor_node_id`、`parent_event_node_id`、`caused_by_event_node_id`、`previous_event_node_id`，运行链路字段为主，不再依赖 event edge。
+  - [x] 已在 `agent-core` 新增按表 preset 导入、导出、reset 能力，并由 server 分发默认 3-agent preset。
+  - [x] 默认 preset 已包含 Agent A/B/C、provider strategy、prompt units、内置工具 node，以及 A->B/C、B->A、C->B 的 discoverable/handoff 边。
+  - [x] 已新增 `handoff` 内置工具定义，工具节点和 tool_access 关系进入 SQLite。
+  - [x] 已新增第一版 prompt compiler，支持固定顺序 prompt binding、变量替换、history/current user input 占位和 prompt compile trace。
+  - [x] 后端 API 已新增 `GET/POST /conversations`、`POST /conversations/:id/runs`、`POST /conversations/:id/fork`、`PATCH /messages/:id`、`GET /events/:id`、`GET /conversations/:id/events`、`GET /preset/export`、`POST /preset/reset`。
   - [x] 已删除 `prompt_units.priority`，让 prompt unit 只保留最小字段集。
   - [x] 已把 `llm_calls.provider_strategy_node_id` 直接指向 `provider_strategies.node_id`。
 - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
@@ -40,7 +47,7 @@
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
 - 正在做：
   - [x] Node/Edge 顶层统一存储本轮实现与验证已完成。
-- 下一步：继续推进 agent loop 原生细粒度 event。
+- 下一步：前端跟随后端从 `thread` API 迁移到 `conversation` API；如需真实 smoke，先把 `simpagent.toml` 的 smoke 模型名更新为 provider 当前可用模型。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
@@ -53,6 +60,8 @@
 - 决策H：tag 是 `nodes.node_type = 'tag'` 的普通 node，绑定关系走 `edges.edge_type = 'has_tag'`。（原因：避免为每类实体扩散出独立 tag 绑定表。）
 - 决策I：SQLite schema/trace 映射属于 `agent-core`，`runtime-node` 只负责 Node SQLite driver。（原因：SQLite 存储语义需要被 Node、Cloudflare Worker、Tauri 等 runtime 复用。）
 - 决策J：顶层身份统一在 `nodes`，关系统一在 `edges`；conversation、event、message、workflow、memory 等只保留 payload 分表。（原因：保持图模型一致，避免泛型 edge 连接裸表 ID。）
+- 决策K：preset 默认资产随 server 分发，但导入、导出、reset、图谱查询和 prompt 编译语义放在 `agent-core`。（原因：server 是应用包装层，core 才是跨 runtime 可复用的框架主体。）
+- 决策L：实时 SSE 不反查 SQLite；运行时从内存事件通道广播，SQLite 按阶段完成写入。（原因：避免每个 token 写库，同时保留 prompt/llm/tool/handoff 等结构化追踪。）
 
 ## 常见坑 / 复现方法
 - 坑1：`chatgpt-temp/` 是视觉参考归档，不是当前 React 主应用入口。
@@ -64,5 +73,7 @@
 - 坑7：SQLite 表结构不能只看建表 SQL；后续任何字段、索引、事件类型、节点类型变化都要先更新 `docs/SQLite表结构.md`。
 - 坑8：`agent_nodes.provider_strategy_node_id` 现在直接引用 `provider_strategies.node_id`，不要再把旧 `model_policy_json` 当真源。
 - 坑9：当前 Vitest 会通过 workspace package 读取已构建输出；改动 `agent-core` 后先跑 `npm run build`，再跑 `npm test`，避免测试读到旧 `dist`。
-- 复测记录：Node/Edge 顶层统一存储本轮已通过 `npm run build`、`npm run lint`、`npm test`、`npm run typecheck`。前端上一轮已通过 `npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。
+- 坑10：`npm run test:smoke` 会先查 provider `/models`；如果 `simpagent.toml` 里的 smoke 模型名已经下线，会直接失败并列出当前可用模型。
+- 复测记录：图编排后端底座本轮已通过 `npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。前端上一轮已通过 `npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。
+- 复测记录补充：`npm run test:smoke` 本轮已真实执行但失败，原因是本地配置里的 `deepseek-chat` / `deepseek-reasoner` 不在 provider 当前 `/models` 返回列表中，当前列表只返回 `deepseek-v4-flash`、`deepseek-v4-pro`。
 - 复测记录补充：本轮已确认 SQLite `PRAGMA foreign_keys = 1`，并验证坏的 `edges` 插入会直接失败。
