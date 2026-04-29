@@ -177,16 +177,18 @@ export class RuntimeToolExecutor implements ToolExecutor {
     }
 
     if (toolCall.name === "handoff") {
+      const content: JsonObject = {
+        ok: true,
+        kind: "handoff_request",
+        targetNodeId: String(args.target_node_id),
+        inputMarkdown: String(args.input_markdown),
+        contextSelector: args.context_selector ?? null,
+        returnMode: typeof args.return_mode === "string" ? args.return_mode : "return_to_caller"
+      };
+
       return {
         ok: true,
-        content: {
-          ok: true,
-          kind: "handoff_request",
-          targetNodeId: String(args.target_node_id),
-          inputMarkdown: String(args.input_markdown),
-          contextSelector: args.context_selector,
-          returnMode: typeof args.return_mode === "string" ? args.return_mode : "return_to_caller"
-        }
+        content
       };
     }
 

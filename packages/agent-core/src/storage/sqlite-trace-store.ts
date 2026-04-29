@@ -638,21 +638,40 @@ export class SqliteTraceStore implements TraceStore {
   }
 
   private eventRowToJson(row: EventDetailRow): JsonObject {
-    return {
+    const event: Record<string, JsonValue> = {
       id: row.node_id,
       conversationNodeId: row.conversation_node_id,
-      ...(row.actor_node_id === null ? {} : { actorNodeId: row.actor_node_id }),
-      ...(row.parent_event_node_id === null ? {} : { parentEventNodeId: row.parent_event_node_id }),
-      ...(row.caused_by_event_node_id === null ? {} : { causedByEventNodeId: row.caused_by_event_node_id }),
-      ...(row.previous_event_node_id === null ? {} : { previousEventNodeId: row.previous_event_node_id }),
       eventType: row.event_type,
       status: row.status,
-      startedAt: row.started_at,
-      ...(row.completed_at === null ? {} : { completedAt: row.completed_at }),
-      ...(row.input_json === null ? {} : { input: parseJsonOrUndefined(row.input_json) }),
-      ...(row.output_json === null ? {} : { output: parseJsonOrUndefined(row.output_json) }),
-      ...(row.error_json === null ? {} : { error: parseJsonOrUndefined(row.error_json) })
+      startedAt: row.started_at
     };
+
+    if (row.actor_node_id !== null) {
+      event.actorNodeId = row.actor_node_id;
+    }
+    if (row.parent_event_node_id !== null) {
+      event.parentEventNodeId = row.parent_event_node_id;
+    }
+    if (row.caused_by_event_node_id !== null) {
+      event.causedByEventNodeId = row.caused_by_event_node_id;
+    }
+    if (row.previous_event_node_id !== null) {
+      event.previousEventNodeId = row.previous_event_node_id;
+    }
+    if (row.completed_at !== null) {
+      event.completedAt = row.completed_at;
+    }
+    if (row.input_json !== null) {
+      event.input = parseJson(row.input_json) as JsonValue;
+    }
+    if (row.output_json !== null) {
+      event.output = parseJson(row.output_json) as JsonValue;
+    }
+    if (row.error_json !== null) {
+      event.error = parseJson(row.error_json) as JsonValue;
+    }
+
+    return event;
   }
 
   /**
@@ -870,10 +889,10 @@ export class SqliteTraceStore implements TraceStore {
   private insertEvent(input: {
     readonly id: string;
     readonly conversationId: string;
-    readonly actorNodeId?: string;
-    readonly parentEventId?: string;
-    readonly causedByEventId?: string;
-    readonly previousEventId?: string;
+    readonly actorNodeId?: string | undefined;
+    readonly parentEventId?: string | undefined;
+    readonly causedByEventId?: string | undefined;
+    readonly previousEventId?: string | undefined;
     readonly eventType: string;
     readonly status: EventStatus;
     readonly startedAt: number;
