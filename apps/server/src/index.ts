@@ -80,7 +80,7 @@ export interface CreateSimpAgentHttpServerOptions {
  * - 按泛型 T 返回的 JSON 对象。
  *
  * 边界处理：
- * - 空 body 视为 `{}`，这样 `POST /threads` 不带 body 也能创建默认标题的 thread。
+ * - 空 body 视为 `{}`，这样 `POST /conversations` 不带 body 也能创建默认标题的会话。
  * - JSON 语法错误会抛出异常，由外层路由转换为 500；后续如需更细粒度可改成 400。
  */
 async function readJson<T>(request: IncomingMessage): Promise<T> {

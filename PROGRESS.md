@@ -8,7 +8,7 @@
   - [x] 已为 `frontend` 新增 `simpagentApi` 客户端层，默认通过 `/api` 访问后端，可用 `VITE_SIMPAGENT_API_BASE` 覆盖。
   - [x] 已为 `frontend` 新增 `useSimpAgentChat` 状态 hook，集中维护 threads、当前消息、run 状态、工具审批和思考步骤。
   - [x] 已将左侧栏改为真实 thread 列表，支持创建新聊天、选择历史聊天和本地搜索。
-  - [x] 已将发送消息改为 `POST /threads/:id/runs` + `EventSource /runs/:runId/events`，支持 `message_delta` 打字式输出。
+  - [x] 已将发送消息改为 `POST /conversations/:id/runs` + `EventSource /runs/:runId/events`，支持 `message_delta` 打字式输出。
   - [x] 已将 `thinking_delta`、`tool_call`、`tool_result`、`trace_snapshot` 和 `error` 渲染到右侧“已思考”面板。
   - [x] 已将 `tool_approval_requested` 渲染为审批按钮，允许/拒绝会回填 `POST /runs/:runId/tool-approvals/:toolCallId`。
   - [x] 已修复 `UserMessage.jsx` 直接修改 props 导致的 React lint 错误。
@@ -47,7 +47,7 @@
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
 - 正在做：
   - [x] Node/Edge 顶层统一存储本轮实现与验证已完成。
-- 下一步：前端跟随后端从 `thread` API 迁移到 `conversation` API；如需真实 smoke，先把 `simpagent.toml` 的 smoke 模型名更新为 provider 当前可用模型。
+- 下一步：如需真实 smoke，先把 `simpagent.toml` 的 smoke 模型名更新为 provider 当前可用模型。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
@@ -74,6 +74,7 @@
 - 坑8：`agent_nodes.provider_strategy_node_id` 现在直接引用 `provider_strategies.node_id`，不要再把旧 `model_policy_json` 当真源。
 - 坑9：当前 Vitest 会通过 workspace package 读取已构建输出；改动 `agent-core` 后先跑 `npm run build`，再跑 `npm test`，避免测试读到旧 `dist`。
 - 坑10：`npm run test:smoke` 会先查 provider `/models`；如果 `simpagent.toml` 里的 smoke 模型名已经下线，会直接失败并列出当前可用模型。
+- 坑11：如果前端 Network 面板里看到 `5173/api/...`，先不要误判为没打到后端；Vite 开发服务器会先接同源 `/api`，再代理到 `8788`。真正需要核对的是请求路径是否还是旧 `/threads`。
 - 复测记录：图编排后端底座本轮已通过 `npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。前端上一轮已通过 `npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。
 - 复测记录补充：`npm run test:smoke` 本轮已真实执行但失败，原因是本地配置里的 `deepseek-chat` / `deepseek-reasoner` 不在 provider 当前 `/models` 返回列表中，当前列表只返回 `deepseek-v4-flash`、`deepseek-v4-pro`。
 - 复测记录补充：本轮已确认 SQLite `PRAGMA foreign_keys = 1`，并验证坏的 `edges` 插入会直接失败。

@@ -5,13 +5,13 @@
 - 让前端真实请求、Playwright mock 和项目状态文档统一对齐到后端现行的 `/conversations` 命名。
 
 ## 执行步骤
-1. [ ] **补计划与现状记录**
+1. [x] **补计划与现状记录**
    - 在本文件登记本轮修复范围。
    - 完成后更新 `PROGRESS.md`，明确根因和当前结论。
-2. [ ] **修复前端 API 客户端**
+2. [x] **修复前端 API 客户端**
    - 将 `frontend/src/lib/simpagentApi.js` 中的会话相关路径从 `/threads` 切到 `/conversations`。
    - 同步修正文档注释，避免继续误导排查。
-3. [ ] **修复前端测试桩**
+3. [x] **修复前端测试桩**
    - 将 `frontend/tests/simpchat.spec.js` 中的 mock 路由改成 `/conversations`。
    - 保证前端 E2E 测试能覆盖这次接口命名漂移。
 4. [ ] **回归验证**

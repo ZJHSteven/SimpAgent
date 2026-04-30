@@ -113,12 +113,12 @@ async function setupMockBackend(page, options = {}) {
     const path = url.pathname.replace(/^\/api/, '')
     const method = request.method()
 
-    if (path === '/threads' && method === 'GET') {
+    if (path === '/conversations' && method === 'GET') {
       await route.fulfill({ json: threads })
       return
     }
 
-    if (path === '/threads' && method === 'POST') {
+    if (path === '/conversations' && method === 'POST') {
       const nextThread = createThread({
         id: `thread_${nextThreadNumber}`,
         title: '新的会话',
@@ -132,7 +132,7 @@ async function setupMockBackend(page, options = {}) {
       return
     }
 
-    const runMatch = path.match(/^\/threads\/([^/]+)\/runs$/)
+    const runMatch = path.match(/^\/conversations\/([^/]+)\/runs$/)
 
     if (runMatch && method === 'POST') {
       const body = JSON.parse(request.postData() || '{}')
@@ -176,7 +176,7 @@ async function setupMockBackend(page, options = {}) {
       return
     }
 
-    const threadMatch = path.match(/^\/threads\/([^/]+)$/)
+    const threadMatch = path.match(/^\/conversations\/([^/]+)$/)
 
     if (threadMatch && method === 'GET') {
       const currentThread = threads.find((item) => item.id === threadMatch[1])

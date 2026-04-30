@@ -42,7 +42,7 @@ function apiUrl(path) {
  * 读取 JSON 响应，并把非 2xx 响应转换成 Error。
  *
  * 输入：
- * - path: 后端路径，例如 `/threads`。
+ * - path: 后端路径，例如 `/conversations`。
  * - options: fetch 原生配置。
  *
  * 输出：
@@ -71,10 +71,14 @@ async function requestJson(path, options = {}) {
 }
 
 /**
- * 获取 thread 列表。
+ * 获取 conversation 列表。
+ *
+ * 说明：
+ * - 前端 UI 里仍然沿用 `thread` 这个词描述“左侧历史会话”。
+ * - 但后端 HTTP API 命名已经统一切到 `conversation`，这里必须按后端真实路由发请求。
  */
 export function listThreads() {
-  return requestJson('/threads')
+  return requestJson('/conversations')
 }
 
 /**
@@ -87,27 +91,27 @@ export function listModels() {
 }
 
 /**
- * 创建新 thread。
+ * 创建新 conversation。
  */
 export function createThread(input = {}) {
-  return requestJson('/threads', {
+  return requestJson('/conversations', {
     method: 'POST',
     body: JSON.stringify(input),
   })
 }
 
 /**
- * 读取单个 thread。
+ * 读取单个 conversation 快照。
  */
 export function getThread(threadId) {
-  return requestJson(`/threads/${encodeURIComponent(threadId)}`)
+  return requestJson(`/conversations/${encodeURIComponent(threadId)}`)
 }
 
 /**
- * 在指定 thread 上启动一次 run。
+ * 在指定 conversation 上启动一次 run。
  */
 export function startRun(threadId, input) {
-  return requestJson(`/threads/${encodeURIComponent(threadId)}/runs`, {
+  return requestJson(`/conversations/${encodeURIComponent(threadId)}/runs`, {
     method: 'POST',
     body: JSON.stringify({ input }),
   })
@@ -135,7 +139,7 @@ export function submitToolApproval(runId, toolCallId, decision, reason) {
  * 打开 run 的 SSE 事件流。
  *
  * 输入：
- * - runId: 后端 `POST /threads/:id/runs` 返回的 runId。
+ * - runId: 后端 `POST /conversations/:id/runs` 返回的 runId。
  * - handlers: 各类事件回调；当前统一交给 onEvent 即可。
  *
  * 输出：
