@@ -45,6 +45,7 @@
 - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
 - [x] 已将 SimpAgent 默认后端端口从 `8787` 调整为 `8788`，并同步更新前端代理默认目标，避开本机上被其他服务占用的端口。
   - [x] 已更新 `frontend` Playwright 测试，用 mock HTTP API 和 mock EventSource 验证真实连接行为。
+  - [x] 已修复前端仍调用旧 `/threads` 路由的问题；前端客户端和 Playwright mock 现已统一切到 `/conversations`。
 - 正在做：
   - [x] Node/Edge 顶层统一存储本轮实现与验证已完成。
 - 下一步：如需真实 smoke，先把 `simpagent.toml` 的 smoke 模型名更新为 provider 当前可用模型。

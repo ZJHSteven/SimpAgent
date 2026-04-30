@@ -14,7 +14,7 @@
 3. [x] **修复前端测试桩**
    - 将 `frontend/tests/simpchat.spec.js` 中的 mock 路由改成 `/conversations`。
    - 保证前端 E2E 测试能覆盖这次接口命名漂移。
-4. [ ] **回归验证**
+4. [x] **回归验证**
    - 运行根项目 `npm run typecheck`、`npm test`、`npm run build`、`npm run lint`。
    - 运行前端 `npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。
    - 直接请求当前运行中的 `5173/api/conversations` 与 `8788/conversations`，确认真实链路恢复。
@@ -23,6 +23,14 @@
 - 前端不再请求旧 `/threads` 路由。
 - `5173/api/conversations` 可通过 Vite proxy 命中 `8788/conversations`。
 - 相关自动化测试和构建检查全部通过。
+
+## 当前结果
+- 已确认根因是前端客户端与 Playwright mock 仍停留在旧 `/threads` 命名，而后端真实路由已切到 `/conversations`。
+- 已修复 `frontend/src/lib/simpagentApi.js` 的会话相关请求路径，并同步修正文档注释。
+- 已修复 `frontend/tests/simpchat.spec.js` 的 mock 路由，避免测试继续掩盖接口命名漂移。
+- 已通过 `npm run typecheck`、`npm run lint`、`npm run build`、`npm test`。
+- 已通过 `npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。
+- 已现场确认 `http://127.0.0.1:5173/api/conversations` 与 `http://127.0.0.1:8788/conversations` 都返回 `200`，旧 `http://127.0.0.1:5173/api/threads` 仍按预期返回 `404`。
 
 # ExecPlan：Node/Edge 顶层统一存储
 
