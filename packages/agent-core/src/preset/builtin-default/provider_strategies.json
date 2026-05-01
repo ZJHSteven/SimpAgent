@@ -1,0 +1,10 @@
+[
+  {
+    "node_id": "00000000-0000-7000-8000-000000000301",
+    "provider": "__CONFIG_PROVIDER__",
+    "base_url": "__CONFIG_BASE_URL__",
+    "model": "__CONFIG_MODEL__",
+    "strategy_json": null,
+    "parameters_json": null
+  }
+]

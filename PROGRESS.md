@@ -1,7 +1,7 @@
 # 项目状态快照（保持短小：建议 <= 200~400 行）
 
 ## 当前结论（必须最新）
-- 现状：后端 API 已切到 `conversation` 命名；SQLite schema 已继续收敛为 `nodes + edges` 两个顶层容器，conversation/event/message/agent/tool/prompt unit/tag/workflow 都作为 node payload。
+- 现状：后端 API 已切到 `conversation` 命名；HTTP 基础接口契约已放入 `agent-core`，Node 版实现由 `runtime-node` 提供，`apps/server` 只负责启动和应用级 preset 注入。
 - 已完成：
   - [x] 后端 monorepo、agent-core、runtime、CLI/server、流式 token、工具错误回填与基础测试已完成。
   - [x] React 前端迁移、ChatGPT 风格布局、受控输入器、移动端侧栏和 focus 视觉回归已完成。
@@ -40,6 +40,8 @@
   - [x] 已新增 `handoff` 内置工具定义，工具节点和 tool_access 关系进入 SQLite。
   - [x] 已新增第一版 prompt compiler，支持固定顺序 prompt binding、变量替换、history/current user input 占位和 prompt compile trace。
   - [x] 后端 API 已新增 `GET/POST /conversations`、`POST /conversations/:id/runs`、`POST /conversations/:id/fork`、`PATCH /messages/:id`、`GET /events/:id`、`GET /conversations/:id/events`、`GET /preset/export`、`POST /preset/reset`。
+  - [x] 已将基础 HTTP route contract 收敛到 `agent-core/src/http/routes.ts`，runtime-node 按该 contract 实现 Node HTTP API。
+  - [x] 已把默认 preset 从 TS builder 改为按 SQLite 表拆分的 JSON 配置资产；`agent-core` 保留框架级完整 preset，`apps/server` 保留应用级完整 preset。
   - [x] 已删除 `prompt_units.priority`，让 prompt unit 只保留最小字段集。
   - [x] 已把 `llm_calls.provider_strategy_node_id` 直接指向 `provider_strategies.node_id`。
 - [x] 已更新 README，补充前端真实连接后的启动方式：后端 `npm run server`，前端 `npm.cmd --prefix frontend run dev -- --host 127.0.0.1`。
@@ -48,7 +50,7 @@
   - [x] 已修复前端仍调用旧 `/threads` 路由的问题；前端客户端和 Playwright mock 现已统一切到 `/conversations`。
 - 正在做：
   - [x] Node/Edge 顶层统一存储本轮实现与验证已完成。
-- 下一步：如需真实 smoke，先把 `simpagent.toml` 的 smoke 模型名更新为 provider 当前可用模型。
+- 下一步：继续开发具体产品接口时，优先复用 `agent-core` route contract 和 `runtime-node` 实现；只有 app 专属扩展才写在 `apps/server`。
 
 ## 关键决策与理由（防止“吃书”）
 - 决策A：`agent-core` 继续负责 agent loop、事件协议、工具闭环；`runtime-node` 继续只注入 Node 环境能力。（原因：保持 large core + environment runtime 的主线边界。）
@@ -61,7 +63,8 @@
 - 决策H：tag 是 `nodes.node_type = 'tag'` 的普通 node，绑定关系走 `edges.edge_type = 'has_tag'`。（原因：避免为每类实体扩散出独立 tag 绑定表。）
 - 决策I：SQLite schema/trace 映射属于 `agent-core`，`runtime-node` 只负责 Node SQLite driver。（原因：SQLite 存储语义需要被 Node、Cloudflare Worker、Tauri 等 runtime 复用。）
 - 决策J：顶层身份统一在 `nodes`，关系统一在 `edges`；conversation、event、message、workflow、memory 等只保留 payload 分表。（原因：保持图模型一致，避免泛型 edge 连接裸表 ID。）
-- 决策K：preset 默认资产随 server 分发，但导入、导出、reset、图谱查询和 prompt 编译语义放在 `agent-core`。（原因：server 是应用包装层，core 才是跨 runtime 可复用的框架主体。）
+- 决策K：默认 preset 同时保留核心包基线和 app 级完整副本；`agent-core` 提供框架级 JSON preset 与加载器，`apps/server` 可复制后扩展自己的 preset。（原因：框架必须自带可启动配置，具体产品也必须能分发自己的完整配置资产。）
+- 决策M：基础 HTTP API 的路径与 method 契约放在 `agent-core`，Node HTTP 具体实现放在 `runtime-node`，`apps/server` 只做启动和可选扩展。（原因：接口契约是所有 runtime 都需要遵守的框架边界，具体传输实现才是 runtime 责任。）
 - 决策L：实时 SSE 不反查 SQLite；运行时从内存事件通道广播，SQLite 按阶段完成写入。（原因：避免每个 token 写库，同时保留 prompt/llm/tool/handoff 等结构化追踪。）
 
 ## 常见坑 / 复现方法
@@ -77,5 +80,5 @@
 - 坑10：`npm run test:smoke` 会先查 provider `/models`；如果 `simpagent.toml` 里的 smoke 模型名已经下线，会直接失败并列出当前可用模型。
 - 坑11：如果前端 Network 面板里看到 `5173/api/...`，先不要误判为没打到后端；Vite 开发服务器会先接同源 `/api`，再代理到 `8788`。真正需要核对的是请求路径是否还是旧 `/threads`。
 - 复测记录：图编排后端底座本轮已通过 `npm run typecheck`、`npm run build`、`npm run lint`、`npm test`。前端上一轮已通过 `npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build`、`npm.cmd --prefix frontend run test:e2e`。
-- 复测记录补充：`npm run test:smoke` 本轮已真实执行但失败，原因是本地配置里的 `deepseek-chat` / `deepseek-reasoner` 不在 provider 当前 `/models` 返回列表中，当前列表只返回 `deepseek-v4-flash`、`deepseek-v4-pro`。
+- 复测记录补充：本轮更新本机忽略的 `simpagent.toml` 模型名后，`npm run test:smoke` 已通过，真实 provider 当前可用模型为 `deepseek-v4-flash`、`deepseek-v4-pro`。
 - 复测记录补充：本轮已确认 SQLite `PRAGMA foreign_keys = 1`，并验证坏的 `edges` 插入会直接失败。

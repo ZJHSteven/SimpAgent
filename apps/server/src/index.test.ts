@@ -10,10 +10,13 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createUuidV7Id } from "@simpagent/agent-core";
-import { SqliteTraceStore, type SimpAgentNodeConfig } from "@simpagent/runtime-node";
-import { createSimpAgentHttpServer, createThreadTitleFromUserText } from "./index.js";
-import { DEFAULT_AGENT_A_ID, DEFAULT_AGENT_B_ID, DEFAULT_AGENT_C_ID } from "./default-preset.js";
+import { DEFAULT_AGENT_A_ID, DEFAULT_AGENT_B_ID, DEFAULT_AGENT_C_ID, createUuidV7Id } from "@simpagent/agent-core";
+import {
+  SqliteTraceStore,
+  createSimpAgentHttpServer,
+  createThreadTitleFromUserText,
+  type SimpAgentNodeConfig
+} from "@simpagent/runtime-node";
 import type { Server } from "node:http";
 
 const servers: Server[] = [];

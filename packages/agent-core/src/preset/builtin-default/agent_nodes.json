@@ -1,0 +1,23 @@
+[
+  {
+    "node_id": "00000000-0000-7000-8000-000000000201",
+    "prompt_binding_json": "[{\"kind\":\"prompt_unit\",\"order\":0,\"enabled\":true,\"target_node_id\":\"00000000-0000-7000-8000-000000000401\"}]",
+    "tool_policy_json": null,
+    "provider_strategy_node_id": "00000000-0000-7000-8000-000000000301",
+    "memory_policy_json": null
+  },
+  {
+    "node_id": "00000000-0000-7000-8000-000000000202",
+    "prompt_binding_json": "[{\"kind\":\"prompt_unit\",\"order\":0,\"enabled\":true,\"target_node_id\":\"00000000-0000-7000-8000-000000000402\"}]",
+    "tool_policy_json": null,
+    "provider_strategy_node_id": "00000000-0000-7000-8000-000000000301",
+    "memory_policy_json": null
+  },
+  {
+    "node_id": "00000000-0000-7000-8000-000000000203",
+    "prompt_binding_json": "[{\"kind\":\"prompt_unit\",\"order\":0,\"enabled\":true,\"target_node_id\":\"00000000-0000-7000-8000-000000000403\"}]",
+    "tool_policy_json": null,
+    "provider_strategy_node_id": "00000000-0000-7000-8000-000000000301",
+    "memory_policy_json": null
+  }
+]
